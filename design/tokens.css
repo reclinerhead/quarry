@@ -1,0 +1,115 @@
+/* The Quarry — design tokens for Tailwind CSS 4.
+ * Import once from app/globals.css:
+ *   @import "tailwindcss";
+ *   @import "../design/tokens.css";   (adjust the path)
+ * Then use the utilities Tailwind generates: bg-ground, text-ink-2, border-line,
+ * bg-azurite, rounded-card, font-display, font-label, etc. Rationale and usage:
+ * DESIGN.md.
+ */
+
+/* Fonts are NOT fetched from Google here. Self-host Zilla Slab, Atkinson
+ * Hyperlegible and Courier Prime through next/font (web/app/layout.tsx), which
+ * sets the --font-zilla, --font-atkinson and --font-courier variables the font
+ * tokens below read, so the stations make no font requests. */
+
+@theme {
+  /* Surfaces, light to dark: limestone, white, sandstone */
+  --color-ground: #F5F1EA;      /* page background: pale limestone */
+  --color-surface: #FFFFFF;     /* cards, inputs, chips at rest */
+  --color-label: #FFFDF8;       /* specimen label card, catalog-number dab, box label */
+  --color-sand: #EDE6DA;        /* soft fills: tags, soft buttons, info note, chip hover */
+  --color-sand-2: #E3D9C8;      /* active nav pill, pressed soft button */
+  --color-line: #DDD3C3;        /* card borders */
+  --color-line-2: #CFC3AF;      /* control borders (inputs, chips, selects), label border */
+  --color-line-strong: #A8977C; /* hover borders, info-mark ring, dashed "add" tiles */
+  --color-rule: #E6DDCD;        /* ruled lines inside the specimen label */
+  --color-hairline: #EDE6DA;    /* dividers between side-panel rows */
+
+  /* Strata band under the top bar, top to bottom (decoration only) */
+  --color-strata-1: #D8C7A8;
+  --color-strata-2: #B9A586;
+  --color-strata-3: #E6DAC4;
+  --color-strata-4: #8C7B66;
+
+  /* Ink: basalt */
+  --color-ink: #2A2622;         /* body text, headings; 13:1 on ground */
+  --color-ink-2: #5A5048;       /* secondary text, labels, nav; 7:1 on ground */
+  --color-ink-3: #6E645A;       /* placeholders, "Not recorded yet"; 5.1:1 on ground */
+  --color-tag-ink: #3E3630;     /* text on sand tags */
+  --color-icon-muted: #8C8070;  /* line icons on placeholder tiles (decorative only) */
+
+  /* Action: azurite */
+  --color-azurite: #2D5B8A;     /* the one action color: primary buttons, links, selected chip; 7.1:1 with white */
+  --color-azurite-deep: #1F4468;/* hover; text on azurite-soft */
+  --color-azurite-soft: #E4ECF4;/* "you have this" fills: owned Mohs slots, lit elements, test-check note */
+  --color-azurite-note: #1F3A57;/* body text on azurite-soft */
+
+  /* Catalog red: the hand-painted number on a stone */
+  --color-catalog: #9E2F22;     /* catalog numbers only (Q-0047); 7.2:1 on label */
+
+  /* Status pairs (background / text) — always paired, never text alone */
+  --color-warn: #FBF4E4;        /* waiting for a name, missing details */
+  --color-warn-line: #E4C98A;
+  --color-warn-ink: #5A4210;    /* 8.6:1 on warn */
+  --color-uv: #ECE6F7;          /* fluorescent: glows under UV */
+  --color-uv-ink: #4B3584;      /* 8.0:1 on uv */
+
+  /* Photo caption pill */
+  --color-caption: rgb(30 26 22 / 0.82);
+  --color-photo-well: #3A342E;  /* behind a contained hero photo */
+
+  /* Placeholder tile tints (specimens without a photo yet).
+     Pick the tint nearest the stone's color; neighbours differ. */
+  --color-tile-stone: #E2DFDA;  /* grey: granite, unknown */
+  --color-tile-slate: #DCDCDA;  /* black: obsidian, basalt */
+  --color-tile-clear: #E4E8EA;  /* clear/white: calcite, quartz */
+  --color-tile-violet: #E6DFE9; /* purple: amethyst, fluorite */
+  --color-tile-rose: #EFDFE0;   /* pink: rose quartz, rhodochrosite */
+  --color-tile-rust: #EADBD3;   /* red/orange: agate, jasper, carnelian */
+  --color-tile-brass: #E9E3CF;  /* gold/yellow: pyrite, citrine, tiger's eye */
+  --color-tile-moss: #D9E6DD;   /* green: malachite, jade, aventurine */
+  --color-tile-chalk: #E8E6E1;  /* pale: halite, gypsum */
+  --color-tile-fossil: #E3E1DA; /* fossils: Petoskey stone */
+
+  /* Type */
+  --font-display: var(--font-zilla), "Zilla Slab", Georgia, serif;                       /* headings, names, big numbers */
+  --font-sans: var(--font-atkinson), "Atkinson Hyperlegible", system-ui, sans-serif;     /* everything else */
+  --font-label: var(--font-courier), "Courier Prime", "Courier New", monospace;          /* catalog numbers, formulas, label fields */
+
+  --text-page-title: 60px;      /* specimen / mineral name */
+  --text-h1: 46px;              /* dashboard greeting */
+  --text-h2: 34px;              /* "Your collection" */
+  --text-section: 30px;         /* card section titles on the specimen page */
+  --text-h3: 24px;              /* side-panel titles, card names */
+  --text-lead: 19px;            /* about paragraphs, info notes */
+  --text-body: 18px;            /* the floor for reading text */
+  --text-meta: 16px;            /* muted lines, captions, sources */
+  --text-tag: 15px;             /* the smallest text anywhere */
+
+  /* Shape */
+  --radius-photo: 22px;         /* hero photo */
+  --radius-card: 18px;
+  --radius-tile: 14px;          /* property cells, stat tiles, test rows, notes */
+  --radius-thumb: 12px;
+  --radius-dab: 6px;            /* catalog-number dab on a photo (8px at title size) */
+  --radius-pill: 999px;
+
+  /* Sizing */
+  --size-target: 48px;          /* minimum height of anything you can press */
+  --size-target-lg: 52px;       /* primary buttons, search field */
+
+  /* Spacing rhythm */
+  --spacing-page-x: 40px;
+  --spacing-section: 32px;      /* gap between page columns */
+  --spacing-stack: 28px;        /* gap between main-column sections */
+  --spacing-card: 24px;         /* side-panel padding */
+  --spacing-card-lg: 28px 32px; /* main-column card padding */
+  --spacing-grid: 22px;         /* gap in the collection grid */
+
+  /* Elevation (hover only; resting cards are flat) */
+  --shadow-hover: 0 6px 18px rgb(60 45 30 / 0.12);
+
+  /* Layout */
+  --container-page: 1360px;
+  --container-sidebar: 400px;
+}
