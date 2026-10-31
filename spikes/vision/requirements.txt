@@ -1,0 +1,4 @@
+anthropic>=2.3
+google-genai>=2.34,<3.0.0
+pillow>=10.0
+pillow-heif>=0.18

@@ -34,3 +34,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# spikes: photos, notes, raw API responses and local venvs stay out of the repo
+spikes/**/photos*/
+spikes/**/out/
+spikes/**/.venv/
+__pycache__/
