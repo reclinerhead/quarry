@@ -31,3 +31,43 @@ export function CameraIcon({ className = "" }: IconProps) {
     </svg>
   );
 }
+
+/** A photo from the camera roll. */
+export function PhotosIcon({ className = "" }: IconProps) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" className={className}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 16 5-5 4 4 3-3 6 6" />
+      <circle cx="16" cy="9" r="1.5" />
+    </svg>
+  );
+}
+
+// The three photo tips on the add page: daylight, a coin for scale, a label.
+
+export function SunIcon({ className = "" }: IconProps) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className={className}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
+    </svg>
+  );
+}
+
+export function CoinIcon({ className = "" }: IconProps) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="5.5" />
+    </svg>
+  );
+}
+
+export function TagIcon({ className = "" }: IconProps) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" className={className}>
+      <path d="M3 4v7.5L12.5 21l8-8L11 3.5H3.5z" />
+      <circle cx="7.5" cy="8" r="1.5" />
+    </svg>
+  );
+}
