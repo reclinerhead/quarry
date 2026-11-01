@@ -4,14 +4,14 @@ The living description of how the Quarry is built and why. The root [README](../
 
 | Spoke | Covers | Read it when |
 | --- | --- | --- |
-| [`jasper.md`](jasper.md) | Jasper, the Python worker: the database and its schema | Touching anything under `jasper/`, or the schema |
+| [`jasper.md`](jasper.md) | Jasper, the Python worker: the database and its schema, the queue, the gateway call, the prompt, and what each answer means for a job | Touching anything under `jasper/`, or the schema |
 | [`web.md`](web.md) | The Next.js app: routes, how it reads the database, the visual language | Touching anything under `web/` |
 
 Spokes to come: `ops.md` (what runs on orchid, #10), and the hub's in Phase 4.
 
 ## The shape, in one paragraph
 
-One SQLite file per household, in WAL mode. Jasper (`jasper/`) creates and migrates it, and will drain the identification queue and ask the two models through the Vercel AI Gateway (#7); the web app (`web/`) opens the same file with `node:sqlite`, serves every page, and writes the rows that a person's actions create. Photos sit on disk under `QUARRY_DATA/photos/`. Both processes read their configuration from the environment (`.env.example` at the root). Nothing calls a model but Jasper, so the bill has one owner.
+One SQLite file per household, in WAL mode. Jasper (`jasper/`) creates and migrates it, drains the identification queue, and asks the two models about each job through the Vercel AI Gateway; the web app (`web/`) opens the same file with `node:sqlite`, serves every page, and writes the rows that a person's actions create. Photos sit on disk under `QUARRY_DATA/photos/`. Both processes read their configuration from the environment (`.env.example` at the root). Nothing calls a model but Jasper, so the bill has one owner.
 
 ## Conventions
 

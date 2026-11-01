@@ -38,4 +38,4 @@ jobs:
       # THIS LIST IS THE WHOLE CONTRACT (the Aviary's rule): there is no
       # pytest.ini/testpaths fallback, so a test_*.py that isn't named here
       # silently never runs. Add new files by hand.
-      - run: pytest test_jasper_db.py -q
+      - run: pytest test_jasper_db.py test_jasper_identify.py test_jasper_queue.py -q

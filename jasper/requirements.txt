@@ -1,5 +1,7 @@
-# Jasper's Python dependencies (Python 3.13). The scaffold needs only the
-# stdlib; image handling arrives with identification (#7).
+# Jasper's Python dependencies (Python 3.13). The gateway call is urllib from
+# the stdlib; these are the image handling that arrived with identification (#7).
+pillow
+pillow-heif     # iPhone photos
 
 # Test-only:
 pytest
