@@ -25,7 +25,12 @@ describe("greeting", () => {
     expect(greeting(evening, 0)).toBe("Good evening. Your collection starts here.");
   });
 
-  it("just says hello once there are stones", () => {
+  it("just says hello once there are stones and none came today", () => {
     expect(greeting(evening, 3)).toBe("Good evening.");
+    expect(greeting(evening, 3, 0)).toBe("Good evening.");
+  });
+
+  it("says what changed today", () => {
+    expect(greeting(evening, 3, 2)).toBe("Good evening. Two new stones today.");
   });
 });
