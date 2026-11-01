@@ -213,7 +213,10 @@ def candidates_from(result: dict) -> list[Candidate]:
 
 
 def is_hit(expected: Expected, cand: Candidate) -> bool:
-    return bool(expected.names & cand.answers())
+    """An expected name appearing as whole words in any of the candidate's names, so rock
+    names with qualifiers count ('Andesite porphyry' for Porphyry, 'Smoky quartz' for
+    Quartz) but a longer mineral name does not ('Chalcopyrite' is not Pyrite)."""
+    return any(f" {e} " in f" {a} " for e in expected.names for a in cand.answers())
 
 
 @dataclass
