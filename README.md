@@ -8,7 +8,7 @@ It is being built for the rock hounds in one family, who come home from beaches,
 
 It also teaches. The person building it could not tell quartz from calcite, which makes a useful test. Every mineralogical term the app shows carries a small info mark that explains it in plain language, with an example from the person's own collection when there is one. Nobody should have to leave the app to understand the app.
 
-> **Status:** design stage. Nothing runs yet. This README is the design brief and will become the project guide as the code lands.
+> **Status:** Phase 1 has begun. The scaffold runs: a worker that sets up the database, and a web app with an empty home page. Nothing identifies yet. This README is the design brief; how the code is built is in the [technical guide](docs/guide/README.md).
 
 ## Lineage
 

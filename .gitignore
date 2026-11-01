@@ -40,3 +40,9 @@ spikes/**/photos*/
 spikes/**/out*/
 spikes/**/.venv/
 __pycache__/
+
+# the household's database and photos, the worker's venv, local tool state
+/data/
+/.venv/
+.pytest_cache/
+/.claude/

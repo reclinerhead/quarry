@@ -1,0 +1,136 @@
+@import "tailwindcss";
+@import "../../design/tokens.css";
+
+/* =============================================================================
+   The Quarry's look is defined in design/DESIGN.md and its values in
+   design/tokens.css (imported above as the Tailwind theme). Nothing in this
+   file picks a colour or a face; it only writes down the component recipes
+   DESIGN.md §4 describes, so a screen says `btn btn-primary` or `card` and
+   gets the design canvas's shape. Recipes are added here as screens first
+   need them. App-only rules at the bottom.
+   ========================================================================== */
+
+@layer components {
+  /* Buttons: pill, 48 px (52 for the page's main action), 700 weight, icon +
+     label with a 10 px gap. */
+  .btn {
+    font-size: var(--text-body);
+    font-weight: 700;
+    border-radius: var(--radius-pill);
+    border: 1px solid transparent;
+    padding: 0 22px;
+    min-height: var(--size-target);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+  .btn-lg {
+    min-height: var(--size-target-lg);
+    padding: 0 24px;
+  }
+  .btn-primary,
+  .btn-primary:hover {
+    color: #fff;
+  }
+  .btn-primary {
+    background: var(--color-azurite);
+  }
+  .btn-primary:hover {
+    background: var(--color-azurite-deep);
+  }
+  .btn-soft,
+  .btn-soft:hover {
+    color: var(--color-ink);
+  }
+  .btn-soft {
+    background: var(--color-sand);
+    border-color: var(--color-line-2);
+  }
+  .btn-soft:hover {
+    background: var(--color-sand-2);
+  }
+
+  /* Cards: white, hairline, 18 px radius. Flat at rest; a linked card lifts on hover. */
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  /* Nav pills in the top bar; the current page is sand-2. */
+  .nav-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--size-target);
+    padding: 0 20px;
+    border-radius: var(--radius-pill);
+    color: var(--color-ink-2);
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .nav-pill:hover {
+    color: var(--color-ink);
+    background: var(--color-sand);
+  }
+  .nav-pill[aria-current="page"] {
+    color: var(--color-ink);
+    background: var(--color-sand-2);
+  }
+
+  /* A text field: the chip's pill, white, control border, 52 px. The pill is
+     a <label> around a bare <input>, so the focus ring goes on the pill. */
+  .field {
+    min-height: var(--size-target-lg);
+    min-width: 0;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-surface);
+    padding: 0 18px;
+    color: var(--color-ink);
+  }
+  .field:focus-within {
+    outline: 3px solid var(--color-azurite);
+    outline-offset: 2px;
+  }
+  .field input {
+    min-width: 0;
+    flex: 1;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+  }
+  .field input:focus-visible {
+    outline: none;
+  }
+  .field input::placeholder {
+    color: var(--color-ink-3);
+  }
+}
+
+/* App-only base rules. In the base layer on purpose: an unlayered rule would
+   outrank the component recipes above (a link styled `btn-primary` would keep
+   the link colour and vanish into its own fill). */
+@layer base {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  a {
+    color: var(--color-azurite);
+  }
+  a:hover {
+    color: var(--color-azurite-deep);
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-azurite);
+    outline-offset: 2px;
+  }
+}

@@ -1,0 +1,5 @@
+# Jasper's Python dependencies (Python 3.13). The scaffold needs only the
+# stdlib; image handling arrives with identification (#7).
+
+# Test-only:
+pytest
