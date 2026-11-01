@@ -33,7 +33,7 @@ The Quarry is the fifth app in a family of home-scale projects, and it is being 
 
 **There is no Pl@ntNet for rocks.** The Aviary has BirdNET and the Conservatory has Pl@ntNet, classifiers trained on millions of labeled examples and free for a family to use. Nothing like that exists for minerals. The identifier is a general **vision language model**, held to a JSON schema, which returns the top two or three candidates with a confidence, the distinguishing features it saw in the photo, and the at-home tests that would separate its own candidates: a hardness scratch against glass, a streak on the back of a bathroom tile, a drop of vinegar for fizz, a fridge magnet. The Conservatory considered a vision model for plants and rejected it because a better tool existed. Here, it is the best tool there is.
 
-**A hosted model, not a local one.** The identifier is a cheap hosted model: a Haiku-class Claude model or Gemini's free tier, both expected to cost a fraction of a cent per photo and both more accurate than anything that runs locally. A hosted model also means every station identifies on its own, with nothing depending on the house, which keeps the Conservatory's rule. Ollama on bluejay (the house desktop with the graphics card) running Qwen-VL, Llama 3.2 Vision, or Gemma 3 is held in reserve: it is the fallback only if Phase 0 finds the real cost per identification well above what is hoped. The model sits behind one interface (photos and notes in, candidates and tests out), so swapping providers is a configuration change, not a rewrite. Gemini's free tier lets Google use what it is sent to improve its products. That is acceptable for photos of rocks, but worth knowing.
+**A hosted model, not a local one.** The identifier is a cheap hosted model, a Haiku-class Claude model or a Gemini Flash model, both expected to cost a fraction of a cent per photo and both more accurate than anything that runs locally. A hosted model also means every station identifies on its own, with nothing depending on the house, which keeps the Conservatory's rule. It is reached through the Vercel AI Gateway, the route the Aviary and the Conservatory already use: one key on a station reaches every provider's models by slug, at the provider's list price, and the gateway reports what each call cost. The model sits behind one interface (photos and notes in, candidates and tests out), so swapping providers is a one-line configuration change, not a rewrite. Ollama on bluejay (the house desktop with the graphics card) running Qwen-VL, Llama 3.2 Vision, or Gemma 3 is held in reserve: it is the fallback only if Phase 0 finds the real cost per identification well above what is hoped.
 
 **The notes matter as much as the photo.** A mineral is defined by its chemistry and its crystal structure, and a photo shows neither. So the prompt carries everything the person can add: where it was found or bought, its approximate size, and the tests, each answered yes, no, or *not tried*, which is not the same as no. A vision model can also read, unlike a classifier, so a photo of the dealer's label or the gem show tag goes in as evidence too.
 
@@ -81,7 +81,7 @@ On the same small boxes that run the Aviary and the Conservatory, one per househ
 
 | Layer | Built with |
 | --- | --- |
-| Identification | A hosted vision language model (Haiku-class Claude or Gemini) returning structured candidates and tests, with the owner confirming every result; Ollama on bluejay as the fallback |
+| Identification | A hosted vision language model (Haiku-class Claude or Gemini Flash) through the Vercel AI Gateway, returning structured candidates and tests, with the owner confirming every result; Ollama on bluejay as the fallback |
 | Enrichment | Mindat API via `openmindat`, cached per mineral; Wikipedia; the same model for handling notes, once per mineral |
 | Queue and storage | Python worker, SQLite |
 | Web app | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, pnpm |
@@ -102,7 +102,7 @@ On the same small boxes that run the Aviary and the Conservatory, one per househ
 - How the worker and the hub are named. The Aviary has Earl and Willard, and the Conservatory has Fern. The Quarry's worker is provisionally **Jasper**, a stone and an old-fashioned name, as Fern is a plant and one. The hub is provisionally **the Gem Show**.
 - Copy or share. The Conservatory copies the Aviary's patterns rather than sharing code "until a second caller justifies a shared package". The Quarry is that second caller for the uploader, the queue, and the confirm strip. The lean is to copy for Phase 1, while the Conservatory's versions are days old and still moving, and extract a shared package once both apps have shipped and the seams are visible.
 - Whether the find site can be read from a photo's location data before the browser's resize strips it, or is always typed.
-- Which hosted model, and whether stations share one API key or carry their own.
+- Which hosted model, and whether stations share one gateway key or each carries its own (separate keys would show each household's spend apart).
 
 ## Credits
 

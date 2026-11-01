@@ -10,14 +10,13 @@ python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 ```
 
-Two API keys, set in the shell you run from. Neither is ever passed on the command line, and nothing here writes them to disk. A model whose key is missing is skipped.
+Every model goes through the Vercel AI Gateway, so there is one key, `AI_GATEWAY_API_KEY`, the same one the Conservatory's Fern uses. Set it once at User scope (then open a new terminal). It is never passed on the command line, and nothing here writes it to disk.
 
 ```powershell
-$env:ANTHROPIC_API_KEY = "paste it here"   # console.anthropic.com
-$env:GEMINI_API_KEY = "paste it here"      # aistudio.google.com, free tier
+[Environment]::SetEnvironmentVariable('AI_GATEWAY_API_KEY', 'paste it here', 'User')   # vercel.com/ai-gateway
 ```
 
-Gemini's free tier lets Google use what it is sent to improve its products. Photos of rocks are fine.
+Claude calls bill to our own Anthropic key where one is attached to the gateway (BYOK), and everything else draws on gateway credits. Either way, the cost the spike reports is the list price the gateway quotes for the call.
 
 ## Photos
 
@@ -57,14 +56,14 @@ Magnet: no. Streak: white. About 3 cm.
 .venv\Scripts\python identify_spike.py photos
 ```
 
-Add `--group` to send photos that share a stem (`cube_top.jpg` and `cube_side.jpg`) as one specimen, up to five photos. Add `--models` to change which models run; the default is `claude-haiku-5-5,gemini-3.8-flash`, and `claude-sonnet-5-5` is worth one run as an upper bound on what a stronger model would get. Add `--effort low` or `--effort high` to see whether Claude's thinking depth changes the answers or just the cost.
+Add `--group` to send photos that share a stem (`cube_top.jpg` and `cube_side.jpg`) as one specimen, up to five photos. Add `--models` to change which models run, as gateway slugs (the list is at https://ai-gateway.vercel.sh/v1/models); the default is `anthropic/claude-haiku-5.5,google/gemini-3.8-flash`, and `anthropic/claude-sonnet-5.5` is worth one run as an upper bound on what a stronger model would get. Add `--effort low` or `--effort high` to see whether thinking depth changes the answers or just the cost. It applies to every model, and it moves Gemini a long way: on a blank test image, Gemini at medium thought for about 3,800 tokens and 30 seconds, and at low for about 200 tokens and 5 seconds.
 
-Every successful response is cached in `out/responses/` (ignored by git), so re-running costs nothing. Delete a cached file to re-query that one. Errors are not cached, so a re-run retries them. The run writes `out/results.md` and `out/results.csv` and prints a summary per model and pass.
+Every successful response is cached in `out/responses/` (ignored by git), per model, effort, specimen and pass, so re-running costs nothing. Delete a cached file to re-query that one. Errors are not cached, so a re-run retries them. The run writes `out/results.md` and `out/results.csv` and prints a summary per model and pass.
 
 ## Reading the numbers
 
 - **Top-3** is the number that matters for the product. The confirm screen shows three pills, and the tests are there to pick between them.
 - **Top-1 by confidence band** is the calibration check. If the "high" band is not right much more often than the "low" band, the app shows words (likely, possible), not percentages.
 - **Photo vs notes** is the case for the notes form. If notes barely move the numbers, the form can stay short.
-- **Cost per 1000** is the number to compare against the hope. A family collection's backlog is a few hundred specimens, so the cost of cataloguing all of it is about that figure.
+- **Cost per 1000** comes from the cost the gateway reports for each call, thinking included, and is the number to compare against the hope. A family collection's backlog is a few hundred specimens, so the cost of cataloguing all of it is about that figure.
 - **Label read** counts the identifications where a visible label may have done the work.

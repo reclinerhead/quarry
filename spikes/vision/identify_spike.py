@@ -1,12 +1,15 @@
 """Phase 0 spike: how well do cheap hosted vision models identify our own specimens?
 
+Every model is called through the Vercel AI Gateway, so one key reaches all of
+them: AI_GATEWAY_API_KEY in the environment, never on the command line. Model
+IDs are gateway slugs, listed at https://ai-gateway.vercel.sh/v1/models.
+
 Usage
 -----
-    $env:ANTHROPIC_API_KEY = "..."         # never on the command line
-    $env:GEMINI_API_KEY = "..."
     python identify_spike.py photos                      # default models
     python identify_spike.py photos --group              # photos sharing a stem are one specimen
-    python identify_spike.py photos --models claude-haiku-5-5,claude-sonnet-5-5
+    python identify_spike.py photos --models anthropic/claude-haiku-5.5,anthropic/claude-sonnet-5.5
+    python identify_spike.py photos --effort low         # thinking depth, for every model
 
 Photo layout
 ------------
@@ -68,21 +71,10 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".heic", ".webp"}
 LONG_SIDE = 1280  # what the app's uploader will send
 TOP_N = 3
 MAX_PHOTOS = 5
-DEFAULT_MODELS = "claude-haiku-5-5,gemini-3.8-flash"
-
-# Paid rates in USD per 1M tokens (input, output), checked 2026-10-31. Output
-# includes thinking tokens on both providers. Gemini's free tier costs nothing,
-# but the paid rate is what it would cost past the free limits, so that is what
-# the spike reports. gemini-3.8-flash doubles on 2027-01-01.
-PRICES = {
-    "claude-haiku-5-5": (0.10, 0.50),
-    "claude-sonnet-5-5": (2.00, 10.00),
-    "claude-opus-5-5": (4.00, 20.00),
-    "gemini-3.8-flash": (0.75, 3.75),
-    "gemini-3.6-flash": (0.75, 3.75),
-    "gemini-3.5-flash-lite": (0.30, 2.50),
-    "gemini-2.5-flash-lite": (0.10, 0.40),
-}
+DEFAULT_MODELS = "anthropic/claude-haiku-5.5,google/gemini-3.8-flash"
+# The gateway's Anthropic Messages endpoint serves every model, Gemini included,
+# with the same images, system prompt, effort and JSON schema.
+GATEWAY_URL = "https://ai-gateway.vercel.sh"
 
 SYSTEM = """\
 You identify rocks, minerals, and crystals from photos for a family's home collection.
@@ -242,11 +234,14 @@ def band(confidence: float) -> str:
     return "low (<0.4)"
 
 
-def cost_usd(model: str, input_tokens: int, output_tokens: int) -> float | None:
-    if model not in PRICES:
+def market_cost(provider_metadata: dict | None) -> float | None:
+    """The call's cost at list price, as the gateway reports it (thinking included).
+    marketCost, not cost: a call billed to our own provider key (BYOK) costs the
+    gateway nothing, so its cost is 0, but marketCost is still what it is worth."""
+    try:
+        return float(((provider_metadata or {}).get("gateway") or {})["marketCost"])
+    except (KeyError, TypeError, ValueError):
         return None
-    pin, pout = PRICES[model]
-    return (input_tokens * pin + output_tokens * pout) / 1_000_000
 
 
 def pct(hits: int, total: int) -> str:
@@ -287,7 +282,7 @@ def summarize(rows: list[dict]) -> list[dict]:
 
 
 # ----------------------------------------------------------------------------
-# I/O: images, the two providers, the cache, the reports
+# I/O: images, the gateway, the cache, the reports
 # ----------------------------------------------------------------------------
 
 
@@ -314,12 +309,14 @@ class Reply:
     input_tokens: int
     output_tokens: int
     seconds: float
+    cost_usd: float | None = None
 
 
-def ask_claude(model: str, images: list[bytes], notes: str | None, effort: str) -> Reply:
+def ask(model: str, images: list[bytes], notes: str | None, effort: str) -> Reply:
+    """One identification, any model, through the gateway's Anthropic Messages endpoint."""
     import anthropic
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(api_key=os.environ["AI_GATEWAY_API_KEY"], base_url=GATEWAY_URL)
     content = [
         {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.standard_b64encode(b).decode()}}
         for b in images
@@ -341,46 +338,16 @@ def ask_claude(model: str, images: list[bytes], notes: str | None, effort: str) 
     except anthropic.APIConnectionError as e:
         return Reply(f"connection: {e}", {}, 0, 0, time.monotonic() - t0)
     secs = time.monotonic() - t0
-    usage_in, usage_out = resp.usage.input_tokens, resp.usage.output_tokens
+    usage_in, usage_out = resp.usage.input_tokens or 0, resp.usage.output_tokens or 0
+    cost = market_cost(resp.model_dump().get("provider_metadata"))
     if resp.stop_reason != "end_turn":
-        return Reply(f"stop_reason {resp.stop_reason}", {}, usage_in, usage_out, secs)
+        return Reply(f"stop_reason {resp.stop_reason}", {}, usage_in, usage_out, secs, cost)
     text = next((b.text for b in resp.content if b.type == "text"), "")
-    return Reply("ok", json.loads(text), usage_in, usage_out, secs)
-
-
-def ask_gemini(model: str, images: list[bytes], notes: str | None) -> Reply:
-    from google import genai
-    from google.genai import errors, types
-
-    client = genai.Client()
-    contents = [types.Part.from_bytes(data=b, mime_type="image/jpeg") for b in images]
-    contents.append(user_text(notes))
-    t0 = time.monotonic()
     try:
-        resp = client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM,
-                response_mime_type="application/json",
-                response_json_schema=SCHEMA,
-            ),
-        )
-    except errors.APIError as e:
-        return Reply(f"http {e.code}: {e.message}", {}, 0, 0, time.monotonic() - t0)
-    secs = time.monotonic() - t0
-    u = resp.usage_metadata
-    usage_in = (u.prompt_token_count or 0) if u else 0
-    usage_out = ((u.candidates_token_count or 0) + (u.thoughts_token_count or 0)) if u else 0
-    if not resp.text:
-        return Reply("empty response", {}, usage_in, usage_out, secs)
-    return Reply("ok", json.loads(resp.text), usage_in, usage_out, secs)
-
-
-def has_credentials(model: str) -> bool:
-    if model.startswith("gemini"):
-        return bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
-    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+        result = json.loads(text)
+    except json.JSONDecodeError:
+        return Reply(f"not JSON: {text[:80]!r}", {}, usage_in, usage_out, secs, cost)
+    return Reply("ok", result, usage_in, usage_out, secs, cost)
 
 
 UNLABELED = Expected(label="", names=set())
@@ -419,8 +386,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("photos", type=Path, help="folder of <expected name>/<photo> files, or a flat folder")
     ap.add_argument("--group", action="store_true", help="send photos sharing a stem as one specimen")
-    ap.add_argument("--models", default=DEFAULT_MODELS, help=f"comma-separated model IDs (default {DEFAULT_MODELS})")
-    ap.add_argument("--effort", default="medium", help="Claude effort: low, medium, high (default medium)")
+    ap.add_argument("--models", default=DEFAULT_MODELS, help=f"comma-separated gateway slugs (default {DEFAULT_MODELS})")
+    ap.add_argument("--effort", default="medium", help="thinking depth for every model: low, medium, high (default medium)")
     ap.add_argument("--out", type=Path, default=Path(__file__).parent / "out")
     ap.add_argument("--sleep", type=float, default=1.0, help="seconds between live calls")
     args = ap.parse_args()
@@ -429,38 +396,33 @@ def main() -> int:
         print(f"not a folder: {args.photos}", file=sys.stderr)
         return 2
 
-    models = [m.strip() for m in args.models.split(",") if m.strip()]
-    ready = [m for m in models if has_credentials(m)]
-    for m in sorted(set(models) - set(ready)):
-        key = "GEMINI_API_KEY" if m.startswith("gemini") else "ANTHROPIC_API_KEY"
-        print(f"skipping {m}: {key} is not set", file=sys.stderr)
-    if not ready:
+    if not os.environ.get("AI_GATEWAY_API_KEY", "").strip():
+        print("AI_GATEWAY_API_KEY is not set", file=sys.stderr)
         return 2
+    models = [m.strip() for m in args.models.split(",") if m.strip()]
 
     cache_dir = args.out / "responses"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     specimens = collect_specimens(args.photos, args.group)
     with_notes = sum(1 for s in specimens if s.notes)
-    print(f"{len(specimens)} specimens from {args.photos} ({with_notes} with notes), models: {', '.join(ready)}\n")
+    print(f"{len(specimens)} specimens from {args.photos} ({with_notes} with notes), effort {args.effort}, models: {', '.join(models)}\n")
 
     rows: list[dict] = []
     for sp in specimens:
         images = None
         passes = ["photo"] + (["notes"] if sp.notes else [])
-        for model in ready:
+        for model in models:
             for pass_ in passes:
                 notes = sp.notes if pass_ == "notes" else None
-                cache_file = cache_dir / safe(f"{model}__{sp.expected.label or 'unlabeled'}__{sp.key}__{pass_}.json")
+                label = sp.expected.label or "unlabeled"
+                cache_file = cache_dir / safe(f"{model}__{args.effort}__{label}__{sp.key}__{pass_}.json")
                 if cache_file.exists():
                     reply = Reply(**json.loads(cache_file.read_text(encoding="utf-8")))
                     source = "cache"
                 else:
                     images = images or [prepare_image(p) for p in sp.photos]
-                    if model.startswith("gemini"):
-                        reply = ask_gemini(model, images, notes)
-                    else:
-                        reply = ask_claude(model, images, notes, args.effort)
+                    reply = ask(model, images, notes, args.effort)
                     if reply.status == "ok":  # errors are not cached, so a re-run retries them
                         cache_file.write_text(json.dumps(reply.__dict__, indent=1), encoding="utf-8")
                     source = "live"
@@ -468,7 +430,7 @@ def main() -> int:
 
                 cands = candidates_from(reply.result)
                 sc = score(sp.expected, cands)
-                cost = cost_usd(model, reply.input_tokens, reply.output_tokens)
+                cost = reply.cost_usd
                 tests = reply.result.get("tests", [])
                 rows.append(
                     {
@@ -479,8 +441,9 @@ def main() -> int:
                         "status": reply.status,
                         "top1": sc.top1,
                         "top3": sc.top3,
-                        "top1_band": band(cands[0].confidence) if cands else "",
-                        "candidates": " | ".join(c.display() for c in cands),
+                        "top1_band": band(cands[0].confidence) if cands else "none named",
+                        # an empty list is a real answer: the model declined to name anything
+                        "candidates": " | ".join(c.display() for c in cands) or ("(none named)" if reply.status == "ok" else ""),
                         "features": " | ".join("; ".join(c.features) for c in cands),
                         "tests": " | ".join(f"{t.get('test', '')}: {t.get('expected', '')}" for t in tests),
                         "label_text": reply.result.get("label_text", ""),
@@ -493,8 +456,8 @@ def main() -> int:
                 r = rows[-1]
                 name = sp.expected.label or sp.photos[0].name
                 mark = "" if not sp.expected.label else ("1 " if sc.top1 else ("3 " if sc.top3 else "- "))
-                label = "  [label]" if r["label_text"] else ""
-                print(f"[{source:5}] {mark}{model:18} {pass_:5} {name:28} -> {r['candidates'] or reply.status}{label}")
+                flag = "  [label]" if r["label_text"] else ""
+                print(f"[{source:5}] {mark}{model:26} {pass_:5} {name:28} -> {r['candidates'] or reply.status}{flag}")
 
     if not rows:
         return 1
@@ -508,7 +471,7 @@ def main() -> int:
         w.writerows(rows)
 
     cols = list(summary[0].keys())
-    lines = ["# Vision model spike results", ""]
+    lines = ["# Vision model spike results", "", f"Effort: {args.effort}", ""]
     lines += ["| " + " | ".join(cols) + " |", "|" + " --- |" * len(cols)]
     lines += ["| " + " | ".join(str(s[c]) for c in cols) + " |" for s in summary]
     lines += ["", "| model | pass | expected | top-3 | candidates | tests | label |", "| --- | --- | --- | --- | --- | --- | --- |"]
