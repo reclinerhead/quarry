@@ -58,7 +58,7 @@ Magnet: no. Streak: white. About 3 cm.
 
 Add `--group` to send photos that share a stem (`cube_top.jpg` and `cube_side.jpg`) as one specimen, up to five photos. Add `--models` to change which models run, as gateway slugs (the list is at https://ai-gateway.vercel.sh/v1/models); the default is `anthropic/claude-haiku-5.5,google/gemini-3.8-flash`, and `anthropic/claude-sonnet-5.5` is worth one run as an upper bound on what a stronger model would get. Add `--effort low` or `--effort high` to see whether thinking depth changes the answers or just the cost. It applies to every model, and it moves Gemini a long way: on a blank test image, Gemini at medium thought for about 3,800 tokens and 30 seconds, and at low for about 200 tokens and 5 seconds.
 
-Every successful response is cached in `out/responses/` (ignored by git), per model, effort, specimen and pass, so re-running costs nothing. Delete a cached file to re-query that one. Errors are not cached, so a re-run retries them. The run writes `out/results.md` and `out/results.csv` and prints a summary per model and pass.
+Every successful response is cached in `out/responses/` (ignored by git), so re-running costs nothing. The cache keys on the model, the effort, and the photos and notes themselves, so moving a photo into a named folder keeps its answers, and replacing a photo (to crop out a label, say) asks again. Delete a cached file to re-query that one. Errors are not cached, so a re-run retries them. The run writes `out/results.md` and `out/results.csv` and prints a summary per model and pass.
 
 ## Reading the numbers
 

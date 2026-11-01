@@ -49,6 +49,7 @@ from __future__ import annotations
 import argparse
 import base64
 import csv
+import hashlib
 import io
 import json
 import os
@@ -378,6 +379,17 @@ def collect_specimens(root: Path, grouped: bool) -> list[Specimen]:
     return specimens
 
 
+def photo_digest(photos: list[Path], notes: str | None) -> str:
+    """What the model is shown, as a short hash. The cache keys on this, so moving a
+    photo into a named folder keeps its answers, and replacing one (to crop out a
+    label) asks again."""
+    h = hashlib.sha256()
+    for p in photos:
+        h.update(p.read_bytes())
+    h.update((notes or "").encode("utf-8"))
+    return h.hexdigest()[:16]
+
+
 def safe(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s)
 
@@ -415,8 +427,8 @@ def main() -> int:
         for model in models:
             for pass_ in passes:
                 notes = sp.notes if pass_ == "notes" else None
-                label = sp.expected.label or "unlabeled"
-                cache_file = cache_dir / safe(f"{model}__{args.effort}__{label}__{sp.key}__{pass_}.json")
+                digest = photo_digest(sp.photos, notes)
+                cache_file = cache_dir / safe(f"{model}__{args.effort}__{sp.key}__{pass_}__{digest}.json")
                 if cache_file.exists():
                     reply = Reply(**json.loads(cache_file.read_text(encoding="utf-8")))
                     source = "cache"
