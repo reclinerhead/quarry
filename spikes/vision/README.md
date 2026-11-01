@@ -50,6 +50,12 @@ Magnet: no. Streak: white. About 3 cm.
 
 **Labels.** If a photo shows a dealer's label or a show tag, the model can read it, and that is not a fair test of what it sees in the stone. The script asks the model to copy any label text it finds and marks those rows `[label]`. Crop labels out for the scored run, or read those rows with that in mind.
 
+**When nobody knows the names.** The family's own stones can only be identified, not scored, when no one in the family can name them. For a scored run, `fetch_commons.py` builds a set of expert-identified specimens from Wikimedia Commons: 28 minerals weighted toward the lookalikes, most from Rob Lavinsky's iRocks archive (CC BY-SA), and 10 rocks photographed by James St. John (CC BY). It saves them to `photos-commons/` (ignored by git) with each photo's page, author and license in `sources.csv`. Look over what it picked before scoring, since a search can return a shop photo or an outcrop. These are professional photos the models may have seen in training, so their scores are an upper bound on what phone photos will get; they are best for comparing models against each other.
+
+```powershell
+.venv\Scripts\python fetch_commons.py --download
+```
+
 ## Run
 
 ```powershell
@@ -57,6 +63,16 @@ Magnet: no. Streak: white. About 3 cm.
 ```
 
 Add `--group` to send photos that share a stem (`cube_top.jpg` and `cube_side.jpg`) as one specimen, up to five photos. Add `--models` to change which models run, as gateway slugs (the list is at https://ai-gateway.vercel.sh/v1/models); the default is `anthropic/claude-haiku-5.5,google/gemini-3.8-flash`, and `anthropic/claude-sonnet-5.5` is worth one run as an upper bound on what a stronger model would get. Add `--effort low` or `--effort high` to see whether thinking depth changes the answers or just the cost. It applies to every model, and it moves Gemini a long way: on a blank test image, Gemini at medium thought for about 3,800 tokens and 30 seconds, and at low for about 200 tokens and 5 seconds.
+
+To compare models, run each into its own folder and compare the folders. The report gives each run's accuracy on minerals and rocks, its calibration, and for every pair of runs how often they are right when they agree:
+
+```powershell
+.venv\Scripts\python identify_spike.py photos-commons --models anthropic/claude-haiku-5.5 --out out-commons\haiku
+.venv\Scripts\python identify_spike.py photos-commons --models google/gemini-3.8-flash --out out-commons\gemini-flash
+.venv\Scripts\python compare_runs.py out-commons > out-commons\compare.md
+```
+
+A name counts when the expected name appears in the answer as whole words, so "Andesite porphyry" scores for `Porphyry` and "Smoky quartz" for `Quartz`, but "Chalcopyrite" does not score for `Pyrite`.
 
 Every successful response is cached in `out/responses/` (ignored by git), so re-running costs nothing. The cache keys on the model, the effort, and the photos and notes themselves, so moving a photo into a named folder keeps its answers, and replacing a photo (to crop out a label, say) asks again. Delete a cached file to re-query that one. Errors are not cached, so a re-run retries them. The run writes `out/results.md` and `out/results.csv` and prints a summary per model and pass.
 
