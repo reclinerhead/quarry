@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { contentTypeFor, extForUpload, mediaRelPath, relPathFor } from "./photos";
+import { contentTypeFor, extForUpload, mediaRelPath, relPathFor, takenLabel, thumbPathFor } from "./photos";
+
+describe("takenLabel", () => {
+  it("reads the date from the text, whatever the time zone", () => {
+    expect(takenLabel("2026-10-31T13:53:31")).toBe("Taken Oct 31, 2026");
+    expect(takenLabel("2026-01-05T00:00:00Z")).toBe("Taken Jan 5, 2026");
+  });
+
+  it("says it is your photo when there was no date", () => {
+    expect(takenLabel(null)).toBe("Your photo");
+    expect(takenLabel("garbage")).toBe("Your photo");
+    expect(takenLabel("2026-13-01")).toBe("Your photo");
+  });
+});
+
+describe("thumbPathFor", () => {
+  it("names the thumbnail the way Jasper writes it (worker.thumb_path)", () => {
+    expect(thumbPathFor("photos/2026/10/abc.heic")).toBe("photos/2026/10/abc.thumb.jpg");
+    expect(thumbPathFor("photos/2026/10/abc.jpg")).toBe("photos/2026/10/abc.thumb.jpg");
+    expect(mediaRelPath(thumbPathFor("photos/2026/10/abc.jpg").split("/"))).toBe("photos/2026/10/abc.thumb.jpg");
+  });
+});
 
 describe("relPathFor", () => {
   it("files by upload year and month in UTC", () => {

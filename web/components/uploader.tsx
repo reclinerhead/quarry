@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import type { JobView } from "@/app/api/jobs/[id]/route";
 import { CameraIcon, CoinIcon, CrystalIcon, PhotosIcon, SunIcon, TagIcon } from "@/components/icons";
 import { exifTakenAt } from "@/lib/exif";
+import { isSettled } from "@/lib/job-state";
+import type { JobView } from "@/lib/jobs";
+import { verdictLine } from "@/lib/pills";
 import { NoRetry, withRetry } from "@/lib/retry";
 import { shrinkToJpeg } from "@/lib/shrink";
 
@@ -23,11 +25,6 @@ type Item = {
 const ATTEMPTS = 5; // waits of 1, 2, 4 and 8 s between them
 const SEND_TIMEOUT_MS = 60_000; // a request the Wi-Fi dropped mid-way must not hang the batch
 const POLL_MS = 1500;
-
-/** Jasper is done with it: named something, named nothing, or failed for good (no next attempt). */
-function settled(job: JobView): boolean {
-  return job.status === "identified" || job.status === "rejected" || (job.status === "failed" && job.nextAttemptAt === null);
-}
 
 /** Why a photo did not go, in words; status is null when the Quarry was never reached. */
 function sendError(status: number | null): string {
@@ -131,7 +128,7 @@ export function Uploader() {
               cur.map((it) =>
                 it.jobId !== id || (it.job?.status === job.status && it.job?.nextAttemptAt === job.nextAttemptAt)
                   ? it
-                  : { ...it, job, state: settled(job) ? "settled" : "waiting" },
+                  : { ...it, job, state: isSettled(job) ? "settled" : "waiting" },
               ),
             );
           } catch {
@@ -315,6 +312,7 @@ function Row({ item, onRemove, onNoPreview }: { item: Item; onRemove: () => void
       } else {
         status = "Ready to name";
         if (job?.status === "rejected") detail = "Jasper had no guess, so the name is up to you.";
+        else if (job) detail = `${verdictLine(job.plan)}.`;
       }
       break;
   }

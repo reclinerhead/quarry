@@ -179,9 +179,13 @@ with Jasper's guess for the first one and the test that would settle it, and
 one primary button ("Name them").
 
 **Candidate pills** (naming, and "How it was named"): confirmed name = solid
-azurite with a check. Other candidates = outlined. Each carries a plain word,
-never a percentage: "likely", "possible" (README rule until Phase 0 proves the
-model's confidence means something).
+azurite with a check. Other candidates = outlined, 64 px tall, the name in
+Zilla 24 with the variety under it. Each carries a plain word, never a
+percentage. "probably" goes on the lead pill when Jasper's two opinions agree,
+with an `azurite-soft` tag and a 2 px azurite border. "could be" goes on each
+pill when they differ, and "could also be" on the rest, both as sand tags.
+Phase 0 (#1) settled this: two models agreeing were right about 9 times in 10,
+and a model's own confidence meant much less.
 
 **Element tile**: atomic number, symbol (Zilla 36/700), name. Already lit =
 `azurite-soft`. New with this specimen = solid azurite, "· new".

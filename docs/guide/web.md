@@ -20,19 +20,36 @@ pnpm dev
 
 | Route | What | Status |
 | --- | --- | --- |
-| `/` | The home page: the greeting, and the collection's empty state; see below | #5 |
+| `/` | The home page: the greeting, the pending strip, and the collection's empty state; see below | #5, #8 |
 | `/add` | Upload from the camera or the camera roll; see below | #6 |
 | `POST /api/photos` | One photo in, one queued job out | #6 |
-| `GET /api/jobs/[id]` | A job's state, its note and its photos; the add page polls it | #6 |
+| `GET /api/jobs/[id]` | A job as `readJob` sees it: state, note, test answers, label text, photos, the plan (verdict and pills), the tests the models suggested, and any naming. The add page and the confirm screen poll it | #6, #8 |
 | `GET /media/photos/[yyyy]/[mm]/[file]` | A photo, or the thumbnail Jasper writes beside it, from the data directory | #6 |
+| `/name` | Sends the person to the oldest stone waiting for a name, or says there is none | #8 |
+| `/name/[id]` | The confirm screen, one stone per screen; see below | #8 |
+| `POST /api/jobs/[id]/confirm` | Put a name on the stone: `{ pick: { model, rank } }`, `{ typedName }` or `{ sameAsSpecimenId }`, plus an optional `variety` | #8 |
+| `PATCH /api/jobs/[id]/confirm` | "How do you know?": `{ how }` | #8 |
+| `DELETE /api/jobs/[id]/confirm` | "Change": reverse a naming | #8 |
+| `POST /api/jobs/[id]/dismiss` | "Not a rock": delete the job, its photos, their files and thumbnails | #8 |
+| `POST /api/jobs/[id]/photos` | Another photo of the same stone; sends the job back to Jasper | #8 |
+| `POST /api/jobs/[id]/tests` | "Ask Jasper again with these answers": `{ tests, notes }`, then back to the queue | #8 |
+| `GET /api/minerals?q=` | The minerals and rocks already in the collection, for the name field | #8 |
 
 ## The home page
 
 `app/page.tsx` is the dashboard from DESIGN.md §5, as far as there is data for it:
 
 - **The greeting** (`lib/greeting.ts`, tested): the date ("Sunday, November 1", in the station's time zone), then "Good evening." with "Your collection starts here." while there are no stones. The line that says what changed arrives with the collection (#9).
-- **Your collection**: the count line ("No stones yet", "1 stone"), and while it is empty, one card in the specimen card's shape, "No stones yet" with "Add the first one", beside faint placeholder cards that show the grid it will fill. Each placeholder appears only where the grid has a column for it (from `sm`, `lg` and `xl`), so a phone shows the one card.
-- The pending strip (#8) and the cards, filters and side column (#9) arrive with the issues that have data for them; their space is not faked.
+- **The pending strip** (DESIGN.md §4), drawn on the server only when something waits, so it never pops in:
+  - It's an amber card with up to three overlapping 72 px thumbnails and "3 rocks waiting for a name".
+  - Under that is the first stone's line (`stripLine` in `lib/pills.ts`): "Jasper's guess for the first one: could be Chalcopyrite or Marcasite." When the models are torn, it adds the first suggested test: "A steel nail would tell them apart."
+  - "Name them" goes to `/name`.
+  - `waitingStrip` in `lib/jobs.ts` reads it.
+- **Your collection**:
+  - The count line: "No stones yet", "1 stone".
+  - While the collection is empty, one card in the specimen card's shape, "No stones yet" with "Add the first one", beside faint placeholder cards that show the grid it will fill.
+  - Each placeholder appears only where the grid has a column for it (from `sm`, `lg` and `xl`), so a phone shows the one card.
+- The cards, filters and side column (#9) arrive with the issue that has data for them; their space is not faked.
 
 ## Adding a rock
 
@@ -43,12 +60,12 @@ Both of the README's ways in, the camera-roll batch after a trip and the photo t
 - **Shrink before sending** (`lib/shrink.ts`): `createImageBitmap` with orientation from EXIF, drawn to a canvas at most 1280 px on the long side, JPEG at 0.9. A 3 MB phone photo becomes about 270 KB, which is the difference between working and not on a weak Wi-Fi. If the browser cannot decode the file (HEIC on a desktop browser), the original is sent, the row shows "No preview", and Jasper re-encodes it.
 - **The date survives the shrink** (`lib/exif.ts`): the re-encode drops EXIF, so `DateTimeOriginal` (else IFD0's `DateTime`) is read from the original bytes first and sent as `takenAt`. Two walks, no library: a JPEG's APP1 segment, and a HEIC's `Exif` item, found through the `meta` box's `iinf` (which item is Exif) and `iloc` (where its bytes are). Safari hands an iPhone's HEIC over as is when `accept` names HEIC, so without the second walk no iPhone photo would keep its date. A file it cannot read gives null, never a throw.
 - **One request per photo, with retry** (`lib/retry.ts`): five tries with waits doubling from 1 s (15 s in all), each try cut off after 60 s so a request the Wi-Fi dropped mid-way cannot hang the batch. A 4xx other than 408 or 429 is `NoRetry`. Photos go one at a time, and each row shows its own state and try count. A photo that runs out of tries says why in words and stays in the list for "Send it again"; the rest of the batch carries on. A photo removed while the batch sends is skipped when its turn comes. Item keys are a counter, not `crypto.randomUUID`, which a phone on the house's plain-http LAN does not have.
-- **Then it polls.** Each sent photo's job is fetched from `/api/jobs/[id]` every 1.5 s (a round starts after the last one answered) until Jasper is done with it: "Waiting for Jasper", "Jasper is looking at it…", then "Ready to name" with a link to `/name/[id]` (#8). A row waiting for a name turns amber, DESIGN.md's "needs you". A rejected job is ready to name too ("Jasper had no guess"). A `failed` job with a `next_attempt_at` is one Jasper will retry, so its row keeps waiting; one without is failed for good, and its row says Jasper couldn't look at it and links to the confirm screen to name it by hand.
+- **Then it polls.** Each sent photo's job is fetched from `/api/jobs/[id]` every 1.5 s (a round starts after the last one answered) until Jasper is done with it: "Waiting for Jasper", "Jasper is looking at it…", then "Ready to name" with Jasper's verdict ("Probably Galena.") and a link to `/name/[id]` (#8). A row waiting for a name turns amber, DESIGN.md's "needs you". A rejected job is ready to name too ("Jasper had no guess"). A `failed` job with a `next_attempt_at` is one Jasper will retry, so its row keeps waiting; one without is failed for good, and its row says Jasper couldn't look at it and links to the confirm screen to name it by hand.
 - **Nothing is kept in the browser.** The camera roll is the offline mode: a photo not yet sent when the page closes is still on the phone.
 
 `POST /api/photos` opens the database first (503 while Jasper has not created it, before anything is written). It then writes the file and inserts the `jobs` row (`queued`, carrying the note, trimmed to 1000 characters, NULL when empty) and the `photos` row (`taken_at` when the EXIF had a date) in one `BEGIN IMMEDIATE`; a file whose rows fail to go in is deleted. Limits: 25 MB, and image types or `application/octet-stream` only. There is no idempotency key: a request whose response is lost after the commit is retried into a second job for the same photo, which is rare and visible, and cheaper than a column.
 
-`GET /api/jobs/[id]` answers `{ id, status, error, nextAttemptAt, notes, photos: [{ id, url, takenAt }] }`, uncached; the confirm screen (#8) adds the candidates. `GET /media/...` serves files with a year-long immutable cache behind `mediaRelPath`, a guard that accepts exactly `photos/<four-digit year>/<01 to 12>/<file>` with a plain file name and a jpg, jpeg, png or heic extension, and nothing a filesystem could interpret.
+`GET /api/jobs/[id]` answers a `JobView` (`lib/jobs.ts`), uncached; see Naming a stone. `GET /media/...` serves files with a year-long immutable cache behind `mediaRelPath`, a guard that accepts exactly `photos/<four-digit year>/<01 to 12>/<file>` with a plain file name and a jpg, jpeg, png or heic extension, and nothing a filesystem could interpret.
 
 ### The data directory
 
@@ -62,13 +79,76 @@ QUARRY_DATA/
 
 The folder is the upload's month in UTC, not the EXIF date, so a folder is never surprising. Names are UUIDs written once. The extension comes from the MIME type, else `.heic` for a HEIC-named file a browser sent untyped, else `.jpg`; Jasper opens files by their content, not their extension.
 
-Tests: `lib/photos.test.ts` (paths, the extension rule, the media guard), `lib/exif.test.ts` (the APP1 walk against hand-built JPEGs in both byte orders with the IFD0 fallback, and the HEIC walk against hand-built `meta` boxes in two `iloc` versions), `lib/retry.test.ts`.
+Tests:
+- `lib/photos.test.ts`: paths, the thumbnail's name, the extension rule, the media guard, the caption's date.
+- `lib/exif.test.ts`: the APP1 walk against hand-built JPEGs in both byte orders with the IFD0 fallback, and the HEIC walk against hand-built `meta` boxes in two `iloc` versions.
+- `lib/retry.test.ts`.
+
+## Naming a stone
+
+`components/namer.tsx` is the confirm screen, one stone per screen, on the Conservatory's namer. It serves both flows: a person walking the strip, and one at the kitchen table whose job has not settled yet. The screen polls `/api/jobs/[id]` every 1.5 s with the pill area reserved until Jasper answers. `isSettled` (`lib/job-state.ts`, pure, shared with the add page) says when Jasper is done: identified, rejected, or failed with no next attempt.
+
+**What it says** comes from Phase 0 (#1): two opinions, in words.
+- **The plan.** `readJob` builds it on the server with `planPills` (`lib/pills.ts`, pure, tested on the shapes of Mom's stones) from the candidates rows. It is recomputed on every read, so the rule can change without rewriting rows.
+- **The identifier.** Its first choice leads when the models disagree. It is `QUARRY_IDENTIFIER` with Jasper's default, read at runtime.
+- **"Probably X"**: both models' first choices name the same stone. One lead pill, with a 2 px azurite border and an `azurite-soft` "probably" tag, then up to two "could also be" pills from the rest of both lists.
+- **"Could be X or Y"**: they differ. Each model's first choice becomes a pill, the identifier's first, then one more.
+- **One opinion** (the other model failed): its candidates as "could be", never "probably".
+- **No guess**: a rejected job, or one that failed for good. The name field leads.
+- **Matching.** "The same stone" is `sameStone` (`lib/names.ts`, tested on the spike's cases), the spike's whole-word matching made symmetric. Names match as whole words either way round (Specular hematite is Hematite; Chalcopyrite is not Pyrite). A variety matches only the other's whole name (Quartz, variety Amethyst is Amethyst). Varieties are never matched word by word, because models put colour words there, and "Purple" would make a fluorite and an amethyst agree.
+- **Duplicates.** A candidate naming a stone already on a pill adds its model to that pill.
+- **No percentages, ever.** The screen's line says why, with the "two opinions" info mark. `verdictLine` puts the plan in one line for the strip and the add page's rows.
+
+**What's on it:**
+- **The photo**, contained in the dark photo well, 280 px tall on a phone so the verdict is on the first screen, 520 px from `sm`. It carries a caption with the EXIF date (`takenLabel`, read from the text so server and phone agree) and thumbnails to switch between photos. A HEIC original a desktop browser cannot draw falls back to Jasper's 320 px thumbnail, and to "No preview on this device" before there is one. The fallback is checked on mount as well as on `error`, because the server-rendered image fails before React is listening.
+- **Any label the models read**, as a paper tag in Courier: "Jasper read a label in the photo".
+- **The pills.** One tap names the stone.
+- **"Variety or shop name"** (optional). It becomes `specimens.variety`; left empty, a pill's own variety is used.
+- **The name field**, always on the screen, because "could be" never promises the answer is among the pills. Under it, chips for the minerals already in the collection (`rankMinerals` in `lib/minerals.ts`, tested): the household's own most-owned first, or matches of the typed text, names that start with it first.
+- **"Want to be sure? Try a test"** opens `components/tests-panel.tsx`. The household tests are in `lib/household-tests.ts`: their kinds, which are the schema's and Jasper's, and questions worded the way Jasper words the answers back.
+  - The tests the models suggested come first (`suggestedOrder`: the identifier's first, each kind once), each with the model's "how" and "what to look for". The rest wait behind "Other tests".
+  - Answers are chips: Yes and No, or a streak colour. "Not tried" is a dashed chip and is never stored as no.
+  - The stone's note is editable there too.
+  - "Ask Jasper again with these answers" saves both on the job and sends it back to the queue (`POST .../tests`; `cleanAnswers` keeps only `yes`, `no` and a streak colour, and leaves a test not tried out of the JSON).
+  - The old pills stay, dimmed, under "Jasper is asking again", until Jasper's new answer replaces them.
+- **"Same stone as the last one"** (`lastNamedStone`) merges this photo into the stone named most recently.
+- **"Not a rock"** is two taps, then deletes the job, its photos, and their files and thumbnails.
+- **"Add another photo of this stone"** stores a photo on the same job (at most five, Jasper's limit) and sends it back to the queue.
+- **"Skip for now"** goes to the next waiting job; **"Done for now"** goes home.
+
+**Naming saves at once.** `POST .../confirm` does it all in one `BEGIN IMMEDIATE`:
+- it finds or creates the mineral (`minerals.name` is `COLLATE NOCASE`, so "galena" finds "Galena");
+- it creates the specimen with the variety and the job's notes and test answers;
+- it links the photos;
+- it writes the confirmation.
+
+The confirmation records:
+- `chosen_name`;
+- `source`: `pill`, `typed` or `same_as_last`;
+- `how`: a pill is `suggestion`, a typed name `guess`, and another photo inherits the stone's first naming;
+- `verdict`: what the screen said, recomputed from the candidates on the server rather than taken from the request.
+
+A typed name that one of the models also gave takes that candidate's spelling and kind; any other is a mineral until Phase 2's Mindat lookup says otherwise.
+
+**The named state** is a specimen label (paper, double rule, the name over a 2 px ink rule).
+- **"How do you know?"** Five chips: I took Jasper's suggestion, From a label or tag, The tests settled it, Someone who knows told me, My best guess. A tap saves through `PATCH .../confirm`, with "Saved." in reserved space. Only a label, the tests and someone who knows count as known answers (README). "My best guess" is there so that a typed name is never counted as known by default.
+- **"Next stone"**: `nextWaitingJob` (`lib/jobs.ts`, tested): the next later job, wrapping to the first, or home when nothing else waits.
+- **"Change"**: `DELETE .../confirm` reverses a naming. The confirmation goes and the photos unlink. The specimen is deleted if nothing else is attached to it, and the mineral too if no specimen is left. The job is back in the strip with its pills, since naming never deletes candidates.
+
+**Waiting** is `waitingJobIds`: jobs Jasper is done with and nobody has named, oldest first. That includes a job that failed for good, so the person can still name it by hand.
+
+**The first info marks** are here (`components/term.tsx` over `lib/glossary.ts`): two opinions, variety, and the idea behind each test (hardness, streak, fizz, magnetic, glows under UV). A test checks that each entry runs two or three sentences and that every test kind has one. The mark is DESIGN.md's 28 px ring, with an invisible ±10 px hit area. Its note floats under the mark in sand rather than opening in place, so opening one moves nothing. That is the Conservatory's choice: the no-layout-shift rule outranks the canvas's inline block.
+
+Tests:
+- `lib/names.test.ts`, `lib/pills.test.ts`, `lib/household-tests.test.ts`, `lib/minerals.test.ts`;
+- `lib/jobs.test.ts`: `nextWaitingJob` and `isSettled`;
+- `lib/glossary.test.ts`.
 
 ## The visual language
 
-DESIGN.md is the reference and `design/tokens.css` the values, imported as the Tailwind theme. `app/globals.css` writes down DESIGN.md §4's component recipes as screens first need them: `btn` (48 px, `btn-lg` 52 px for the page's main action) with `btn-primary` (azurite) and `btn-soft` (sand), and a disabled state only for a button that is working ("Sending…"), since a button that can do nothing is not drawn; `card`, `nav-pill` (the current page in `sand-2` through `aria-current`), and `field` (a 52 px pill `<label>` around a bare `<input>`, so the focus ring goes on the pill). Base rules: Zilla Slab 600 for headings, azurite links, a 3 px azurite focus ring. The root font size stays 16 px so Tailwind's spacing scale is the standard one; the body is 18 px (`text-body`), the floor for anything read.
+DESIGN.md is the reference and `design/tokens.css` the values, imported as the Tailwind theme. `app/globals.css` writes down DESIGN.md §4's component recipes as screens first need them: `btn` (48 px, `btn-lg` 52 px for the page's main action) with `btn-primary` (azurite) and `btn-soft` (sand), and a disabled state only for a button that is working ("Sending…"), since a button that can do nothing is not drawn; `chip` (a 48 px white pill; `aria-pressed="true"` is azurite, always drawn with a check icon so selection never relies on colour; `chip-dashed` is "Not tried"), `card`, `nav-pill` (the current page in `sand-2` through `aria-current`), and `field` (a 52 px pill around a bare `<input>` that fills it, so the focus ring goes on the pill and the whole pill is the target). Base rules: Zilla Slab 600 for headings, azurite links, a 3 px azurite focus ring. The root font size stays 16 px so Tailwind's spacing scale is the standard one; the body is 18 px (`text-body`), the floor for anything read.
 
-The faces are self-hosted by `next/font` in `app/layout.tsx` (Zilla Slab 600 and 700; Atkinson Hyperlegible 400 and 700 with its italic; Courier Prime 400 and 700), whose variables feed the font tokens, so the stations make no font requests. Line icons live in `components/icons.tsx` (the gem mark, the crystal for tiles with no photo, the camera, the camera roll's photo, and the sun, coin and tag of the add page's photo tips).
+The faces are self-hosted by `next/font` in `app/layout.tsx` (Zilla Slab 600 and 700; Atkinson Hyperlegible 400 and 700 with its italic; Courier Prime 400 and 700), whose variables feed the font tokens, so the stations make no font requests. Line icons live in `components/icons.tsx` (the gem mark, the crystal for tiles with no photo, the camera, the check on a selected chip, the camera roll's photo, and the sun, coin and tag of the add page's photo tips).
 
 **The top bar** (`components/topbar.tsx`): the gem mark and wordmark, a nav pill for each page that exists (Collection today; Minerals, Periodic table, Labels and Gem Show join with their phases, rather than being drawn dead), the search (a plain form that sends `?q=` to `/`; the collection wires it up in #9), the primary "Add a rock", then the strata band. Below `lg` it is two rows, the wordmark with Add, then the nav with the search; on a phone Add reads "Add" with "a rock" kept for screen readers. From `lg` it is the canvas's one row.
 
@@ -77,4 +157,5 @@ The faces are self-hosted by `next/font` in `app/layout.tsx` (Zilla Slab 600 and
 - No layout shift: empty states reserve the populated space.
 - Every target is at least 48 px, 52 for the main action; 18 px is the floor for reading text, 15 px the smallest anywhere.
 - Every surface works on a 390 px phone with 16 px gutters and no sideways scroll, and uses a laptop's width.
-- The app teaches: every mineralogical term gets an info mark (the first arrive with #8).
+- The app teaches: every mineralogical term gets an info mark (`components/term.tsx`, with its entry in `lib/glossary.ts`).
+- Rows from `node:sqlite` have a null prototype, which React refuses to pass to a client component: map them to plain objects before they cross (`readJob`, `lastNamedStone`).
