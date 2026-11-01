@@ -25,6 +25,26 @@ export function relPathFor(id: string, ext: string, uploadedAt: Date): string {
   return `photos/${y}/${m}/${id}.${ext}`;
 }
 
+/** photos/2026/10/abc.heic -> photos/2026/10/abc.thumb.jpg: the 320 px thumbnail Jasper writes beside every photo it looks at. */
+export function thumbPathFor(rel: string): string {
+  const slash = rel.lastIndexOf("/");
+  const dot = rel.lastIndexOf(".");
+  return `${dot > slash ? rel.slice(0, dot) : rel}.thumb.jpg`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * The caption on a photo: "Taken Oct 31, 2026" from its EXIF date, read from
+ * the text itself so the server and the phone agree whatever their time
+ * zones; "Your photo" when the photo carried no date.
+ */
+export function takenLabel(takenAt: string | null): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(takenAt ?? "");
+  const month = m ? MONTHS[Number(m[2]) - 1] : undefined;
+  return m && month ? `Taken ${month} ${Number(m[3])}, ${m[1]}` : "Your photo";
+}
+
 const YEAR = /^\d{4}$/;
 const MONTH = /^(0[1-9]|1[0-2])$/;
 const FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;

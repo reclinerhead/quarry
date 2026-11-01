@@ -32,6 +32,15 @@ export function CameraIcon({ className = "" }: IconProps) {
   );
 }
 
+/** The check on a selected chip or a chosen name, so selection never relies on colour alone. */
+export function CheckIcon({ className = "" }: IconProps) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M5 12l5 5 9-10" />
+    </svg>
+  );
+}
+
 /** A photo from the camera roll. */
 export function PhotosIcon({ className = "" }: IconProps) {
   return (

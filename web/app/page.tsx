@@ -2,12 +2,15 @@ import Link from "next/link";
 import { CameraIcon, CrystalIcon } from "@/components/icons";
 import { stoneCount } from "@/lib/db";
 import { dateLine, greeting } from "@/lib/greeting";
+import { waitingStrip, withReadDb } from "@/lib/jobs";
+import { stripLine } from "@/lib/pills";
 
-// The dashboard from design/DESIGN.md §5, as far as the scaffold goes: the
-// greeting and an empty collection drawn in the specimen card's shape. The
-// pending strip (#8), the cards, filters and side column (#9) arrive with the
-// issues that have data for them; their space is not faked.
-// The count comes from the database on every request, never from the build.
+// The dashboard from design/DESIGN.md §5, as far as there is data for it: the
+// greeting, the pending strip (#8) and, while there are no stones, an empty
+// collection drawn in the specimen card's shape. The cards, filters and side
+// column (#9) arrive with the issue that has data for them; their space is
+// not faked. Everything comes from the database on every request, never from
+// the build.
 export const dynamic = "force-dynamic";
 
 // Faint cards beside the empty one, so a wide screen shows the grid it will
@@ -21,6 +24,7 @@ const PLACEHOLDERS = [
 export default function Home() {
   const now = new Date();
   const stones = stoneCount();
+  const strip = withReadDb(waitingStrip, { count: 0, thumbs: [], first: null });
 
   return (
     <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-8 px-4 pb-16 pt-8 sm:px-10 sm:pb-[72px] sm:pt-10">
@@ -31,6 +35,30 @@ export default function Home() {
         </h1>
         <p className="text-lead text-ink-2">Photograph a stone and Jasper will suggest what it is. You decide what it&rsquo;s called.</p>
       </section>
+
+      {/* The pending strip (DESIGN.md §4): amber means "needs you". Drawn only
+          when something waits, on the server, so it never pops in. */}
+      {strip.count > 0 ? (
+        <section aria-labelledby="waiting-h" className="flex flex-wrap items-center gap-x-7 gap-y-5 rounded-card border border-warn-line bg-warn px-5 py-5 sm:px-7 sm:py-[22px]">
+          <div className="flex">
+            {strip.thumbs.map((src, i) => (
+              // eslint-disable-next-line @next/next/no-img-element -- Jasper's 320 px thumbnail
+              <img key={src} src={src} alt="" className={`size-[72px] rounded-tile border-[3px] border-surface bg-tile-stone object-cover ${i > 0 ? "-ml-[18px]" : ""}`} />
+            ))}
+          </div>
+          <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-1">
+            <h2 id="waiting-h" className="text-[26px] leading-tight">
+              {strip.count} {strip.count === 1 ? "rock" : "rocks"} waiting for a name
+            </h2>
+            {strip.first ? (
+              <p className="text-warn-ink">{stripLine(strip.first.plan, strip.first.status === "failed", strip.first.suggestedTests[0]?.kind)}</p>
+            ) : null}
+          </div>
+          <Link href="/name" className="btn btn-primary btn-lg">
+            {strip.count === 1 ? "Name it" : "Name them"}
+          </Link>
+        </section>
+      ) : null}
 
       <section aria-labelledby="collection-h" className="flex flex-col gap-[22px]">
         <div className="flex flex-col gap-0.5">

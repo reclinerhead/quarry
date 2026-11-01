@@ -60,6 +60,43 @@
     opacity: 0.7;
   }
 
+  /* Chips: pill, 48 px, white with a control border. Selected (aria-pressed)
+     is azurite with a check icon, so it never relies on colour alone.
+     `chip-dashed` is "Not tried", which must never look like "No". */
+  .chip {
+    min-height: var(--size-target);
+    padding: 0 18px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+  .chip:not(:disabled):hover {
+    background: var(--color-sand);
+  }
+  .chip[aria-pressed="true"],
+  .chip[aria-pressed="true"]:not(:disabled):hover {
+    background: var(--color-azurite);
+    border-color: var(--color-azurite);
+    color: #fff;
+  }
+  .chip-dashed {
+    border-style: dashed;
+    border-color: var(--color-line-strong);
+  }
+  .chip-dashed[aria-pressed="true"],
+  .chip-dashed[aria-pressed="true"]:not(:disabled):hover {
+    background: var(--color-sand-2);
+    border-color: var(--color-ink-2);
+    color: var(--color-ink);
+  }
+
   /* Cards: white, hairline, 18 px radius. Flat at rest; a linked card lifts on hover. */
   .card {
     background: var(--color-surface);
@@ -105,6 +142,7 @@
   .field input {
     min-width: 0;
     flex: 1;
+    align-self: stretch; /* the whole 52 px pill is the target, even when the pill is a <div> */
     border: 0;
     background: transparent;
     font: inherit;
