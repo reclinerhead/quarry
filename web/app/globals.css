@@ -103,6 +103,57 @@
     border: 1px solid var(--color-line);
     border-radius: var(--radius-card);
   }
+  .card-link {
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+  .card-link:hover {
+    border-color: var(--color-line-strong);
+    box-shadow: var(--shadow-hover);
+  }
+
+  /* Status tags: 15 px / 700, 4 x 12 px, a sand pill. */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: var(--radius-pill);
+    background: var(--color-sand);
+    color: var(--color-tag-ink);
+    font-size: var(--text-tag);
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  /* Selects: the chip's pill at 50 px, native <select> (older phones get
+     their own big picker) with a chevron drawn beside it in the markup. */
+  .select {
+    appearance: none;
+    min-height: 50px;
+    padding: 0 48px 0 20px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  /* The text-link style DESIGN.md §4 keeps for "Clear filters", "Change" and "Add". */
+  .text-link {
+    min-height: var(--size-target);
+    padding: 0 6px;
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-azurite);
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    cursor: pointer;
+  }
+  .text-link:hover {
+    color: var(--color-azurite-deep);
+  }
 
   /* Nav pills in the top bar; the current page is sand-2. */
   .nav-pill {

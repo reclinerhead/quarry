@@ -37,15 +37,3 @@ export function openReadWrite(): DatabaseSync {
   db.exec("PRAGMA foreign_keys = ON");
   return db;
 }
-
-/** How many stones the household has; 0 when Jasper has not created the database yet. */
-export function stoneCount(): number {
-  const db = openReadOnly();
-  if (!db) return 0;
-  try {
-    const row = db.prepare("SELECT COUNT(*) AS n FROM specimens").get() as { n: number };
-    return row.n;
-  } finally {
-    db.close();
-  }
-}

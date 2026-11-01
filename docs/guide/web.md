@@ -20,7 +20,7 @@ pnpm dev
 
 | Route | What | Status |
 | --- | --- | --- |
-| `/` | The home page: the greeting, the pending strip, and the collection's empty state; see below | #5, #8 |
+| `/` | The dashboard: the greeting, the pending strip, the collection and the side column; see below | #5, #8, #9 |
 | `/add` | Upload from the camera or the camera roll; see below | #6 |
 | `POST /api/photos` | One photo in, one queued job out | #6 |
 | `GET /api/jobs/[id]` | A job as `readJob` sees it: state, note, test answers, label text, photos, the plan (verdict and pills), the tests the models suggested, and any naming. The add page and the confirm screen poll it | #6, #8 |
@@ -34,22 +34,84 @@ pnpm dev
 | `POST /api/jobs/[id]/photos` | Another photo of the same stone; sends the job back to Jasper | #8 |
 | `POST /api/jobs/[id]/tests` | "Ask Jasper again with these answers": `{ tests, notes }`, then back to the queue | #8 |
 | `GET /api/minerals?q=` | The minerals and rocks already in the collection, for the name field | #8 |
+| `/stones/[id]` | One stone: its photos, its specimen label, its tests, how it was named; see below | #9 |
+| `PATCH /api/stones/[id]` | Edit a stone's facts or test answers: any of `variety`, `associates`, `foundAt`, `acquired`, `acquiredOn`, `location`, `notes`, `tests`; an empty string clears | #9 |
+| `DELETE /api/stones/[id]` | Remove a stone: its photos (rows, files, thumbnails), the jobs that brought them, and the mineral when it was the last | #9 |
 
 ## The home page
 
-`app/page.tsx` is the dashboard from DESIGN.md §5, as far as there is data for it:
+`app/page.tsx` is the dashboard from DESIGN.md §5, as far as Phase 1 has data for it. The hardness filter, the Mohs set and what new stones add to the periodic table wait for Mindat in Phase 2; the catalog dab on each card waits for Phase 3.
 
-- **The greeting** (`lib/greeting.ts`, tested): the date ("Sunday, November 1", in the station's time zone), then "Good evening." with "Your collection starts here." while there are no stones. The line that says what changed arrives with the collection (#9).
+- **The greeting** (`lib/greeting.ts`, tested) has three parts:
+  - the date ("Sunday, November 1");
+  - "Good evening.";
+  - what changed: "Two new stones today." (`addedToday` and `whatChanged` in `lib/collection.ts`, counted in the station's time zone), or "Your collection starts here." while it is empty.
 - **The pending strip** (DESIGN.md §4), drawn on the server only when something waits, so it never pops in:
   - It's an amber card with up to three overlapping 72 px thumbnails and "3 rocks waiting for a name".
   - Under that is the first stone's line (`stripLine` in `lib/pills.ts`): "Jasper's guess for the first one: could be Chalcopyrite or Marcasite." When the models are torn, it adds the first suggested test: "A steel nail would tell them apart."
   - "Name them" goes to `/name`.
   - `waitingStrip` in `lib/jobs.ts` reads it.
-- **Your collection**:
-  - The count line: "No stones yet", "1 stone".
-  - While the collection is empty, one card in the specimen card's shape, "No stones yet" with "Add the first one", beside faint placeholder cards that show the grid it will fill.
-  - Each placeholder appears only where the grid has a column for it (from `sm`, `lg` and `xl`), so a phone shows the one card.
-- The cards, filters and side column (#9) arrive with the issue that has data for them; their space is not faked.
+- **While the collection is empty:** one card in the specimen card's shape, "No stones yet" with "Add the first one", beside faint placeholder cards that show the grid it will fill. Each placeholder appears only where the grid has a column for it (from `sm`, `lg` and `xl`), so a phone shows the one card.
+- **Once there are stones**, two columns, DESIGN.md's flex split: the collection (`flex: 999 1 600px`) and the side column (`flex: 1 1 320px`, at most 400 px), which drops below on a phone and is never sticky.
+
+### Your collection
+
+`components/collection.tsx` over the pure shape in `lib/collection.ts` (tested), the Conservatory's pattern. The server sends every stone as a `Tile` (`collectionTiles` in `lib/specimens.ts`): name, kind, variety, where it came from, how it came, where it lives, when it was added (the "Nov 1" label worked out on the server, in the station's time zone, so server and phone never disagree) and the newest photo's 320 px thumbnail, never an original. The phone filters and sorts, so a search makes no request.
+
+- **The count line:** "Showing 12 of 47 stones", or "Showing 3 stones that match" once anything filters (`countLine`).
+- **Sort by**, a native `<select>`: Name, A to Z (the default) or Newest first.
+- **The filter chips Phase 1 has data for** (`filterChips`):
+  - Everything;
+  - Minerals, and Rocks and fossils (anything that isn't a mineral), one kind at a time;
+  - Found it myself, and Bought or gifted (a gift or a trade counts), one source at a time.
+
+  The two groups combine. Counts come from the whole collection, so the row never changes shape while a person types, and a chip with nobody in it is left out. "Clear filters" appears once anything filters.
+- **The top bar's search** matches any part of the name, the variety or where it came from, ignoring case and punctuation (`matchesQuery`, through `norm`).
+- **All of it lives in the URL** (`?q=`, `?kind=`, `?from=`, `?sort=`), written with the native `history.replaceState`, which Next syncs with `useSearchParams`. The back button returns to the same view, and the top bar's box and the grid agree. The top bar reads the URL behind a `Suspense` boundary because `/add` is static.
+- **No match** draws a dashed card, "No stones match those choices.", with "Show everything".
+- **Specimen cards** (`StoneCard`, DESIGN.md §4), each one link to `/stones/[id]`:
+  - the thumbnail, 220 px, or a tinted "No photo yet" tile, the tint varied between neighbours;
+  - the name in Zilla 24;
+  - the variety line, reserved when there is none so cards in a row line up;
+  - "Glass case · added Nov 1";
+  - the kind as a tag.
+
+### The side column
+
+- **Newest additions:** four rows, each a whole 64 px link (thumbnail, name, "added Nov 1"), then "See everything by date" (`/?sort=new`).
+- **At a glance:** four stat tiles, stones, different minerals, kinds of rock and places they live (`glance`), each a number over a phrase.
+- **Where they live:** each place with its count, most stones first (`places`), or a line saying where to record one.
+
+## A stone
+
+`app/stones/[id]/page.tsx` is one stone, read by `readStone` in `lib/specimens.ts`. It is DESIGN.md §5's specimen page as far as Phase 1 goes. Mineral properties, handling notes, elements, the Mohs scale, relatives, the story log and the box label arrive with Phases 2 and 3.
+
+- **The breadcrumb** ("Collection › Galena").
+- **The title block:** the name at 60 px (40 on a phone), the variety under it, and tags for the kind, the photo count, how many of that mineral the collection holds, and when it was added.
+- **The gallery** (`components/gallery.tsx`):
+  - The hero is in the dark photo well, 640 px tall (360 on a phone), contained rather than cropped, with a caption, "Your photo · Oct 31, 2026".
+  - With more than one photo, "More photos of this stone" is a 2-across grid of thumbnail buttons that swap the hero (aria-pressed, a 4 px azurite border).
+  - Photos are newest first, by `taken_at`, else upload time.
+  - `components/photo-view.tsx`, shared with the confirm screen, falls back from a HEIC original a desktop browser cannot draw to Jasper's thumbnail.
+- **This specimen** (`components/stone-editor.tsx`) is the specimen label: paper, a double rule, the name over a 2 px ink rule, and Courier field names.
+  - The fields are variety, also on it (`associates`), where from, how it came, when, lives in, and notes.
+  - An unknown reads "Not recorded yet" with an Add link.
+  - An amber note counts the details a collector's label wants (`missingDetails`, tested: where from, how, when, where it lives; never the extras), with "Fill in details".
+  - Any of those, or "Edit details", turns the label into one form with a single Save (`PATCH /api/stones/[id]`) and focuses the field that was asked for. How it came is chips, with a dashed "Not recorded"; where it lives offers every place already in use.
+- **Kitchen-table tests** (`components/tests-editor.tsx`):
+  - The confirm screen's `TestRow`s, editable in place.
+  - The tests already answered come first (with none, the four DESIGN.md names: glass, streak, vinegar, magnet), and the rest wait behind "Other tests".
+  - Which rows show first is fixed when the page opens, so a save never moves them.
+  - "Save the answers" appears once something changed, and "Not saved yet." says so meanwhile.
+  - The check against Mindat arrives in Phase 2.
+- **How it was named**, from the job whose naming made the stone (`readJob`):
+  - Jasper's pills as they were: the chosen name solid azurite with a check, the others outlined with their word. A typed name no model offered leads, marked "typed by you".
+  - The date, and how the person knew (`HOW_SUMMARY` in `lib/naming.ts`, beside the confirm screen's chip labels).
+  - How many more photos were added as the same stone.
+  - "Change the name", which goes to that job's confirm screen.
+- **Remove** (`RemoveStone`): two taps, "Remove this stone" then "Yes, remove it", with "Keep it" to back out. `DELETE /api/stones/[id]` removes the photo rows and the jobs that brought them, found through the photos and through the stone's confirmations; candidates, suggested tests and confirmations cascade. It then removes the stone, and the mineral if it was the last of its kind, and unlinks the files and their thumbnails. Then home.
+
+Tests: `lib/collection.test.ts` (search, the kind and source filters, both sorts, the chips, the count line, the side column, date labels, what changed today, missing details) and `lib/greeting.test.ts`.
 
 ## Adding a rock
 
@@ -146,11 +208,11 @@ Tests:
 
 ## The visual language
 
-DESIGN.md is the reference and `design/tokens.css` the values, imported as the Tailwind theme. `app/globals.css` writes down DESIGN.md §4's component recipes as screens first need them: `btn` (48 px, `btn-lg` 52 px for the page's main action) with `btn-primary` (azurite) and `btn-soft` (sand), and a disabled state only for a button that is working ("Sending…"), since a button that can do nothing is not drawn; `chip` (a 48 px white pill; `aria-pressed="true"` is azurite, always drawn with a check icon so selection never relies on colour; `chip-dashed` is "Not tried"), `card`, `nav-pill` (the current page in `sand-2` through `aria-current`), and `field` (a 52 px pill around a bare `<input>` that fills it, so the focus ring goes on the pill and the whole pill is the target). Base rules: Zilla Slab 600 for headings, azurite links, a 3 px azurite focus ring. The root font size stays 16 px so Tailwind's spacing scale is the standard one; the body is 18 px (`text-body`), the floor for anything read.
+DESIGN.md is the reference and `design/tokens.css` the values, imported as the Tailwind theme. `app/globals.css` writes down DESIGN.md §4's component recipes as screens first need them: `btn` (48 px, `btn-lg` 52 px for the page's main action) with `btn-primary` (azurite) and `btn-soft` (sand), and a disabled state only for a button that is working ("Sending…"), since a button that can do nothing is not drawn; `chip` (a 48 px white pill; `aria-pressed="true"` is azurite, always drawn with a check icon so selection never relies on colour; `chip-dashed` is "Not tried"), `card` (with `card-link`, which lifts on hover), `tag` (15 px, sand), `select` (a 50 px pill around a native `<select>`, its chevron drawn in the markup), `text-link` (DESIGN.md's underlined azurite for "Clear filters", "Change", "Add"), `nav-pill` (the current page in `sand-2` through `aria-current`), and `field` (a 52 px pill around a bare `<input>` that fills it, so the focus ring goes on the pill and the whole pill is the target). Base rules: Zilla Slab 600 for headings, azurite links, a 3 px azurite focus ring. The root font size stays 16 px so Tailwind's spacing scale is the standard one; the body is 18 px (`text-body`), the floor for anything read.
 
 The faces are self-hosted by `next/font` in `app/layout.tsx` (Zilla Slab 600 and 700; Atkinson Hyperlegible 400 and 700 with its italic; Courier Prime 400 and 700), whose variables feed the font tokens, so the stations make no font requests. Line icons live in `components/icons.tsx` (the gem mark, the crystal for tiles with no photo, the camera, the check on a selected chip, the camera roll's photo, and the sun, coin and tag of the add page's photo tips).
 
-**The top bar** (`components/topbar.tsx`): the gem mark and wordmark, a nav pill for each page that exists (Collection today; Minerals, Periodic table, Labels and Gem Show join with their phases, rather than being drawn dead), the search (a plain form that sends `?q=` to `/`; the collection wires it up in #9), the primary "Add a rock", then the strata band. Below `lg` it is two rows, the wordmark with Add, then the nav with the search; on a phone Add reads "Add" with "a rock" kept for screen readers. From `lg` it is the canvas's one row.
+**The top bar** (`components/topbar.tsx`): the gem mark and wordmark, a nav pill for each page that exists (Collection today; Minerals, Periodic table, Labels and Gem Show join with their phases, rather than being drawn dead), the search ("Search your rocks": on the collection it filters as you type through `?q=`; anywhere else Enter goes to `/?q=`), the primary "Add a rock", then the strata band. Below `lg` it is two rows, the wordmark with Add, then the nav with the search; on a phone Add reads "Add" with "a rock" kept for screen readers. From `lg` it is the canvas's one row.
 
 ### Rules every screen keeps
 
@@ -158,4 +220,5 @@ The faces are self-hosted by `next/font` in `app/layout.tsx` (Zilla Slab 600 and
 - Every target is at least 48 px, 52 for the main action; 18 px is the floor for reading text, 15 px the smallest anywhere.
 - Every surface works on a 390 px phone with 16 px gutters and no sideways scroll, and uses a laptop's width.
 - The app teaches: every mineralogical term gets an info mark (`components/term.tsx`, with its entry in `lib/glossary.ts`).
-- Rows from `node:sqlite` have a null prototype, which React refuses to pass to a client component: map them to plain objects before they cross (`readJob`, `lastNamedStone`).
+- Rows from `node:sqlite` have a null prototype, which React refuses to pass to a client component: map them to plain objects before they cross (`readJob`, `lastNamedStone`, `collectionTiles`, `readStone`).
+- Text that follows a `{expression}` in JSX and starts with an entity (`&ldquo;`) loses the space between them; write such a sentence as one string.
