@@ -66,7 +66,7 @@ Access from outside the house is not part of the first version. The station is r
 
 The enrichment pass runs once per mineral, the first time a mineral is confirmed anywhere in the household:
 
-- **Mindat** is the field guide. Through the OpenMindat API (Python wrapper `openmindat`, a free API key), the worker looks up the canonical record: formula, Mohs hardness, crystal system, luster, streak, type locality, and varieties. Each record is cached per mineral in the database, so a second specimen of the same mineral never re-queries and the site keeps working when the API is down.
+- **Mindat** is the field guide. Through the OpenMindat API (plain HTTP, as the gateway call is, with a free API key that Mindat approves by hand), the worker looks up the canonical record: formula, Mohs hardness, crystal system, luster, streak, type locality, and varieties. Each record is cached per mineral in the database, so a second specimen of the same mineral never re-queries and the site keeps working when the API is down.
 - **Wikipedia** supplies the summary and the reference image, with the household's own photo as the hero once there is one.
 - **A language model**, the same hosted one, writes short handling notes once per mineral from the Mindat record and stores them: water-soluble (don't rinse the halite), fades in sunlight (keep the amethyst off the windowsill), wash your hands after handling (the realgar). Every figure the notes rely on is kept so it can be checked.
 
@@ -81,7 +81,7 @@ On the same small boxes that run the Aviary and the Conservatory, one per househ
 | Layer | Built with |
 | --- | --- |
 | Identification | Claude Haiku with Gemini Flash (low effort) as a second opinion, through the Vercel AI Gateway, each returning structured candidates and tests; "probably" when they agree, "could be" when they don't; the owner confirms every result and how |
-| Enrichment | Mindat API via `openmindat`, cached per mineral; Wikipedia; Claude for handling notes, once per mineral |
+| Enrichment | OpenMindat API, cached in the database; Wikipedia; Claude for handling notes, once per mineral |
 | Queue and storage | Python worker, SQLite |
 | Web app | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, pnpm |
 | Labels | QR codes on printable specimen labels |
@@ -92,7 +92,7 @@ On the same small boxes that run the Aviary and the Conservatory, one per househ
 
 - **Phase 0, the spike.** Identification is done: a throwaway script (`spikes/vision/`) scored four hosted models on 38 expert-identified specimen photos from Wikimedia Commons, and on 11 of the family's own unnamed stones, for accuracy, calibration, agreement between models, and cost. It picked Claude Haiku with Gemini Flash as the second opinion; the numbers are in [#1](https://github.com/reclinerhead/quarry/issues/1). Still to do: check that Mindat returns what the property card needs for every mineral in the set.
 - **Phase 1, one household.** Capture from the camera roll and on the spot, the job queue, the confirm screen with its tests, and a dashboard of specimens. Its look gets its own `design/DESIGN.md`, in the Conservatory's structure but not its palette. Runs at the house first.
-- **Phase 2, the minerals.** The Mindat enrichment and its cache, mineral pages, property cards, handling notes, the glossary, the periodic table.
+- **Phase 2, the minerals.** The rest of the Mindat enrichment, mineral pages, property cards, handling notes, the glossary, the periodic table. The cache, and the lookup of each candidate so the confirm screen can tell two names for one stone from a real disagreement, came early, in Phase 1 ([#18](https://github.com/reclinerhead/quarry/issues/18)).
 - **Phase 3, the labels.** Catalog numbers, printable specimen labels with QR codes, the provenance log.
 - **Phase 4, the gem show.** Digests from each household, the hub, ribbons.
 
