@@ -167,7 +167,9 @@ function SideColumn({ tiles }: { tiles: Tile[] }) {
         </h2>
         <dl className="grid grid-cols-2 gap-3">
           {stats.map(([n, label]) => (
-            <div key={label} className="flex flex-col-reverse gap-1 rounded-tile bg-ground px-4 py-3.5">
+            // Reversed so the number reads first; justify-end is the top of a
+            // reversed column, so a tile beside a taller one keeps its number up.
+            <div key={label} className="flex flex-col-reverse justify-end gap-1 rounded-tile bg-ground px-4 py-3.5">
               <dt className="text-meta text-ink-2">{label}</dt>
               <dd className="font-display text-[34px] font-semibold leading-none tabular-nums">{n}</dd>
             </div>
