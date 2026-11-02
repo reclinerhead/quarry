@@ -1,0 +1,17 @@
+# The Quarry's deploy watcher on orchid (issue #10): Servers/autodeploy.sh in
+# the checkout it deploys. Root on purpose (restarts without a sudo password);
+# every git, pip and pnpm step is demoted to todd inside the script. Beside
+# the Aviary's and the Conservatory's watchers, never shared with them.
+
+[Unit]
+Description=The Quarry -- deploy watcher (merges to main deploy themselves)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/home/todd/quarry/Servers/autodeploy.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+# The Quarry's door on orchid (issue #10): https://quarry.lan, one site block
+# for orchid's Caddy. The Aviary's config (project-squirrel/Servers/
+# Caddyfile-orchid, synced to /etc/caddy/Caddyfile) takes this file in with
+# one line at its END, after the lan_tls snippet is defined, beside the
+# Conservatory's:
+#
+#     import /home/todd/quarry/Servers/Caddyfile.quarry
+#
+# A merge here never reloads Caddy: a reverse-proxy config that deploys itself
+# could take every web surface in the house down at once. After a merge that
+# changes this file, `sudo bash ~/quarry/Servers/install-orchid.sh` reloads it
+# (it checks the config first).
+#
+# lan_tls is the house snippet: the private root's certificate, HSTS, and
+# compression at the choke point (page HTML and route JSON; photos pass
+# through untouched). The name needs a Pi-hole Local DNS record on pearl,
+# quarry.lan -> 192.168.1.148. 3020 is the web unit's port.
+
+quarry, quarry.lan {
+	import lan_tls
+	reverse_proxy 127.0.0.1:3020
+}
