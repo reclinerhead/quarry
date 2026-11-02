@@ -205,7 +205,7 @@ The confirmation records:
 - `how`: a pill is `suggestion`, a typed name `guess`, and another photo inherits the stone's first naming;
 - `verdict`: what the screen said, recomputed from the candidates on the server rather than taken from the request.
 
-A typed name that one of the models also gave takes that candidate's spelling and kind; any other is a mineral until Phase 2's Mindat lookup says otherwise.
+A typed name that one of the models also gave takes that candidate's spelling and kind; any other is a mineral until Jasper links it to its Mindat record, when the kind follows Mindat's (a typed Granite becomes a rock; see `jasper.md`).
 
 **The named state** is a specimen label (paper, double rule, the name over a 2 px ink rule).
 - **"How do you know?"** Five chips: I took Jasper's suggestion, From a label or tag, The tests settled it, Someone who knows told me, My best guess. A tap saves through `PATCH .../confirm`, with "Saved." in reserved space. Only a label, the tests and someone who knows count as known answers (README). "My best guess" is there so that a typed name is never counted as known by default.

@@ -23,6 +23,15 @@ timeout, a server error, a refused key, the job's time running out) is never
 cached: it raises Unreachable, the candidates keep a NULL `mindat_id`, and
 `catch_up` tries again when the queue is idle.
 
+Enrichment (#21) starts here too. When the queue is idle, `idle` links each
+mineral the household has named to the record its own name resolves to
+(`link_minerals`; Chalcedony links to Chalcedony and keeps its name), sets its
+kind from Mindat's entry type (`kind_for`), and fetches the whole record, once,
+for that record and each one above it (`fetch_details`), into
+`mindat_records.detail`. A record only a candidate names is never fetched in
+full. Running out of time is not a failure there: the pass stops quietly and
+the rest waits for the next one.
+
 `Api` is the only part that touches the network, over urllib as llm.py is, so
 Jasper's venv grows no dependency.
 """
@@ -61,6 +70,10 @@ class Unreachable(Exception):
     """Mindat gave no usable answer: a timeout, a server error, a refused key, or no time left."""
 
 
+class OutOfTime(Unreachable):
+    """The budget ran out before the next request. A job's lookup stops as for any failure; the idle pass just stops."""
+
+
 class Api:
     """The OpenMindat geomaterials endpoint. Each request is tried twice; `requests` counts them for the log line."""
 
@@ -81,6 +94,10 @@ class Api:
     def record(self, mindat_id: int) -> dict | None:
         """One entry by id, or None when Mindat has no such id."""
         return self._get(f"{API_URL}{mindat_id}/?" + urllib.parse.urlencode({"fields": FIELDS}))
+
+    def full(self, mindat_id: int) -> dict | None:
+        """One entry by id with every field Mindat has, its type localities as ids, or None when Mindat has no such id."""
+        return self._get(f"{API_URL}{mindat_id}/?" + urllib.parse.urlencode({"expand": "type_localities"}))
 
     def _get(self, url: str) -> dict | None:
         """The JSON body, None for a 404, or Unreachable."""
@@ -151,6 +168,18 @@ def _mohs(v: object) -> float | None:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else None
 
 
+# Mindat's entry types that settle whether a named mineral is a mineral or a rock.
+# A mixture, a commodity or anything new leaves the kind as it was.
+KINDS = {"rock": "rock", "mineral": "mineral", "variety": "mineral", "grouplist": "mineral",
+         "series": "mineral", "polytype": "mineral"}
+
+
+def kind_for(entrytype: str | None, kind: str) -> str:
+    """A mineral's kind once Mindat has its record: a typed Granite becomes a rock.
+    `other` (a fossil, sea glass) is the household's or the model's call and stays."""
+    return kind if kind == "other" else KINDS.get(entrytype or "", kind)
+
+
 # ----------------------------------------------------------------------------
 # The cache, filled through the API
 # ----------------------------------------------------------------------------
@@ -158,13 +187,18 @@ def _mohs(v: object) -> float | None:
 
 def _in_time(deadline: float, clock: Clock) -> None:
     if clock() >= deadline:
-        raise Unreachable("out of time for this job")
+        raise OutOfTime("out of time for this job")
 
 
 def _store(conn: sqlite3.Connection, r: dict) -> None:
+    """An upsert, not a replace: a record stored again by a later lookup (a synonym of it) keeps its `detail`."""
     conn.execute(
-        """INSERT OR REPLACE INTO mindat_records (id, name, entrytype, varietyof, hmin, hmax, streak)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO mindat_records (id, name, entrytype, varietyof, hmin, hmax, streak)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (id) DO UPDATE SET
+             name = excluded.name, entrytype = excluded.entrytype, varietyof = excluded.varietyof,
+             hmin = excluded.hmin, hmax = excluded.hmax, streak = excluded.streak,
+             fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')""",
         (
             _id(r.get("id")),
             str(r.get("name") or ""),
@@ -253,19 +287,97 @@ SELECT c.job_id, c.model, c.rank, c.name, c.variety
 """
 
 
-def catch_up(conn: sqlite3.Connection, api: Api, budget_s: float = JOB_BUDGET_S, clock: Clock = time.monotonic) -> int:
+def catch_up(conn: sqlite3.Connection, api: Api, deadline: float, clock: Clock = time.monotonic) -> int:
     """Look up the waiting candidates with no Mindat id. A term already cached costs
     no request, so a name Mindat doesn't know is not asked again. Returns how many
-    candidates it filled. Raises Unreachable."""
-    deadline = clock() + budget_s
+    candidates it filled; stops there when the time runs out. Raises Unreachable."""
     filled = 0
-    for row in conn.execute(WAITING).fetchall():
-        rid = resolve(conn, api, row["name"], row["variety"], deadline, clock)
-        if rid is not None:
+    try:
+        for row in conn.execute(WAITING).fetchall():
+            rid = resolve(conn, api, row["name"], row["variety"], deadline, clock)
+            if rid is not None:
+                with conn:
+                    conn.execute(
+                        "UPDATE candidates SET mindat_id = ? WHERE job_id = ? AND model = ? AND rank = ?",
+                        (rid, row["job_id"], row["model"], row["rank"]),
+                    )
+                filled += 1
+    except OutOfTime:
+        pass  # the rest wait for the next idle pass
+    return filled
+
+
+# ----------------------------------------------------------------------------
+# Enrichment (#21): each named mineral's record, whole
+# ----------------------------------------------------------------------------
+
+
+def link_minerals(conn: sqlite3.Connection, api: Api, deadline: float, clock: Clock = time.monotonic) -> int:
+    """Link each mineral with no Mindat id to the record its own name resolves to, and
+    set its kind from that record. The name is never changed: Chalcedony links to
+    Chalcedony, a variety of Quartz. A name Mindat doesn't know stays unlinked, and
+    its miss is cached, so it costs no request again. Returns how many it linked;
+    stops there when the time runs out. Raises Unreachable."""
+    linked = 0
+    try:
+        for row in conn.execute("SELECT id, name, kind FROM minerals WHERE mindat_id IS NULL ORDER BY id").fetchall():
+            rid = resolve(conn, api, row["name"], None, deadline, clock)
+            if rid is None:
+                continue
+            entrytype = conn.execute("SELECT entrytype FROM mindat_records WHERE id = ?", (rid,)).fetchone()[0]
+            with conn:
+                # The web app may have removed the mineral meanwhile; then nothing is updated.
+                linked += conn.execute(
+                    "UPDATE minerals SET mindat_id = ?, kind = ? WHERE id = ? AND mindat_id IS NULL",
+                    (rid, kind_for(entrytype, row["kind"]), row["id"]),
+                ).rowcount
+    except OutOfTime:
+        pass
+    return linked
+
+
+# Records some mineral needs in full: the one it links to and each one above it,
+# whose `detail` has not been fetched. A record only a candidate names is not here.
+NEEDS_DETAIL = """
+WITH RECURSIVE up(id, depth) AS (
+  SELECT mindat_id, 1 FROM minerals WHERE mindat_id IS NOT NULL
+  UNION
+  SELECT r.varietyof, up.depth + 1 FROM up JOIN mindat_records r ON r.id = up.id
+   WHERE r.varietyof IS NOT NULL AND up.depth < :max_depth
+)
+SELECT DISTINCT r.id FROM mindat_records r JOIN up ON up.id = r.id
+ WHERE r.detail IS NULL
+ ORDER BY r.id
+"""
+
+
+def fetch_details(conn: sqlite3.Connection, api: Api, deadline: float, clock: Clock = time.monotonic) -> int:
+    """Fetch the whole record, once, for each record a mineral needs (`NEEDS_DETAIL`).
+    One transaction per record. An id Mindat no longer has is stored as `{}`, so it is
+    not asked every minute. Returns how many it stored; stops there when the time runs
+    out. Raises Unreachable."""
+    fetched = 0
+    try:
+        for row in conn.execute(NEEDS_DETAIL, {"max_depth": MAX_DEPTH}).fetchall():
+            _in_time(deadline, clock)
+            body = api.full(row["id"]) or {}
             with conn:
                 conn.execute(
-                    "UPDATE candidates SET mindat_id = ? WHERE job_id = ? AND model = ? AND rank = ?",
-                    (rid, row["job_id"], row["model"], row["rank"]),
+                    "UPDATE mindat_records SET detail = ?, detail_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+                    (json.dumps(body, ensure_ascii=False, separators=(",", ":")), row["id"]),
                 )
-            filled += 1
-    return filled
+            fetched += 1
+    except OutOfTime:
+        pass
+    return fetched
+
+
+def idle(conn: sqlite3.Connection, api: Api, budget_s: float = JOB_BUDGET_S,
+         clock: Clock = time.monotonic) -> tuple[int, int, int]:
+    """Jasper's Mindat work while the queue is empty, in one budget: the waiting
+    candidates, then the minerals, then their records. Returns (candidates filled,
+    minerals linked, records fetched). Raises Unreachable; what was done before stays."""
+    deadline = clock() + budget_s
+    filled = catch_up(conn, api, deadline, clock)
+    linked = link_minerals(conn, api, deadline, clock)
+    return filled, linked, fetch_details(conn, api, deadline, clock)

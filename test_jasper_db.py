@@ -47,6 +47,22 @@ def test_migration_steps_run_once_in_order(tmp_path, monkeypatch):
     assert [r["version"] for r in conn.execute("SELECT version FROM schema_version ORDER BY version")] == [1, 2, 3]
 
 
+def test_a_version_2_database_takes_step_3_with_its_rows(tmp_path, monkeypatch):
+    path = tmp_path / "q.db"
+    monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS[:1])
+    old = db.connect(path)
+    assert db.current_version(old) == 2
+    old.execute("INSERT INTO minerals (name) VALUES ('Quartz')")
+    old.execute("INSERT INTO mindat_records (id, name, entrytype) VALUES (3337, 'Quartz', 'mineral')")
+    old.commit()
+    old.close()
+    monkeypatch.undo()
+    conn = db.connect(path)
+    assert db.current_version(conn) == 3
+    assert tuple(conn.execute("SELECT name, mindat_id FROM minerals").fetchone()) == ("Quartz", None)
+    assert tuple(conn.execute("SELECT name, detail, detail_at FROM mindat_records").fetchone()) == ("Quartz", None, None)
+
+
 @pytest.mark.parametrize(
     "sql",
     [

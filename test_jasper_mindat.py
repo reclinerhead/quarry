@@ -1,6 +1,9 @@
 """Mindat lookups (#18): which term is asked, which answer is taken, the chain and
-the cache, what a failure leaves, and the worker's part. A fake API stands in
-for Mindat; the HTTP itself stays untested."""
+the cache, what a failure leaves, and the worker's part. Enrichment (#21): each
+named mineral linked to its record, and the records it needs fetched whole, once.
+A fake API stands in for Mindat; the HTTP itself stays untested."""
+
+import json
 
 import logging
 from datetime import datetime, timezone
@@ -36,27 +39,52 @@ RECORDS = [
 ]
 
 
-class FakeApi:
-    """Mindat as the tests need it: an exact search ignoring case and accents, and records by id."""
+class Clock:
+    """Time that moves only when the fake API is asked something: a second a request."""
 
-    def __init__(self, records=RECORDS, fail=False):
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+
+class FakeApi:
+    """Mindat as the tests need it: an exact search ignoring case and accents, records by
+    id, and whole records, which carry more than the lean ones."""
+
+    def __init__(self, records=RECORDS, fail=False, fail_full=(), clock=None):
         self.records = {r["id"]: r for r in records}
         self.fail = fail
+        self.fail_full = set(fail_full)
+        self.clock = clock
         self.requests = 0
         self.asked = []
+        self.fetched = []
 
-    def search(self, term):
+    def _request(self):
         self.requests += 1
-        self.asked.append(term)
+        if self.clock:
+            self.clock.t += 1
         if self.fail:
             raise mindat.Unreachable("api.mindat.org answered 504")
+
+    def search(self, term):
+        self._request()
+        self.asked.append(term)
         return [r for r in self.records.values() if mindat.fold(r["name"]) == mindat.fold(term)]
 
     def record(self, mindat_id):
-        self.requests += 1
-        if self.fail:
-            raise mindat.Unreachable("api.mindat.org answered 504")
+        self._request()
         return self.records.get(mindat_id)
+
+    def full(self, mindat_id):
+        self._request()
+        self.fetched.append(mindat_id)
+        if mindat_id in self.fail_full:
+            raise mindat.Unreachable("api.mindat.org answered 504")
+        r = self.records.get(mindat_id)
+        return {**r, "description_short": f"About {r['name']}."} if r else None
 
 
 def _db(tmp_path):
@@ -222,10 +250,10 @@ def test_catch_up_fills_only_jobs_still_waiting_for_a_name(tmp_path):
     conn.execute("INSERT INTO confirmations (job_id, specimen_id, chosen_name, source, how, verdict) VALUES (?, ?, 'Quartz', 'pill', 'suggestion', 'could_be')",
                  (named, specimen))
     conn.commit()
-    assert mindat.catch_up(conn, api) == 1
+    assert mindat.catch_up(conn, api, float("inf")) == 1
     ids = dict(conn.execute("SELECT job_id, mindat_id FROM candidates").fetchall())
     assert ids == {waiting: 51, named: None}
-    assert mindat.catch_up(conn, api) == 0
+    assert mindat.catch_up(conn, api, float("inf")) == 0
 
 
 def test_run_once_looks_up_the_candidates_and_says_so(tmp_path, caplog):
@@ -248,3 +276,165 @@ def test_run_once_looks_up_the_candidates_and_says_so(tmp_path, caplog):
     assert [r[0] for r in conn.execute("SELECT mindat_id FROM candidates ORDER BY model")] == [51, 51]
     line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith(f"job {jid} "))
     assert " · mindat 4 requests · " in line and line.endswith(" s")
+
+
+# --- enrichment (#21) -------------------------------------------------------------
+
+
+def _mineral(conn, name, kind="mineral"):
+    mid = conn.execute("INSERT INTO minerals (name, kind) VALUES (?, ?)", (name, kind)).lastrowid
+    conn.commit()
+    return mid
+
+
+def _link(conn, api):
+    return mindat.link_minerals(conn, api, float("inf"))
+
+
+def _fetch(conn, api):
+    return mindat.fetch_details(conn, api, float("inf"))
+
+
+def _mineral_row(conn, mid):
+    return tuple(conn.execute("SELECT name, kind, mindat_id FROM minerals WHERE id = ?", (mid,)).fetchone())
+
+
+def _detailed(conn):
+    return {r[0] for r in conn.execute("SELECT id FROM mindat_records WHERE detail IS NOT NULL")}
+
+
+@pytest.mark.parametrize(
+    "entrytype, kind, expected",
+    [
+        ("rock", "mineral", "rock"),
+        ("mineral", "rock", "mineral"),
+        ("variety", "mineral", "mineral"),
+        ("grouplist", "mineral", "mineral"),  # Apatite
+        ("series", "rock", "mineral"),
+        ("polytype", "rock", "mineral"),
+        ("mixture", "rock", "rock"),
+        ("commodity", "mineral", "mineral"),
+        (None, "rock", "rock"),
+        ("rock", "other", "other"),
+        ("mineral", "other", "other"),
+    ],
+)
+def test_the_kind_follows_mindat_but_other_stays(entrytype, kind, expected):
+    assert mindat.kind_for(entrytype, kind) == expected
+
+
+def test_a_name_already_asked_for_a_candidate_links_with_no_request(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    _resolve(conn, api, "Jasper")
+    asked = api.requests
+    mid = _mineral(conn, "jasper")  # typed, so filed as a mineral until now
+    assert _link(conn, api) == 1
+    assert api.requests == asked
+    assert _mineral_row(conn, mid) == ("jasper", "rock", 2082)
+
+
+def test_a_typed_name_is_looked_up_and_keeps_its_own_record_and_name(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    mid = _mineral(conn, "Chalcedony")
+    assert _link(conn, api) == 1
+    assert _mineral_row(conn, mid) == ("Chalcedony", "mineral", 960)
+    assert _chain(conn, 960) == ["Chalcedony", "Quartz"]
+    assert _link(conn, api) == 0
+
+
+def test_a_mineral_mindat_does_not_know_stays_unlinked_and_is_asked_once(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    mid = _mineral(conn, "Banded Agate")
+    assert _link(conn, api) == 0
+    assert _link(conn, api) == 0
+    assert api.requests == 1
+    assert _mineral_row(conn, mid) == ("Banded Agate", "mineral", None)
+
+
+def test_a_mineral_called_other_is_linked_but_stays_other(tmp_path):
+    conn = _db(tmp_path)
+    mid = _mineral(conn, "Agate", "other")
+    _link(conn, FakeApi())
+    assert _mineral_row(conn, mid) == ("Agate", "other", 51)
+
+
+def test_a_mineral_and_each_record_above_it_are_fetched_whole_once(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    _resolve(conn, api, "Chalcedony", "Carnelian")  # a candidate nobody chose
+    _mineral(conn, "Agate")
+    _link(conn, api)
+    assert _fetch(conn, api) == 3
+    assert sorted(api.fetched) == [51, 960, 3337]
+    assert _detailed(conn) == {51, 960, 3337}  # Carnelian is never fetched whole
+    detail = json.loads(conn.execute("SELECT detail FROM mindat_records WHERE id = 960").fetchone()[0])
+    assert detail["description_short"] == "About Chalcedony."
+    assert conn.execute("SELECT detail_at FROM mindat_records WHERE id = 960").fetchone()[0]
+    asked = api.requests
+    assert _fetch(conn, api) == 0
+    assert api.requests == asked
+
+
+def test_a_record_stored_again_keeps_its_detail(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    _mineral(conn, "Baryte")
+    _link(conn, api)
+    _fetch(conn, api)
+    assert _resolve(conn, api, "Barite") == 549  # a new term, so Baryte is stored again
+    assert _detailed(conn) == {549}
+
+
+def test_an_id_mindat_no_longer_has_is_stored_empty_and_not_asked_again(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    _mineral(conn, "Hematite")
+    _link(conn, api)
+    del api.records[1856]
+    assert _fetch(conn, api) == 1
+    assert conn.execute("SELECT detail FROM mindat_records WHERE id = 1856").fetchone()[0] == "{}"
+    assert _fetch(conn, api) == 0
+
+
+def test_running_out_of_time_stops_quietly_and_the_next_pass_goes_on(tmp_path):
+    conn, clock = _db(tmp_path), Clock()
+    api = FakeApi(clock=clock)
+    _mineral(conn, "Agate")
+    _link(conn, api)
+    clock.t = 0.0
+    assert mindat.idle(conn, api, budget_s=1.5, clock=clock) == (0, 0, 2)  # requests at 0 and 1; at 2 the time is up
+    assert _detailed(conn) == {51, 960}
+    assert mindat.idle(conn, api, budget_s=1.5, clock=clock) == (0, 0, 1)
+    assert _detailed(conn) == {51, 960, 3337}
+
+
+def test_a_failure_partway_keeps_what_was_fetched_before_it(tmp_path):
+    conn = _db(tmp_path)
+    _mineral(conn, "Agate")
+    _link(conn, FakeApi())
+    with pytest.raises(mindat.Unreachable):
+        mindat.idle(conn, FakeApi(fail_full={960}))
+    assert _detailed(conn) == {51}
+
+
+def test_the_idle_pass_links_fetches_and_says_so(tmp_path, caplog):
+    conn = _db(tmp_path)
+    _mineral(conn, "Quartz")
+    with caplog.at_level(logging.INFO, logger="jasper"):
+        assert worker.catch_up(conn, FakeApi(), NOW) == NOW + worker.CATCH_UP_EVERY
+    assert "mindat linked 1 mineral(s), fetched 1 record(s)" in [r.getMessage() for r in caplog.records]
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="jasper"):
+        assert worker.catch_up(conn, FakeApi(), NOW) == NOW + worker.CATCH_UP_EVERY
+    assert not caplog.records  # nothing left to do, nothing said
+    _mineral(conn, "Agate")
+    assert worker.catch_up(conn, FakeApi(fail=True), NOW) == NOW + worker.CATCH_UP_AFTER_FAILURE
+
+
+def test_without_a_key_the_idle_pass_never_runs(tmp_path, monkeypatch):
+    conn = _db(tmp_path)
+    calls = []
+    monkeypatch.setattr(worker.time, "sleep", lambda s: None)
+    monkeypatch.setattr(worker.mindat, "idle", lambda conn, api: calls.append(api) or (0, 0, 0))
+    worker.run_forever(conn, tmp_path, CFG, iter([True, False]).__next__, None)
+    assert calls == []
+    api = FakeApi()
+    worker.run_forever(conn, tmp_path, CFG, iter([True, False]).__next__, api)
+    assert calls == [api]
