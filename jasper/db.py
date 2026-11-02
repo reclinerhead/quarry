@@ -47,6 +47,15 @@ CREATE TABLE IF NOT EXISTS mindat_terms (
 ALTER TABLE candidates ADD COLUMN mindat_id INTEGER;  -- the record the candidate names; NULL until looked up, or unknown
 """,
     ),
+    # 3 (#21): the record each named mineral links to, and the whole record as Mindat sent it.
+    (
+        3,
+        """
+ALTER TABLE minerals ADD COLUMN mindat_id INTEGER;     -- the record the mineral's own name resolves to; NULL until looked up, or unknown
+ALTER TABLE mindat_records ADD COLUMN detail TEXT;     -- the whole record as Mindat sent it (JSON); NULL until fetched
+ALTER TABLE mindat_records ADD COLUMN detail_at TEXT;  -- when it was fetched
+""",
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else BASELINE_VERSION

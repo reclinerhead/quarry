@@ -8,8 +8,9 @@ slower of them. The thumbnail is written for every processed job, rejected
 ones included, because the confirm screen shows the photo either way.
 
 With a Mindat key (#18), an identified job's candidates are looked up in
-Mindat before the job is written, and when the queue is idle the candidates a
-lookup missed are tried again (`mindat.catch_up`), once a minute, or ten
+Mindat before the job is written. When the queue is idle (`mindat.idle`), the
+candidates a lookup missed are tried again, then each named mineral is linked
+to its record and that record is fetched whole (#21), once a minute, or ten
 minutes after Mindat failed. Mindat never decides a job's outcome.
 """
 
@@ -31,7 +32,7 @@ AskFn = Callable[[str, dict], llm.Response]
 
 # A 402 means the gateway budget is spent; someone has to top it up.
 QUOTA_PAUSE = timedelta(minutes=10)
-# How often an idle Jasper tries the waiting candidates Mindat has not answered for.
+# How often an idle Jasper does its Mindat work (`catch_up`).
 CATCH_UP_EVERY = timedelta(minutes=1)
 CATCH_UP_AFTER_FAILURE = timedelta(minutes=10)
 
@@ -113,14 +114,18 @@ def _log_line(job_id: int, outcome: identify.Outcome, row: sqlite3.Row, seconds:
 
 
 def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api, now: datetime) -> datetime:
-    """Try the waiting candidates Mindat has not answered for. Returns when to try next."""
+    """The idle Mindat pass: the waiting candidates, then the named minerals and their
+    records. Returns when to try next. Running out of time is not a failure: the rest
+    waits a minute, not ten."""
     try:
-        filled = mindat.catch_up(conn, mindat_api)
+        filled, linked, fetched = mindat.idle(conn, mindat_api)
     except mindat.Unreachable as e:
         log.warning("mindat catch-up stopped: %s; next try in %d minutes", e, CATCH_UP_AFTER_FAILURE.seconds // 60)
         return now + CATCH_UP_AFTER_FAILURE
     if filled:
         log.info("mindat caught up on %d waiting candidate(s)", filled)
+    if linked or fetched:
+        log.info("mindat linked %d mineral(s), fetched %d record(s)", linked, fetched)
     return now + CATCH_UP_EVERY
 
 
