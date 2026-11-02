@@ -32,7 +32,7 @@ The efforts belong to the roles, not the models: Phase 0 (#1) found Gemini Flash
 
 | Table | Holds | Notes |
 | --- | --- | --- |
-| `photos` | one uploaded photo | `path` relative to `QUARRY_DATA`; linked to a job and, once named, a specimen; `thumb_at` for a photo added straight to a stone, which has no job |
+| `photos` | one uploaded photo | `path` relative to `QUARRY_DATA`; linked to a job (none for the moments its rock is still sending: the web app makes the job once all of a rock's photos are in) and, once named, a specimen; `thumb_at` for a photo added straight to a stone, which has no job |
 | `jobs` | one identification request | `status`: `queued` → `identifying` → `identified`, or `rejected` (neither model named anything), or `failed` (retried after `next_attempt_at`, or for good once `attempts` reaches five); `notes` and `tests` (JSON) are what the person told the models; `label_text` is any label the models read; `error` is why the last attempt failed or, on an identified or rejected job, which model gave no answer and why |
 | `candidates` | each model's ranked answers for a job | keyed `(job_id, model, rank)`; `kind` is `mineral`, `rock` or `other`; `features` is a JSON array; `cost_usd` is the whole call's cost on the rank-1 row only, so a `SUM` is the spend of the answers that named something. Each model's answer is kept apart, and the confirm screen works out agreement when it renders, so the rule can change without rewriting rows |
 | `suggested_tests` | the household tests each model suggested | `kind` is one of `glass`, `steel`, `copper`, `fingernail`, `streak`, `vinegar`, `magnet`, `uv`, so the confirm screen can ask it with a structured answer |

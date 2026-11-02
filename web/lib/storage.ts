@@ -42,10 +42,3 @@ export function takenAtFrom(form: FormData): string | null {
   const raw = form.get("takenAt");
   return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(raw) ? raw : null;
 }
-
-/** The batch's "Anything you know about these?", trimmed; null when left empty. */
-export function notesFrom(form: FormData): string | null {
-  const raw = form.get("notes");
-  const notes = typeof raw === "string" ? raw.trim().slice(0, MAX_NOTES) : "";
-  return notes || null;
-}
