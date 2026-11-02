@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { CameraIcon, CheckIcon, CrystalIcon, TagIcon } from "@/components/icons";
+import { CameraIcon, CheckIcon, TagIcon } from "@/components/icons";
+import { PhotoView } from "@/components/photo-view";
 import { Term } from "@/components/term";
 import { TestsPanel } from "@/components/tests-panel";
 import { exifTakenAt } from "@/lib/exif";
 import type { Answers } from "@/lib/household-tests";
 import { isSettled } from "@/lib/job-state";
-import type { ConfirmHow, JobView } from "@/lib/jobs";
+import type { JobView } from "@/lib/jobs";
 import type { MineralHit } from "@/lib/minerals";
+import { HOW_CHOICES, type ConfirmHow } from "@/lib/naming";
 import { takenLabel } from "@/lib/photos";
 import { stoneName, verdictLine, type Pill } from "@/lib/pills";
 import { shrinkToJpeg } from "@/lib/shrink";
@@ -35,16 +37,6 @@ type Props = {
 };
 
 type Named = { specimenId: number; name: string; variety: string | null; how: ConfirmHow; nextJobId: number | null };
-
-// "How do you know?" Only a label, the tests and someone who knows count as
-// known answers when a future model is scored against the household (#4).
-const HOW_CHOICES: Array<{ how: ConfirmHow; label: string }> = [
-  { how: "suggestion", label: "I took Jasper’s suggestion" },
-  { how: "label", label: "From a label or tag" },
-  { how: "tests", label: "The tests settled it" },
-  { how: "expert", label: "Someone who knows told me" },
-  { how: "guess", label: "My best guess" },
-];
 
 const MAX_PHOTOS = 5;
 const POLL_MS = 1500;
@@ -236,7 +228,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
         <section aria-label="The photo" className="flex min-w-0 flex-[1_1_380px] flex-col gap-3 lg:max-w-[640px]">
           {/* 280 px on a phone so Jasper's guess is on the first screen; DESIGN.md's 640 px hero is the specimen page's. */}
           <div className="relative flex h-[280px] items-center justify-center overflow-hidden rounded-photo bg-photo-well sm:h-[520px]">
-            {photo ? <PhotoView key={photo.id} url={photo.url} thumbUrl={photo.thumbUrl} /> : null}
+            {photo ? <PhotoView key={photo.id} url={photo.url} thumbUrl={photo.thumbUrl} alt="Your photo of the stone" /> : null}
             <span className="absolute bottom-3 left-3 rounded-pill bg-caption px-3.5 py-1.5 text-meta font-bold text-white">
               {takenLabel(photo?.takenAt ?? null)}
               {job.photos.length > 1 ? ` · ${photoIndex + 1} of ${job.photos.length}` : ""}
@@ -504,36 +496,6 @@ function countLine(named: boolean, waiting: number, position: number): string {
   if (named) return waiting > 0 ? `${waiting} still waiting` : "Nothing else is waiting";
   if (waiting > 1) return `${position} of ${waiting} waiting`;
   return waiting === 1 ? "The only one waiting" : "Nothing else is waiting";
-}
-
-/**
- * The photo large, contained in the dark well (rocks come in every shape, and
- * cropping cuts off the specimen). A HEIC original a desktop browser cannot
- * draw falls back to Jasper's thumbnail, and to a placeholder before Jasper
- * has written one.
- */
-function PhotoView({ url, thumbUrl }: { url: string; thumbUrl: string }) {
-  const [src, setSrc] = useState(url);
-  const [failed, setFailed] = useState(false);
-  const ref = useRef<HTMLImageElement>(null);
-  const onError = () => (src === url ? setSrc(thumbUrl) : setFailed(true));
-  // The server-rendered <img> can fail before React is listening (a HEIC on a
-  // desktop browser fails at once), so check once on mount as well.
-  useEffect(() => {
-    const img = ref.current;
-    if (img && img.complete && img.naturalWidth === 0) setSrc((s) => (s === url ? thumbUrl : s));
-  }, [url, thumbUrl]);
-  if (failed)
-    return (
-      <div className="flex flex-col items-center gap-2 text-surface">
-        <CrystalIcon className="size-14 opacity-70" />
-        <span>No preview on this device</span>
-      </div>
-    );
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- a photo from the data directory; next/image would re-encode it on the box
-    <img ref={ref} src={src} alt="Your photo of the stone" onError={onError} className="size-full object-contain" />
-  );
 }
 
 function PillButton({ pill, disabled, onPick }: { pill: Pill; disabled: boolean; onPick: () => void }) {

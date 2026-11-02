@@ -5,10 +5,11 @@ import type { DatabaseSync } from "node:sqlite";
 import { openReadOnly } from "./db";
 import { cleanAnswers, suggestedOrder, type Answers, type TestKind } from "./household-tests";
 import type { JobStatus } from "./job-state";
+import type { ConfirmHow } from "./naming";
 import { thumbPathFor } from "./photos";
 import { planPills, type Candidate, type Plan } from "./pills";
 
-export type ConfirmHow = "label" | "tests" | "expert" | "suggestion" | "guess";
+export type { ConfirmHow };
 
 export type JobView = {
   id: number;
@@ -21,7 +22,14 @@ export type JobView = {
   photos: Array<{ id: number; url: string; thumbUrl: string; takenAt: string | null }>;
   plan: Plan;
   suggestedTests: Array<{ kind: TestKind; how: string; expected: string }>;
-  confirmation: { specimenId: number; name: string; variety: string | null; how: ConfirmHow } | null;
+  confirmation: {
+    specimenId: number;
+    name: string;
+    variety: string | null;
+    how: ConfirmHow;
+    source: "pill" | "typed" | "same_as_last";
+    confirmedAt: string;
+  } | null;
 };
 
 /**
@@ -53,13 +61,22 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
     .all(jobId) as Array<{ model: string; rank: number; kind: TestKind; how: string; expected: string }>;
   const conf = db
     .prepare(
-      `SELECT c.specimen_id, c.how, m.name, sp.variety
+      `SELECT c.specimen_id, c.how, c.source, c.confirmed_at, m.name, sp.variety
          FROM confirmations c
          JOIN specimens sp ON sp.id = c.specimen_id
          JOIN minerals m ON m.id = sp.mineral_id
         WHERE c.job_id = ?`,
     )
-    .get(jobId) as { specimen_id: number; how: ConfirmHow; name: string; variety: string | null } | undefined;
+    .get(jobId) as
+    | {
+        specimen_id: number;
+        how: ConfirmHow;
+        source: "pill" | "typed" | "same_as_last";
+        confirmed_at: string;
+        name: string;
+        variety: string | null;
+      }
+    | undefined;
   const identifier = identifierSlug();
   return {
     id: job.id,
@@ -72,7 +89,9 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
     photos: photos.map((p) => ({ id: p.id, url: `/media/${p.path}`, thumbUrl: `/media/${thumbPathFor(p.path)}`, takenAt: p.taken_at })),
     plan: planPills(candidates, identifier),
     suggestedTests: suggestedOrder(tests, identifier).map(({ kind, how, expected }) => ({ kind, how, expected })),
-    confirmation: conf ? { specimenId: conf.specimen_id, name: conf.name, variety: conf.variety, how: conf.how } : null,
+    confirmation: conf
+      ? { specimenId: conf.specimen_id, name: conf.name, variety: conf.variety, how: conf.how, source: conf.source, confirmedAt: conf.confirmed_at }
+      : null,
   };
 }
 

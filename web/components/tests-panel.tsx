@@ -78,7 +78,8 @@ export function TestsPanel({ suggested, initial, initialNote, busy, onAsk }: Pro
   );
 }
 
-function TestRow({
+/** One kitchen-table test as a ground row of answer chips (DESIGN.md §4 "Test rows"); the stone page's tests editor uses it too. */
+export function TestRow({
   kind,
   hint,
   value,
