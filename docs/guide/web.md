@@ -85,10 +85,14 @@ pnpm dev
 
 ## A stone
 
-`app/stones/[id]/page.tsx` is one stone, read by `readStone` in `lib/specimens.ts`. It is DESIGN.md §5's specimen page as far as Phase 1 goes. Mineral properties, handling notes, elements, the Mohs scale, relatives, the story log and the box label arrive with Phases 2 and 3.
+`app/stones/[id]/page.tsx` is one stone, read by `readStone` in `lib/specimens.ts`. It is DESIGN.md §5's specimen page as far as the data goes: Mindat's properties are here (#23); About, handling notes, elements, the Mohs scale, relatives, the story log and the box label arrive later in Phases 2 and 3.
 
 - **The breadcrumb** ("Collection › Galena").
-- **The title block:** the name at 60 px (40 on a phone), the variety under it, and tags for the kind, the photo count, how many of that mineral the collection holds, and when it was added.
+- **The title block:**
+  - the name at 60 px (40 on a phone);
+  - one line with the variety and the formula, in Courier Prime with real subscripts ("Selenite · CaSO₄·2H₂O");
+  - the tags: the mineral class ("Halide"), else the kind ("Rock", with the rock info mark); "Mohs 4"; "Can glow under UV" in DESIGN.md's `uv` violet when Mindat says it can; then the photo count, how many of that mineral the collection holds, and when it was added.
+  - A tag whose word is a mineralogical term carries its info mark beside the pill (`TagTerm`).
 - **The gallery** (`components/gallery.tsx`):
   - The hero is in the dark photo well, 640 px tall (360 on a phone), contained rather than cropped, with a caption, "Your photo · Oct 31, 2026".
   - With more than one photo, "More photos of this stone" is a 2-across grid of thumbnail buttons that swap the hero (aria-pressed, a 4 px azurite border).
@@ -105,6 +109,22 @@ pnpm dev
   - Which rows show first is fixed when the page opens, so a save never moves them.
   - "Save the answers" appears once something changed, and "Not saved yet." says so meanwhile.
   - The check against Mindat arrives in Phase 2.
+- **Mineral properties** (#23), after the tests, from the record Jasper fetched for the stone's mineral (#21, `jasper.md`).
+  - **Reading.** `readStone` reads the mineral's record (`minerals.mindat_id`) and each `varietyof` above it, with `detail` parsed.
+  - **Shaping.** `propertyCard` in `lib/mindat.ts` (pure, tested on Mindat's own strings) turns it into cells. Each value comes from the first record in the chain that has one, so a chalcedony takes its crystal system from Quartz. Mindat's `0`, `"0"` and `""` mean none.
+  - **The cells**, in the canvas's order: Formula, Mohs hardness, Crystal system, Luster, Streak, Cleavage, Specific gravity, Fluorescence. Each is a `ground` tile with its label's info mark, the value in Zilla 24 (the formula in Courier Prime), in auto-fill columns of at least 230 px, so a phone shows one column and a laptop three. A cell with no value is not drawn.
+  - **The rules:**
+    - The formula is split into runs drawn as real `<sub>`/`<sup>`; any other tag is dropped with its text kept. Mindat's HTML never reaches the page as HTML.
+    - Crystal system and luster are put in plain words ("Cubic (isometric)", "Glassy (vitreous)"), luster taking the first value listed. Cleavage drops Mindat's slashes ("Poor/Indistinct" is "Poor").
+    - Specific gravity is the measured value, or a range when `dmeas2` is larger, else the calculated one, at two decimals rounded half up on the written digits.
+    - Fluorescence reads `uv`, else `luminescence`: "Doesn’t glow" when the text is only a negative, "Rarely glows" when it opens with "not usually" or "rarely", "Can glow" when either field speaks of fluorescence or UV, and no cell otherwise. Under the last two, Mindat's first sentence, with LW and SW spelled out, cut near 100 characters.
+    - The class is Strunz's (`strunz10ed1`), singular.
+  - **The heading's source line** is "From Mindat · tap i to learn what a word means". "Mindat" links to the mineral's page on mindat.org, the attribution the README's Credits promise.
+  - **With no cells**, one line takes the grid's place:
+    - a rock (every rock: Mindat records none of these for one) says Mindat lists no single formula or hardness, with the rock info mark;
+    - a name Mindat doesn't have says so, with "Change the name". It is found by folding the name as Jasper does (`fold`) and looking it up in `mindat_terms`.
+    - Before Jasper has linked or fetched it, the line says Jasper hasn't looked it up yet. On a station without a Mindat key it stays that way.
+  - **The info marks** are new glossary entries (formula, crystal system, luster, cleavage, specific gravity, mineral class, rock) beside the tests' hardness, streak and fluorescence. They float, as every mark does. The canvas's note block under the grid, with examples from the household's own stones, waits for the glossary issue.
 - **How it was named**, from the job whose naming made the stone (`readJob`):
   - Jasper's pills as they were: the chosen name solid azurite with a check, the others outlined with their word. A typed name no model offered leads, marked "typed by you".
   - The date, and how the person knew (`HOW_SUMMARY` in `lib/naming.ts`, beside the confirm screen's chip labels).
@@ -112,7 +132,7 @@ pnpm dev
   - "Change the name", which goes to that job's confirm screen.
 - **Remove** (`RemoveStone`): two taps, "Remove this stone" then "Yes, remove it", with "Keep it" to back out. `DELETE /api/stones/[id]` removes the photo rows and the jobs that brought them, found through the photos and through the stone's confirmations; candidates, suggested tests and confirmations cascade. It then removes the stone, and the mineral if it was the last of its kind, and unlinks the files and their thumbnails. Then home.
 
-Tests: `lib/collection.test.ts` (search, the kind and source filters, both sorts, the chips, the count line, the side column, date labels, what changed today, missing details) and `lib/greeting.test.ts`.
+Tests: `lib/collection.test.ts` (search, the kind and source filters, both sorts, the chips, the count line, the side column, date labels, what changed today, missing details), `lib/greeting.test.ts`, and `lib/mindat.test.ts` (formula runs, plain text, the luster, gravity and fluorescence rules on Mindat's own strings, inheritance up the chain, the card's four states, and `fold` on Jasper's cases).
 
 ## Adding a rock
 

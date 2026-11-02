@@ -1,22 +1,27 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Fragment } from "react";
 import { Gallery } from "@/components/gallery";
 import { CheckIcon } from "@/components/icons";
 import { RemoveStone, StoneEditor } from "@/components/stone-editor";
+import { Term } from "@/components/term";
 import { TestsEditor } from "@/components/tests-editor";
 import { fullDay, KIND_LABEL } from "@/lib/collection";
+import type { GlossaryKey } from "@/lib/glossary";
 import { readJob, withReadDb, type JobView } from "@/lib/jobs";
+import type { PropertyKey, Segment } from "@/lib/mindat";
 import { HOW_SUMMARY } from "@/lib/naming";
 import { sameStone } from "@/lib/names";
 import { stoneName } from "@/lib/pills";
-import { readStone } from "@/lib/specimens";
+import { readStone, type StoneView } from "@/lib/specimens";
 
-// /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 1
-// has data: the breadcrumb, the title block, the photo gallery, then two
-// columns. Main: "This specimen" (the editable specimen label) and
-// "Kitchen-table tests". Side: "How it was named" and Remove. Mineral
-// properties, handling notes, elements, the Mohs scale, relatives, the story
-// log and the box label arrive with Phases 2 and 3.
+// /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 2
+// has data: the breadcrumb, the title block (with the formula and Mindat's
+// tags, #23), the photo gallery, then two columns. Main: "This specimen" (the
+// editable specimen label), "Kitchen-table tests" and "Mineral properties".
+// Side: "How it was named" and Remove. About, handling notes, elements, the
+// Mohs scale, relatives, the story log and the box label arrive later in
+// Phases 2 and 3.
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -36,6 +41,7 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
   if (!data) notFound();
   const { stone, naming } = data;
   const name = stoneName(stone.name);
+  const props = stone.properties;
 
   return (
     <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-8 px-4 pb-16 pt-6 sm:px-10 sm:pb-[72px] sm:pt-8">
@@ -57,9 +63,32 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
 
       <header className="flex flex-col gap-3">
         <h1 className="text-[40px] leading-[1.05] sm:text-page-title">{name}</h1>
-        {stone.variety ? <p className="text-[22px] text-ink-2">{stone.variety}</p> : null}
-        <p className="flex flex-wrap gap-2">
-          <span className="tag">{KIND_LABEL[stone.kind]}</span>
+        {stone.variety || props.formula ? (
+          <p className="text-[22px] text-ink-2">
+            {stone.variety}
+            {stone.variety && props.formula ? " · " : null}
+            {props.formula ? (
+              <span className="font-label font-bold text-ink">
+                <span className="sr-only">Formula: </span>
+                <Formula segments={props.formula} />
+              </span>
+            ) : null}
+          </p>
+        ) : null}
+        <p className="flex flex-wrap items-center gap-2">
+          {props.mineralClass ? (
+            <TagTerm k="mineralClass">{props.mineralClass}</TagTerm>
+          ) : stone.kind === "rock" ? (
+            <TagTerm k="rock">{KIND_LABEL.rock}</TagTerm>
+          ) : (
+            <span className="tag">{KIND_LABEL[stone.kind]}</span>
+          )}
+          {props.mohs ? <TagTerm k="hardness">{`Mohs ${props.mohs}`}</TagTerm> : null}
+          {props.glow === "can" ? (
+            <TagTerm k="fluorescence" uv>
+              Can glow under UV
+            </TagTerm>
+          ) : null}
           <span className="tag">{stone.photos.length === 1 ? "1 photo" : `${stone.photos.length} photos`}</span>
           {stone.sameMineral > 1 ? <span className="tag">{`${stone.sameMineral} ${name} in your collection`}</span> : null}
           <span className="tag">{`Added ${stone.added}`}</span>
@@ -82,6 +111,7 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
             </h2>
             <TestsEditor id={stone.id} initial={stone.tests} />
           </section>
+          <MineralProperties stone={stone} name={name} />
         </div>
 
         <aside aria-label="About its naming" className="flex w-full min-w-0 flex-[1_1_320px] flex-col gap-6 lg:max-w-sidebar">
@@ -156,5 +186,107 @@ function ChosenPill({ name, note }: { name: string; note: string }) {
       </span>
       <span className="rounded-pill bg-white/15 px-3 py-1 text-tag font-bold">{note}</span>
     </li>
+  );
+}
+
+const TERM: Record<PropertyKey, GlossaryKey> = {
+  formula: "formula",
+  hardness: "hardness",
+  crystalSystem: "crystalSystem",
+  luster: "luster",
+  streak: "streak",
+  cleavage: "cleavage",
+  specificGravity: "specificGravity",
+  fluorescence: "fluorescence",
+};
+
+/**
+ * DESIGN.md §5's Mineral properties card (#23): Mindat's cells in the canvas's
+ * order, each label with its info mark, none drawn without a value. With no
+ * cells, one line in the card's place says why: a rock, a name Mindat doesn't
+ * have, or a record Jasper hasn't fetched yet.
+ */
+function MineralProperties({ stone, name }: { stone: StoneView; name: string }) {
+  const p = stone.properties;
+  return (
+    <section aria-labelledby="props-h" className="card flex flex-col gap-5 px-5 py-6 sm:px-8 sm:py-7">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+        <h2 id="props-h" className="text-section leading-tight">
+          Mineral properties
+        </h2>
+        {p.mindatId !== null ? (
+          // A flex row, so on a phone the hint wraps whole under the link's 48 px target.
+          <p className="flex flex-wrap items-center text-meta text-ink-2">
+            From
+            <a href={`https://www.mindat.org/min-${p.mindatId}.html`} target="_blank" rel="noreferrer" className="text-link">
+              Mindat
+            </a>
+            {p.state === "cells" ? (
+              <span>
+                <span aria-hidden className="max-sm:hidden">
+                  {"· "}
+                </span>
+                tap <b className="text-azurite">i</b> to learn what a word means
+              </span>
+            ) : null}
+          </p>
+        ) : null}
+      </div>
+      {p.state === "cells" ? (
+        <dl className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-3">
+          {p.cells.map((c) => (
+            <div key={c.key} className="flex flex-col gap-1 rounded-tile bg-ground px-[18px] py-4">
+              <dt className="text-meta font-bold text-ink-2">
+                <Term k={TERM[c.key]}>{c.label}</Term>
+              </dt>
+              <dd className={c.segments ? "font-label text-[24px] font-bold leading-snug" : "font-display text-[24px] font-semibold leading-snug"}>
+                {c.segments ? <Formula segments={c.segments} /> : c.value}
+              </dd>
+              {c.detail ? <dd className="text-meta text-ink-2">{c.detail}</dd> : null}
+            </div>
+          ))}
+        </dl>
+      ) : p.state === "empty" ? (
+        <p className="text-ink-2">
+          {stone.kind === "rock" ? (
+            <>
+              {`Mindat lists no single formula or hardness for ${name}: a `}
+              <Term k="rock">rock</Term>
+              {" is a mix of minerals."}
+            </>
+          ) : (
+            `Mindat has no properties recorded for ${name}.`
+          )}
+        </p>
+      ) : p.state === "unknown" ? (
+        <>
+          <p className="text-ink-2">{`Mindat has no entry called ${name}. If it goes by another name there, the name can be changed to Mindat’s.`}</p>
+          {stone.namedBy ? (
+            <Link href={`/name/${stone.namedBy}`} className="text-link self-start">
+              Change the name
+            </Link>
+          ) : null}
+        </>
+      ) : (
+        <p className="text-ink-2">{`Jasper hasn’t looked ${name} up in Mindat yet.`}</p>
+      )}
+    </section>
+  );
+}
+
+/** A formula's runs, with real subscripts and superscripts. */
+function Formula({ segments }: { segments: Segment[] }) {
+  return segments.map((s, i) =>
+    s.pos === "sub" ? <sub key={i}>{s.text}</sub> : s.pos === "sup" ? <sup key={i}>{s.text}</sup> : <Fragment key={i}>{s.text}</Fragment>,
+  );
+}
+
+/** A title-block tag whose word is a mineralogical term: the pill, then its info mark beside it. */
+function TagTerm({ k, uv = false, children }: { k: GlossaryKey; uv?: boolean; children: string }) {
+  return (
+    <span className="inline-flex items-center">
+      <span className={uv ? "tag bg-uv text-uv-ink" : "tag"}>{children}</span>
+      <Term k={k} bare />
+    </span>
   );
 }
