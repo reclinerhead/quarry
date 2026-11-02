@@ -1,0 +1,29 @@
+# Jasper on orchid (issue #10): the identification worker, `python -m jasper`
+# from the repo's own venv (.venv/, built by Servers/install-orchid.sh with uv
+# on Python 3.13). One line per job in the journal, with what each model said
+# and what the job cost:
+#
+#     job 7 identified: haiku Galena 0.82 · flash Galena 0.90 · $0.0041 · 6.2 s
+#
+# The database path, the data directory and the gateway key come from the
+# environment file outside the repo (root-owned, 0600; systemd reads it
+# before dropping to todd). Jasper exits 2 when the key is missing or a model
+# slug is malformed; restarting cannot fix either, so exit 2 is not retried.
+
+[Unit]
+Description=The Quarry -- Jasper, the identification worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=todd
+WorkingDirectory=/home/todd/quarry
+EnvironmentFile=/etc/quarry/quarry.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/todd/quarry/.venv/bin/python -m jasper
+Restart=on-failure
+RestartSec=30
+RestartPreventExitStatus=2
+
+[Install]
+WantedBy=multi-user.target

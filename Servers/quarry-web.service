@@ -1,0 +1,34 @@
+# The Quarry's web app on orchid (issue #10): the production Next build,
+# served by `next start` on 127.0.0.1:3020 (3000 is the Aviary's, 3010 the
+# Conservatory's, 3100 Ingenia's). Caddy fronts it as https://quarry.lan
+# (Servers/Caddyfile.quarry), so it listens on loopback only: the door is the
+# one way in.
+#
+# Installed by Servers/install-orchid.sh to /etc/systemd/system/, which also
+# writes the node-path.conf drop-in: node lives under nvm and systemd does not
+# load nvm, so PATH is pinned to the versioned bin there (an nvm upgrade that
+# changes the directory is exactly the edit that breaks this; re-run the
+# install script after one).
+#
+# QUARRY_DB and QUARRY_DATA come from the environment file outside the repo
+# (root-owned, 0600; systemd reads it before dropping to todd). The gateway
+# key in the same file is Jasper's; the web app never calls a model.
+
+[Unit]
+Description=The Quarry -- web app (next start on :3020)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=todd
+WorkingDirectory=/home/todd/quarry/web
+EnvironmentFile=/etc/quarry/quarry.env
+ExecStart=/home/todd/quarry/web/node_modules/.bin/next start --hostname 127.0.0.1 --port 3020
+Restart=on-failure
+RestartSec=5
+# Next's graceful shutdown waits on browser keep-alive connections, up to
+# systemd's 90 s default; the app is stateless, so stops take 5 s at most.
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target
