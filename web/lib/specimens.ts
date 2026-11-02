@@ -5,6 +5,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { shortDay, type Acquired, type Tile } from "./collection";
 import { cleanAnswers, type Answers } from "./household-tests";
+import { fold, propertyCard, type ChainRecord, type PropertyCard } from "./mindat";
+import { chainOf, MAX_DEPTH } from "./names";
 import { thumbPathFor } from "./photos";
 import type { StoneKind } from "./pills";
 
@@ -63,12 +65,49 @@ export type StoneView = {
   namedBy: number | null; // the job whose naming made the stone, for "How it was named"
   morePhotosNamed: number; // later photos named "same stone as the last one"
   places: string[]; // every place a stone lives, most stones first, for the location field
+  properties: PropertyCard; // the Mineral properties card, from the mineral's Mindat record (#23)
 };
+
+/**
+ * The mineral's Mindat card: its own record (`minerals.mindat_id`, linked by
+ * Jasper, #21) and each `varietyof` above it, with the whole record parsed.
+ * An unlinked name cached in `mindat_terms` with no record is one Mindat doesn't have.
+ */
+function readProperties(db: DatabaseSync, name: string, mindatId: number | null): PropertyCard {
+  if (mindatId === null) {
+    const term = db.prepare("SELECT mindat_id FROM mindat_terms WHERE term = ?").get(fold(name)) as { mindat_id: number | null } | undefined;
+    return propertyCard([], term !== undefined && term.mindat_id === null);
+  }
+  const rows = db
+    .prepare(
+      `WITH RECURSIVE up(id, depth) AS (
+         SELECT ?, 1
+         UNION
+         SELECT r.varietyof, up.depth + 1 FROM up JOIN mindat_records r ON r.id = up.id
+          WHERE r.varietyof IS NOT NULL AND up.depth < ?)
+       SELECT id, name, entrytype, varietyof, hmin, hmax, streak, detail FROM mindat_records WHERE id IN (SELECT id FROM up)`,
+    )
+    .all(mindatId, MAX_DEPTH) as Array<Omit<ChainRecord, "detail"> & { varietyof: number | null; detail: string | null }>;
+  const byId = new Map(
+    rows.map((r) => [r.id, { id: r.id, name: r.name, entrytype: r.entrytype, varietyof: r.varietyof, hmin: r.hmin, hmax: r.hmax, streak: r.streak, detail: parseDetail(r.detail) }]),
+  );
+  return propertyCard(chainOf(mindatId, byId).map((r) => byId.get(r.id)!), false);
+}
+
+function parseDetail(json: string | null): Record<string, unknown> | null {
+  if (json === null) return null;
+  try {
+    const v: unknown = JSON.parse(json);
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
 
 export function readStone(db: DatabaseSync, id: number): StoneView | null {
   const s = db
     .prepare(
-      `SELECT sp.id, sp.mineral_id, m.name, m.kind, sp.variety, sp.associates, sp.found_at, sp.acquired, sp.acquired_on,
+      `SELECT sp.id, sp.mineral_id, m.name, m.kind, m.mindat_id, sp.variety, sp.associates, sp.found_at, sp.acquired, sp.acquired_on,
               sp.location, sp.notes, sp.tests, sp.created_at
          FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id WHERE sp.id = ?`,
     )
@@ -78,6 +117,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
         mineral_id: number;
         name: string;
         kind: StoneKind;
+        mindat_id: number | null;
         variety: string | null;
         associates: string | null;
         found_at: string | null;
@@ -119,5 +159,6 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     namedBy: confirmations[0]?.job_id ?? null,
     morePhotosNamed: Math.max(0, confirmations.length - 1),
     places: places.map((p) => p.location),
+    properties: readProperties(db, s.name, s.mindat_id),
   };
 }

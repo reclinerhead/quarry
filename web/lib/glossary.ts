@@ -41,6 +41,34 @@ export const GLOSSARY = {
     term: "glows under UV",
     text: "Some minerals glow in bright colours under an ultraviolet flashlight, though they look ordinary in daylight. Fluorite gave the glow its name, fluorescence. Not every piece of a mineral glows, so a no proves little.",
   },
+  formula: {
+    term: "formula",
+    text: "The chemical recipe of a mineral: which elements it is made of, and in what proportions. CaF₂ means one atom of calcium for every two of fluorine. The small numbers below the line count the atoms.",
+  },
+  crystalSystem: {
+    term: "crystal system",
+    text: "The shape a mineral’s atoms stack into, one of seven families. Cubic minerals such as fluorite, pyrite and halite grow as cubes, while trigonal quartz grows six-sided points. A tumbled stone has lost the shape, but its atoms still stack the same way.",
+  },
+  luster: {
+    term: "luster",
+    text: "How a mineral’s surface catches the light. Glassy (vitreous) shines like a window, metallic like a spoon, and waxy, pearly, silky or dull describe the rest. It is worth a look before any test.",
+  },
+  cleavage: {
+    term: "cleavage",
+    text: "How a mineral splits along flat planes where its atoms hold together least. Perfect cleavage, as in fluorite and calcite, means a knock can pop off a clean, flat-sided piece. Quartz has almost none, so it breaks in curved, shell-like surfaces instead.",
+  },
+  specificGravity: {
+    term: "specific gravity",
+    text: "How heavy a mineral is compared with the same amount of water. Quartz is about 2.7 and feels ordinary in the hand, while galena is 7.6 and feels surprisingly heavy for its size.",
+  },
+  mineralClass: {
+    term: "mineral class",
+    text: "Minerals are sorted into ten classes by the chemistry at their heart: halides, sulfides, oxides, carbonates, silicates and the rest. Fluorite is a halide because it is built on fluorine. Quartz is only silicon and oxygen, so this system files it with the oxides.",
+  },
+  rock: {
+    term: "rock",
+    text: "A mix of minerals, or of grains of them, rather than a single mineral. Granite is quartz, feldspar and mica together, so it has no one formula or hardness. That is why a rock’s card says less than a mineral’s.",
+  },
 } satisfies Record<string, GlossaryEntry>;
 
 export type GlossaryKey = keyof typeof GLOSSARY;
