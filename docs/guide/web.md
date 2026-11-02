@@ -117,7 +117,7 @@ pnpm dev
     - The formula is split into runs drawn as real `<sub>`/`<sup>`; any other tag is dropped with its text kept. Mindat's HTML never reaches the page as HTML.
     - Crystal system and luster are put in plain words ("Cubic (isometric)", "Glassy (vitreous)"), luster taking the first value listed. Cleavage drops Mindat's slashes ("Poor/Indistinct" is "Poor").
     - Specific gravity is the measured value, or a range when `dmeas2` is larger, else the calculated one, at two decimals rounded half up on the written digits.
-    - Fluorescence reads `uv`, else `luminescence`: "Doesn’t glow" when the text is only a negative, "Rarely glows" when it opens with "not usually" or "rarely", "Can glow" when either field speaks of fluorescence or UV, and no cell otherwise. Under the last two, Mindat's first sentence, with LW and SW spelled out, cut near 100 characters.
+    - Fluorescence reads `uv`, else `luminescence`: "Doesn’t glow" when the text is only a negative, "Rarely glows" when it opens with "not usually" or "rarely", "Can glow" when either field speaks of fluorescence or UV, and no cell otherwise. Under the last two, Mindat's words in whole sentences, with LW and SW spelled out: the first sentence always, however long, then the next ones while the note stays within 160 characters. A sentence ends at `.`, `!` or `?` before a capital letter, so "et al. 2003" runs on. Nothing is cut inside a sentence; the rest is on Mindat.
     - The class is Strunz's (`strunz10ed1`), singular.
   - **The heading's source line** is "From Mindat · tap i to learn what a word means". "Mindat" links to the mineral's page on mindat.org, the attribution the README's Credits promise.
   - **With no cells**, one line takes the grid's place:

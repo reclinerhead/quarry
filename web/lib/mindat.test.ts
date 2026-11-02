@@ -10,7 +10,7 @@ function rec(id: number, name: string, entrytype: string, d: Record<string, unkn
 const FLUORITE = rec(1576, "Fluorite", "mineral", {
   mindat_formula: "CaF<sub>2</sub>", csystem: "Isometric", lustretype: "Vitreous,Dull", cleavagetype: "Perfect",
   dmeas: "3.175", dmeas2: "3.56", dcalc: "3.181", strunz10ed1: "3",
-  uv: "Blue under LW-UV, due to Eu<sup>2+</sup>; other colors caused by different activators (white & cream - organic matter). Red (Mapimi, Mexico), pink.",
+  uv: "Blue under LW-UV, due to Eu<sup>2+</sup>; other colors caused by different activators (white & cream - organic matter). Red (Mapimi, Mexico), pink (Doña Ana claims, AZ), white (Sterling Hill, NJ). Green response points to ytterbium (Siddike et al. 2003).\r\nMay also be phosphorescent.\r\n\r\nA distinct peak for photoluminescence is observed at 424 nm in all samples, corresponding to the characteristic luminescence of the rare-earth element Eu2+. The emitted light falls within the violet-blue region of the visible spectrum.",
   luminescence: "Fluorescent, Short UV=blue, Long UV=blue.",
 }, 4, 4, "White");
 const QUARTZ = rec(3337, "Quartz", "mineral", {
@@ -20,7 +20,7 @@ const QUARTZ = rec(3337, "Quartz", "mineral", {
 const CHALCEDONY = rec(960, "Chalcedony", "variety", {
   mindat_formula: "SiO<sub>2</sub>", csystem: "", lustretype: "Waxy,Dull", cleavagetype: "None Observed",
   dmeas: "2.6", dmeas2: "2.6", dcalc: "0", strunz10ed1: "0",
-  uv: "None in a pure specimen, however, green fluorescence in short-wave UV is common in chalcedony.", luminescence: "",
+  uv: "None in a pure specimen, however, green fluorescence in short-wave UV light is very common at many localities.", luminescence: "",
 }, 6.5, 7, "White");
 const AMETHYST = rec(198, "Amethyst", "variety", {
   mindat_formula: "SiO<sub>2</sub>", csystem: "", lustretype: "Vitreous", cleavagetype: "", dmeas: "0", dmeas2: "0", dcalc: "0", strunz10ed1: "0",
@@ -127,13 +127,23 @@ describe("glowOf", () => {
     expect(glowOf(null, null)).toBeNull();
   });
 
-  it("gives Mindat's first sentence, markup removed, wave bands spelled out, cut at a word", () => {
-    expect(glowOf("Red (SW UV)[Searles Lake, CA]. Orange (SW) [Poland]", "")?.detail).toBe("Red (short-wave UV)[Searles Lake, CA].");
+  it("gives Mindat's words in whole sentences, markup removed, wave bands spelled out", () => {
+    expect(glowOf(CHALCEDONY.detail!.uv as string, "")?.detail).toBe(CHALCEDONY.detail!.uv);
+    expect(glowOf("Red (SW UV)[Searles Lake, CA]. Orange (SW) [Poland]", "")?.detail).toBe("Red (short-wave UV)[Searles Lake, CA]. Orange (short-wave) [Poland]");
     expect(glowOf("Rarely yellow, white, orange, greenish-yellow", "")?.detail).toBe("Rarely yellow, white, orange, greenish-yellow");
-    const fluorite = glowOf(FLUORITE.detail!.uv as string, "")!.detail!;
-    expect(fluorite.startsWith("Blue under long-wave UV, due to Eu2+; other colors")).toBe(true);
-    expect(fluorite.endsWith("…")).toBe(true);
-    expect(fluorite.length).toBeLessThanOrEqual(101);
+  });
+
+  it("adds sentences after the first while the note stays within 160 characters", () => {
+    expect(glowOf(FLUORITE.detail!.uv as string, "")?.detail).toBe(
+      "Blue under long-wave UV, due to Eu2+; other colors caused by different activators (white & cream - organic matter).",
+    );
+    const gypsum = "Common and varied. The most common colours of fluorescence are baby blue and shades of golden yellow to yellow. Selenite crystals often exhibit zoned \"hourglass\" fluorescence in zones that may, or may not, be evident in ordinary light.";
+    expect(glowOf(gypsum, "")?.detail).toBe("Common and varied. The most common colours of fluorescence are baby blue and shades of golden yellow to yellow.");
+  });
+
+  it("keeps the first sentence whole however long, and doesn't end one at \"et al.\"", () => {
+    const long = "Green, after Siddike et al. 2003, who traced the response to ytterbium in fluorite from many localities and compared it with the other activators known in the mineral. Also blue.";
+    expect(glowOf(long, "Fluorescent")?.detail).toBe(long.slice(0, long.indexOf(" Also")));
   });
 });
 

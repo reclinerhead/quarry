@@ -181,15 +181,23 @@ export function gravityLabel(dmeas: string | null, dmeas2: string | null, dcalc:
 const ONLY_NO = /^(none|not fluorescent( in (uv|ultraviolet light))?|non-?fluorescent)\.?$/i;
 const RARELY = /^(not usually|rarely)\b/i;
 const ABOUT_UV = /fluoresc|\buv\b|\b[ls]w\b/i;
-const CUT = 100;
+const NOTE = 160;
+/** A sentence ends at . ! or ? before a capital letter or the end, so "et al. 2003" and "e.g. calcite" run on. */
+const SENTENCE = /.*?[.!?](?=\s+["“(]?\p{Lu}|\s*$)|.+$/gu;
 
-/** The first sentence of Mindat's words, LW and SW spelled out, cut at a word near 100 characters. */
+/**
+ * Mindat's words in whole sentences, LW and SW spelled out: the first always,
+ * however long, then the next ones while the note stays within 160 characters.
+ */
 function glowDetail(text: string): string {
-  const first = /^.*?[.!?](?=\s|$)/.exec(text)?.[0] ?? text;
-  const s = first.replace(/\b([LS])W(-?\s?UV)?\b/g, (_, w: string, uv?: string) => `${w === "L" ? "long" : "short"}-wave${uv ? " UV" : ""}`);
-  if (s.length <= CUT) return s;
-  const at = s.lastIndexOf(" ", CUT);
-  return `${s.slice(0, at > 0 ? at : CUT).replace(/[\s,;:(–-]+$/, "")}…`;
+  const s = text.replace(/\b([LS])W(-?\s?UV)?\b/g, (_, w: string, uv?: string) => `${w === "L" ? "long" : "short"}-wave${uv ? " UV" : ""}`);
+  const [first, ...rest] = (s.match(SENTENCE) ?? [s]).map((p) => p.trim()).filter(Boolean);
+  let note = first;
+  for (const p of rest) {
+    if (note.length + 1 + p.length > NOTE) break;
+    note += ` ${p}`;
+  }
+  return note;
 }
 
 /**
