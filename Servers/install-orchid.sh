@@ -17,9 +17,10 @@
 #   2. the data directory outside the checkout, owned by todd
 #   3. the environment file at /etc/quarry/quarry.env (copied from the example
 #      when missing)
-#   4. the gateway key: when the file has none, asks whether to use the
-#      Conservatory's key or a new one, and writes it (never echoed, never on
-#      a command line)
+#   4. the keys: when the file has no gateway key, asks whether to use the
+#      Conservatory's key or a new one; when it has no Mindat key (#18),
+#      asks for one, and Enter skips it. Either is written without being
+#      echoed or put on a command line
 #   5. Jasper's venv (.venv/ in the checkout) and its packages
 #   6. the database: created and migrated, so the web app has one before
 #      Jasper's first job
@@ -66,14 +67,15 @@ env_value() {
     return 1
 }
 
-# Rewrite the AI_GATEWAY_API_KEY= line of $ENVF. Builtins only (printf and
-# read are not processes), so the key never appears in any command's argv.
+# Rewrite the NAME= line of $ENVF (AI_GATEWAY_API_KEY or MINDAT_API_KEY).
+# Builtins only (printf and read are not processes), so the key never appears
+# in any command's argv.
 write_key() {
-    local key="$1" tmp line
+    local name="$1" key="$2" tmp line
     tmp=$(mktemp "$ENVDIR/.quarry.env.XXXXXX") || die "mktemp in $ENVDIR"
     while IFS= read -r line || [ -n "$line" ]; do
-        if [[ "$line" == AI_GATEWAY_API_KEY=* ]]; then
-            printf 'AI_GATEWAY_API_KEY=%s\n' "$key"
+        if [[ "$line" == "$name="* ]]; then
+            printf '%s=%s\n' "$name" "$key"
         else
             printf '%s\n' "$line"
         fi
@@ -129,10 +131,15 @@ chmod 0600 "$ENVF"
 for v in QUARRY_DB QUARRY_DATA AI_GATEWAY_API_KEY; do
     grep -q "^$v=" "$ENVF" || die "$ENVF lacks a $v= line (compare it with Servers/quarry.env.example)"
 done
+# Mindat is optional (#18), so a file from before it gets the line added rather than a stop.
+if ! grep -q "^MINDAT_API_KEY=" "$ENVF"; then
+    printf '\n# OpenMindat API key (mindat.org). Jasper only, and optional.\nMINDAT_API_KEY=\n' >> "$ENVF" || die "could not add MINDAT_API_KEY= to $ENVF"
+    ok "added an empty MINDAT_API_KEY= line (step 4 asks for it)"
+fi
 DB=$(env_value QUARRY_DB "$ENVF")
 [ -n "$DB" ] || die "QUARRY_DB is empty in $ENVF"
 
-say "4/10 The gateway key"
+say "4/10 The keys"
 if has_key; then
     ok "AI_GATEWAY_API_KEY is set (left as is; to change it: sudoedit $ENVF, then sudo systemctl restart jasper)"
 elif [ ! -t 0 ]; then
@@ -151,7 +158,7 @@ else
     case "$choice" in
         1)
             [ -n "$house_key" ] || die "the Conservatory's env file has no key to share; re-run and pick 2"
-            write_key "$house_key"
+            write_key AI_GATEWAY_API_KEY "$house_key"
             ok "the Conservatory's key is now the Quarry's too"
             ;;
         2)
@@ -159,7 +166,7 @@ else
             echo
             [ -n "$new_key" ] || die "no key entered; re-run when you have it"
             [[ "$new_key" =~ [[:space:]] ]] && die "that key has a space in it; re-run and paste it again"
-            write_key "$new_key"
+            write_key AI_GATEWAY_API_KEY "$new_key"
             ok "the new key is in $ENVF"
             ;;
         *)
@@ -167,6 +174,26 @@ else
             ;;
     esac
     unset house_key new_key
+fi
+has_mindat_key() { [ -n "$(env_value MINDAT_API_KEY "$ENVF")" ]; }
+if has_mindat_key; then
+    ok "MINDAT_API_KEY is set (left as is; to change it: sudoedit $ENVF, then sudo systemctl restart jasper)"
+elif [ ! -t 0 ]; then
+    warn "MINDAT_API_KEY is empty and nobody is at the keyboard to ask; Jasper matches candidates by name only"
+else
+    echo "    With a Mindat key, Jasper looks each suggestion up in Mindat, so two names for"
+    echo "    one stone (Quartz and Chalcedony, both saying agate) count as agreeing. Optional."
+    read -r -s -p "    Paste the Mindat API key (it will not show), or just Enter to skip: " mindat_key
+    echo
+    if [ -z "$mindat_key" ]; then
+        warn "no Mindat key; candidates are matched by name only (re-run this script to add one)"
+    elif [[ "$mindat_key" =~ [[:space:]] ]]; then
+        die "that key has a space in it; re-run and paste it again"
+    else
+        write_key MINDAT_API_KEY "$mindat_key"
+        ok "the Mindat key is in $ENVF"
+    fi
+    unset mindat_key
 fi
 
 say "5/10 Jasper's venv ($REPO/.venv)"
@@ -315,6 +342,10 @@ say "10/10 Left for you"
 left=0
 if ! has_key; then
     echo "    - the gateway key: re-run this script, and pick 1 or 2"
+    left=1
+fi
+if ! has_mindat_key; then
+    echo "    - the Mindat key (optional): re-run this script and paste it when asked"
     left=1
 fi
 if [ "$door_ok" -eq 0 ] && ! grep -qxF "$IMPORT_LINE" "$CADDY_AVIARY" 2>/dev/null; then

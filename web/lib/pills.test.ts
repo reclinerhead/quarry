@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { MindatRecord } from "./names";
 import { byModel, planPills, stoneName, stripLine, verdictLine, type Candidate } from "./pills";
 
 const HAIKU = "anthropic/claude-haiku-5.5";
@@ -65,6 +66,59 @@ describe("planPills", () => {
     const plan = planPills([...cands(HAIKU, "Quartz", ["Quartz", "Milky"], "Calcite", "Dolomite"), ...cands(FLASH, "Quartz", "Calcite", "Barite")], HAIKU);
     expect(names(plan)).toEqual(["Quartz", "Calcite", "Barite"]);
     expect(plan.pills[0].variety).toBe("Milky");
+  });
+
+  // #18: the candidates carry the Mindat chains Jasper looked up.
+  const R = (id: number, name: string, hmin: number | null = null, hmax = hmin): MindatRecord => ({ id, name, hmin, hmax });
+  const QUARTZ = R(3337, "Quartz", 7);
+  const CHALCEDONY = R(960, "Chalcedony", 6.5, 7);
+  const AGATE = [R(51, "Agate", 6.5, 7), CHALCEDONY, QUARTZ];
+  const withChain = (list: Candidate[], ...chains: MindatRecord[][]) => list.map((c, i) => ({ ...c, chain: chains[i] ?? [] }));
+
+  it("agrees on the agate named at two levels, with one pill for both models", () => {
+    const plan = planPills(
+      [...withChain(cands(HAIKU, ["Chalcedony", "Agate, banded"]), AGATE), ...withChain(cands(FLASH, ["Quartz", "Agate"]), AGATE)],
+      HAIKU,
+    );
+    expect(plan.verdict).toBe("probably");
+    expect(plan.pills).toHaveLength(1);
+    expect(plan.pills[0]).toMatchObject({ name: "Chalcedony", variety: "Agate, banded", models: [HAIKU, FLASH], word: "probably" });
+    expect(plan.pills[0].doubt).toBeUndefined();
+  });
+
+  it("says when the opinions agree on the stone but not its variety, and takes neither", () => {
+    const plan = planPills(
+      [
+        ...withChain(cands(HAIKU, ["Quartz", "Amethyst"]), [R(198, "Amethyst"), QUARTZ]),
+        ...withChain(cands(FLASH, ["Quartz", "Citrine"], ["Quartz", "Smoky"]), [R(1052, "Citrine"), QUARTZ], [R(3700, "Smoky Quartz"), QUARTZ]),
+      ],
+      HAIKU,
+    );
+    expect(plan.verdict).toBe("probably");
+    expect(plan.pills[0].doubt).toEqual({ level: "Quartz", guesses: ["Amethyst", "Citrine"] });
+    expect(plan.pills[0].variety).toBeNull(); // and the smoky further down doesn't fill it
+    expect(verdictLine(plan)).toBe("Probably Quartz");
+  });
+
+  it("takes the finer variety when one first choice is only less specific", () => {
+    const plan = planPills(
+      [...withChain(cands(HAIKU, ["Quartz", "Chalcedony"]), [CHALCEDONY, QUARTZ]), ...withChain(cands(FLASH, ["Chalcedony", "Agate"]), AGATE)],
+      HAIKU,
+    );
+    expect(plan.pills[0]).toMatchObject({ name: "Quartz", variety: "Agate", pick: { model: HAIKU, rank: 1 } });
+  });
+
+  it("leaves a real disagreement as it was", () => {
+    const plan = planPills([...withChain(cands(HAIKU, ["Quartz", "Agate"]), AGATE), ...withChain(cands(FLASH, "Calcite"), [R(859, "Calcite", 3)])], HAIKU);
+    expect(plan.verdict).toBe("could_be");
+    expect(names(plan)).toEqual(["Quartz", "Calcite"]);
+  });
+
+  it("notes on each pill a scratch answer it can't fit", () => {
+    const plan = planPills([...withChain(cands(HAIKU, ["Quartz", "Agate"]), AGATE), ...withChain(cands(FLASH, "Calcite"), [R(859, "Calcite", 3)])], HAIKU, {
+      glass: "no",
+    });
+    expect(plan.pills.map((p) => p.misfit?.test ?? null)).toEqual(["glass", null]);
   });
 
   it("puts the identifier first even when it sorts later", () => {

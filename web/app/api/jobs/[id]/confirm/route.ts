@@ -3,7 +3,9 @@
 //   { typedName }                a name they typed
 //   { sameAsSpecimenId }         another photo of the stone just named
 // plus an optional `variety` (the variety or shop name) for the first two,
-// which defaults to the pill's own. Finds or creates the mineral, creates the
+// which defaults to the pill's own: none when the two opinions agreed on the
+// stone but not its variety (#18), so a guess they disagreed on is never saved
+// as though it were known. Finds or creates the mineral, creates the
 // specimen with the job's notes and test answers, links the job's photos and
 // writes the confirmation, in one transaction. Saves at once: there is no
 // batch save.
@@ -23,7 +25,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { openReadWrite } from "@/lib/db";
-import { identifierSlug, nextWaitingJob, waitingJobIds, type ConfirmHow } from "@/lib/jobs";
+import { candidatesOf, identifierSlug, nextWaitingJob, waitingJobIds, type ConfirmHow } from "@/lib/jobs";
 import { norm } from "@/lib/names";
 import { planPills, type Candidate } from "@/lib/pills";
 
@@ -84,10 +86,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (!settled) return Response.json({ error: `Jasper is still looking (${job.status})` }, { status: 409 });
     if (db.prepare("SELECT 1 FROM confirmations WHERE job_id = ?").get(jobId)) return Response.json({ error: "already named" }, { status: 409 });
 
-    const candidates = db
-      .prepare("SELECT model, rank, name, variety, kind, confidence FROM candidates WHERE job_id = ?")
-      .all(jobId) as Candidate[];
-    const verdict = planPills(candidates, identifierSlug()).verdict;
+    const candidates = candidatesOf(db, jobId);
+    const plan = planPills(candidates, identifierSlug());
+    const verdict = plan.verdict;
 
     db.exec("BEGIN IMMEDIATE");
     let specimenId: number;
@@ -123,7 +124,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         }
         mineralName = c.name;
         kind = c.kind;
-        stoneVariety = variety ?? c.variety;
+        const pill = plan.pills.find((p) => p.pick.model === c.model && p.pick.rank === c.rank);
+        stoneVariety = variety ?? (pill ? pill.variety : c.variety);
         source = "pill";
         how = "suggestion";
       } else {

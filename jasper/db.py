@@ -17,7 +17,37 @@ SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 BASELINE_VERSION = 1
 
 # Append only. Never edit a step that has shipped.
-MIGRATIONS: list[tuple[int, str]] = []
+MIGRATIONS: list[tuple[int, str]] = [
+    # 2 (#18): the Mindat cache (jasper/mindat.py), and the record each candidate names.
+    (
+        2,
+        """
+-- One Mindat entry, as Jasper fetched it. Phase 2's enrichment grows this
+-- table rather than starting another.
+CREATE TABLE IF NOT EXISTS mindat_records (
+  id         INTEGER PRIMARY KEY,                  -- Mindat's geomaterial id
+  name       TEXT    NOT NULL,                     -- Agate
+  entrytype  TEXT    NOT NULL,                     -- mineral, variety, rock, ...
+  varietyof  INTEGER,                              -- the parent's id; NULL at the top (a species or a rock)
+  hmin       REAL,                                 -- Mohs; NULL when Mindat records none
+  hmax       REAL,
+  streak     TEXT,
+  fetched_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- Every term Jasper has asked Mindat about, folded (case, accents and
+-- apostrophes removed), with the id it found; NULL when Mindat has no such
+-- name, so it is asked once.
+CREATE TABLE IF NOT EXISTS mindat_terms (
+  term         TEXT    PRIMARY KEY,
+  mindat_id    INTEGER,
+  looked_up_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+ALTER TABLE candidates ADD COLUMN mindat_id INTEGER;  -- the record the candidate names; NULL until looked up, or unknown
+""",
+    ),
+]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else BASELINE_VERSION
 

@@ -5,6 +5,8 @@
 // way Jasper words the answers back to the models: the stone scratches glass,
 // but the knife, the coin and the fingernail scratch the stone.
 
+import type { MindatRecord } from "./names";
+
 export const TEST_KINDS = ["glass", "steel", "copper", "fingernail", "streak", "vinegar", "magnet", "uv"] as const;
 export type TestKind = (typeof TEST_KINDS)[number];
 
@@ -18,6 +20,46 @@ export const TESTS: Record<TestKind, { question: string; phrase: string }> = {
   magnet: { question: "Does a magnet stick to it?", phrase: "a fridge magnet" },
   uv: { question: "Does it glow under a UV light?", phrase: "a UV flashlight" },
 };
+
+/**
+ * The scratch tests and the Mohs hardness of each tool, read the way the
+ * household does them: yes to glass means the stone is harder than the glass,
+ * yes to the nail, the coin or the fingernail means it is softer than the tool.
+ */
+export const HARDNESS_TESTS: Partial<Record<TestKind, { mohs: number; stoneScratches: boolean; word: string }>> = {
+  glass: { mohs: 5.5, stoneScratches: true, word: "glass" },
+  steel: { mohs: 5.5, stoneScratches: false, word: "steel" },
+  copper: { mohs: 3.5, stoneScratches: false, word: "copper coin" },
+  fingernail: { mohs: 2.5, stoneScratches: false, word: "fingernail" },
+};
+
+/** A kitchen scratch test is rough: a stone within half a point of the tool fits either answer. */
+export const SLACK = 0.5;
+
+/** An answered test a stone can't fit, with the Mindat record whose hardness says so. */
+export type Misfit = { test: TestKind; name: string; hmin: number; hmax: number };
+
+/**
+ * The first answered scratch test a candidate can't fit (#18), from its Mindat
+ * chain: the hardness of the first record in it that has one, because Mindat
+ * leaves hardness empty on many varieties (Amethyst takes Quartz's). Null when
+ * every answer fits, when nothing in the chain has a hardness (most rocks),
+ * or when no scratch test was tried. Never a reason to hide a pill: a home
+ * test can be wrong.
+ */
+export function misfit(chain: MindatRecord[], answers: Answers): Misfit | null {
+  const h = chain.find((r) => r.hmin !== null && r.hmax !== null);
+  if (!h) return null;
+  const [hmin, hmax] = [h.hmin!, h.hmax!];
+  for (const kind of TEST_KINDS) {
+    const t = HARDNESS_TESTS[kind];
+    const answer = answers[kind];
+    if (!t || (answer !== "yes" && answer !== "no")) continue;
+    const harder = (answer === "yes") === t.stoneScratches;
+    if (harder ? hmax < t.mohs - SLACK : hmin > t.mohs + SLACK) return { test: kind, name: h.name, hmin, hmax };
+  }
+  return null;
+}
 
 export const STREAK_COLOURS = ["white", "grey", "black", "greenish black", "red-brown", "yellow-brown"] as const;
 

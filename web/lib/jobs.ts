@@ -5,6 +5,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { openReadOnly } from "./db";
 import { cleanAnswers, suggestedOrder, type Answers, type TestKind } from "./household-tests";
 import type { JobStatus } from "./job-state";
+import { chainOf, MAX_DEPTH, type MindatRecord } from "./names";
 import type { ConfirmHow } from "./naming";
 import { thumbPathFor } from "./photos";
 import { planPills, type Candidate, type Plan } from "./pills";
@@ -41,6 +42,39 @@ export function identifierSlug(): string {
   return process.env["QUARRY_IDENTIFIER"] ?? "anthropic/claude-haiku-5.5";
 }
 
+/**
+ * A job's candidates, each with its Mindat chain (#18) when Jasper looked it
+ * up: the record from `candidates.mindat_id`, then each `varietyof` above it in
+ * the cache. Jasper writes the chain whole before the candidate, so a missing
+ * record only shortens it.
+ */
+export function candidatesOf(db: DatabaseSync, jobId: number): Candidate[] {
+  const rows = db
+    .prepare("SELECT model, rank, name, variety, kind, confidence, mindat_id FROM candidates WHERE job_id = ? ORDER BY model, rank")
+    .all(jobId) as Array<Omit<Candidate, "chain"> & { mindat_id: number | null }>;
+  const records = db
+    .prepare(
+      `WITH RECURSIVE up(id, depth) AS (
+         SELECT mindat_id, 1 FROM candidates WHERE job_id = ? AND mindat_id IS NOT NULL
+         UNION
+         SELECT r.varietyof, up.depth + 1 FROM up JOIN mindat_records r ON r.id = up.id
+          WHERE r.varietyof IS NOT NULL AND up.depth < ?)
+       SELECT id, name, varietyof, hmin, hmax FROM mindat_records WHERE id IN (SELECT id FROM up)`,
+    )
+    .all(jobId, MAX_DEPTH) as Array<MindatRecord & { varietyof: number | null }>;
+  const byId = new Map(records.map((r) => [r.id, r]));
+  // Plain objects: node:sqlite rows have a null prototype, which React refuses to pass to a client component.
+  return rows.map((r) => ({
+    model: r.model,
+    rank: r.rank,
+    name: r.name,
+    variety: r.variety,
+    kind: r.kind,
+    confidence: r.confidence,
+    chain: chainOf(r.mindat_id, byId),
+  }));
+}
+
 export function readJob(db: DatabaseSync, jobId: number): JobView | null {
   const job = db
     .prepare("SELECT id, status, error, next_attempt_at, notes, tests, label_text FROM jobs WHERE id = ?")
@@ -53,9 +87,8 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
     path: string;
     taken_at: string | null;
   }>;
-  const candidates = db
-    .prepare("SELECT model, rank, name, variety, kind, confidence FROM candidates WHERE job_id = ? ORDER BY model, rank")
-    .all(jobId) as Candidate[];
+  const candidates = candidatesOf(db, jobId);
+  const answers = cleanAnswers(job.tests);
   const tests = db
     .prepare("SELECT model, rank, kind, how, expected FROM suggested_tests WHERE job_id = ? ORDER BY model, rank")
     .all(jobId) as Array<{ model: string; rank: number; kind: TestKind; how: string; expected: string }>;
@@ -84,10 +117,10 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
     error: job.error,
     nextAttemptAt: job.next_attempt_at,
     notes: job.notes,
-    tests: cleanAnswers(job.tests),
+    tests: answers,
     labelText: job.label_text,
     photos: photos.map((p) => ({ id: p.id, url: `/media/${p.path}`, thumbUrl: `/media/${thumbPathFor(p.path)}`, takenAt: p.taken_at })),
-    plan: planPills(candidates, identifier),
+    plan: planPills(candidates, identifier, answers),
     suggestedTests: suggestedOrder(tests, identifier).map(({ kind, how, expected }) => ({ kind, how, expected })),
     confirmation: conf
       ? { specimenId: conf.specimen_id, name: conf.name, variety: conf.variety, how: conf.how, source: conf.source, confirmedAt: conf.confirmed_at }

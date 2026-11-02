@@ -8,7 +8,7 @@ import { PhotoView } from "@/components/photo-view";
 import { Term } from "@/components/term";
 import { TestsPanel } from "@/components/tests-panel";
 import { exifTakenAt } from "@/lib/exif";
-import type { Answers } from "@/lib/household-tests";
+import { HARDNESS_TESTS, TESTS, type Answers, type Misfit } from "@/lib/household-tests";
 import { isSettled } from "@/lib/job-state";
 import type { JobView } from "@/lib/jobs";
 import type { MineralHit } from "@/lib/minerals";
@@ -24,7 +24,11 @@ import { shrinkToJpeg } from "@/lib/shrink";
 // always on the screen because "could be" never promises the answer is among
 // the pills. The same screen serves the person walking the strip and the one
 // waiting at the kitchen table: an unsettled job polls until Jasper answers,
-// with the pill area reserved so nothing moves when the pills arrive.
+// with the pill area reserved so nothing moves when the pills arrive. Since
+// #18 it also says when the two agree on the stone but not its variety (and
+// offers both guesses for the variety field), names the test that would
+// settle a real disagreement, and notes a pill that can't fit a scratch test
+// the person answered.
 
 type Stone = { id: number; name: string; variety: string | null };
 
@@ -60,6 +64,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
   const settled = isSettled(job);
   const plan = job.plan;
   const asking = !settled && plan.pills.length > 0; // asked again; the old pills wait for the new
+  const doubt = plan.verdict === "probably" ? plan.pills[0]?.doubt : undefined;
   const nextJobId = named?.nextJobId ?? initialNext;
 
   // Poll until Jasper has answered (the on-the-spot flow, and asking again).
@@ -331,9 +336,20 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
 
         {plan.pills.length > 0 ? (
           <div role="group" aria-label="Jasper’s suggestions" className="flex flex-col gap-3">
-            {plan.pills.map((p) => (
-              <PillButton key={`${p.pick.model}-${p.pick.rank}`} pill={p} disabled={busy || asking} onPick={() => confirm({ pick: p.pick })} />
-            ))}
+            {plan.pills.map((p) => {
+              const key = `${p.pick.model}-${p.pick.rank}`.replace(/[^a-z0-9]+/gi, "-");
+              return (
+                <div key={key} className="flex flex-col gap-1.5">
+                  <PillButton
+                    pill={p}
+                    describedBy={p.misfit ? `misfit-${key}` : undefined}
+                    disabled={busy || asking}
+                    onPick={() => confirm({ pick: p.pick })}
+                  />
+                  {p.misfit ? misfitNote(p.misfit, `misfit-${key}`) : null}
+                </div>
+              );
+            })}
           </div>
         ) : null}
 
@@ -355,6 +371,32 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
               autoComplete="off"
             />
           </div>
+          {doubt ? (
+            <div className="flex flex-col gap-2 pt-1">
+              <p id="guesses-h" className="text-meta text-ink-2">
+                Jasper&rsquo;s two guesses
+              </p>
+              <ul aria-labelledby="guesses-h" className="flex flex-wrap gap-2">
+                {doubt.guesses.map((g) => {
+                  const on = variety === stoneName(g);
+                  return (
+                    <li key={g}>
+                      <button
+                        type="button"
+                        disabled={busy || asking}
+                        aria-pressed={on}
+                        onClick={() => setVariety(on ? "" : stoneName(g))}
+                        className="chip"
+                      >
+                        {on ? <CheckIcon className="size-4" /> : null}
+                        {stoneName(g)}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
         </div>
 
         {!none ? nameField(false) : null}
@@ -383,12 +425,42 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
   function explain() {
     if (asking) return "Jasper is asking again with your answers. The new suggestions replace these in a few seconds.";
     const opinions = <Term k="opinions">Jasper&rsquo;s two opinions</Term>;
+    if (doubt)
+      return (
+        <>
+          {opinions}
+          {` agree it’s ${stoneName(doubt.level)}, but not on the `}
+          <Term k="variety">variety</Term>
+          {`: ${doubt.guesses.map(stoneName).join(" or ")}.`}
+        </>
+      );
     if (plan.verdict === "probably") return <>{opinions} agree. Tap it if it looks right, or name it yourself.</>;
+    const test = job.suggestedTests[0];
+    if (plan.verdict === "could_be" && plan.opinions === 2 && test) {
+      const phrase = TESTS[test.kind].phrase;
+      return (
+        <>
+          {opinions}
+          {` differ. ${phrase.charAt(0).toUpperCase()}${phrase.slice(1)} would tell them apart.`}
+        </>
+      );
+    }
     if (plan.verdict === "could_be" && plan.opinions === 2)
       return <>{opinions} differ. Tap the one that looks right, or try a test to be sure.</>;
     if (plan.verdict === "could_be") return <>Only one of {opinions} came back, so Jasper isn&rsquo;t sure.</>;
     if (job.status === "failed") return "Something went wrong when Jasper tried. If you know the name, type it below.";
     return <>Neither of {opinions} could name it. If you know the name, type it below.</>;
+  }
+
+  // DESIGN.md's warn note for answers that don't fit the Mindat record, with the reason.
+  function misfitNote(m: Misfit, id: string) {
+    const mohs = m.hmin === m.hmax ? `${m.hmin}` : `${m.hmin} to ${m.hmax}`;
+    return (
+      <p id={id} className="rounded-tile border border-warn-line bg-warn px-4 py-2.5 text-warn-ink">
+        {`Doesn’t fit your ${HARDNESS_TESTS[m.test]?.word ?? m.test} test: ${stoneName(m.name)} is `}
+        <Term k="hardness">{`Mohs ${mohs}`}</Term>.
+      </p>
+    );
   }
 
   function nameField(first: boolean) {
@@ -498,7 +570,7 @@ function countLine(named: boolean, waiting: number, position: number): string {
   return waiting === 1 ? "The only one waiting" : "Nothing else is waiting";
 }
 
-function PillButton({ pill, disabled, onPick }: { pill: Pill; disabled: boolean; onPick: () => void }) {
+function PillButton({ pill, describedBy, disabled, onPick }: { pill: Pill; describedBy?: string; disabled: boolean; onPick: () => void }) {
   const lead = pill.word === "probably";
   return (
     <button
@@ -506,6 +578,7 @@ function PillButton({ pill, disabled, onPick }: { pill: Pill; disabled: boolean;
       disabled={disabled}
       onClick={onPick}
       aria-label={`${stoneName(pill.name)}${pill.variety ? `, ${pill.variety}` : ""}: ${pill.word}`}
+      aria-describedby={describedBy}
       className={`flex min-h-16 w-full items-center justify-between gap-4 rounded-pill border bg-surface py-2.5 pl-6 pr-3 text-left transition-colors hover:border-line-strong hover:bg-sand disabled:cursor-progress disabled:opacity-60 ${lead ? "border-2 border-azurite" : "border-line-2"}`}
     >
       <span className="min-w-0">

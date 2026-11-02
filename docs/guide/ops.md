@@ -21,8 +21,8 @@ The other ports on orchid are 3000 (the Aviary), 3010 (the Conservatory) and 310
 **The environment file.** Both units read their paths and the key from `/etc/quarry/quarry.env`:
 
 - It is root-owned, mode 0600. systemd reads it before dropping to todd.
-- It holds `QUARRY_DB`, `QUARRY_DATA` and `AI_GATEWAY_API_KEY`, and optionally the two model slugs.
-- The key is in that file and nowhere else. Jasper will not start without it. The web unit never calls a model.
+- It holds `QUARRY_DB`, `QUARRY_DATA` and `AI_GATEWAY_API_KEY`, and optionally the two model slugs and `MINDAT_API_KEY`.
+- The keys are in that file and nowhere else. Jasper will not start without the gateway key; without the Mindat key it matches candidates by name only. The web unit never calls a model or Mindat.
 
 **Which gateway key** is chosen at bring-up. The install script offers two:
 
@@ -43,7 +43,7 @@ After that, `sudo bash ~/quarry/Servers/install-orchid.sh`. It is idempotent, an
 
 1. **Checks** node under nvm, pnpm on the login PATH, uv, and that port 3020 is free.
 2. **Makes** the data directory, and the environment file from `Servers/quarry.env.example` if it is missing.
-3. **Asks for the key** when the file has none. The key is written with shell builtins, so it is never echoed and never on a command line.
+3. **Asks for the keys** when the file has none: the gateway key (the choice above), then the Mindat key, which Enter skips. A file from before Mindat gets an empty `MINDAT_API_KEY=` line added rather than a stop. Keys are written with shell builtins, so they are never echoed and never on a command line. Re-running the script is how a Mindat key reaches orchid.
 4. **Builds** Jasper's venv.
 5. **Creates or migrates the database** through `jasper.db`, so the web app has one before Jasper's first job.
 6. **Builds the web app.**

@@ -215,6 +215,7 @@ class Candidate:
     kind: str
     confidence: float
     features: list[str] = field(default_factory=list)
+    mindat_id: int | None = None  # set by mindat.resolve_outcome before the job is written (#18)
 
 
 @dataclass

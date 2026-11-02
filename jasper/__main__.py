@@ -10,6 +10,7 @@ Environment:
     AI_GATEWAY_API_KEY     the Vercel AI Gateway key; Jasper refuses to start without it
     QUARRY_IDENTIFIER      the identifier's gateway slug (default anthropic/claude-haiku-5.5), asked at medium effort
     QUARRY_SECOND_OPINION  the second opinion's slug (default google/gemini-3.8-flash), asked at low effort
+    MINDAT_API_KEY         the OpenMindat key (#18); without it candidates are matched by name only
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import signal
 import sys
 from pathlib import Path
 
-from . import db, identify, queue, worker
+from . import db, identify, mindat, queue, worker
 
 log = logging.getLogger("jasper")
 
@@ -54,6 +55,11 @@ def main(argv: list[str] | None = None) -> int:
         "identifier %s (%s effort), second opinion %s (%s effort), prompt v%d",
         ident.model, ident.effort, second.model, second.effort, cfg.prompt_version,
     )
+    mindat_api = mindat.api()
+    if mindat_api:
+        log.info("mindat on: candidates are looked up at %s", mindat.API_HOST)
+    else:
+        log.info("MINDAT_API_KEY is not set; candidates are matched by name only")
 
     running = True
 
@@ -65,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
 
-    worker.run_forever(conn, data_dir, cfg, lambda: running)
+    worker.run_forever(conn, data_dir, cfg, lambda: running, mindat_api)
     conn.close()
     return 0
 
