@@ -109,8 +109,10 @@ pnpm dev
   - **Other minerals on it** is its own group in the form. With is a list of chips, each ticked, untick to take one off (one tap to undo), and a field with Add (or Enter) for the next; a name typed but not added is added by Save. On is a field, or an "On matrix" chip with the matrix info mark. Both offer the minerals already in the collection as chips while typing, through the name field's autocomplete (`/api/minerals`, `rankMinerals`). The route writes them with `writeParts` (`lib/specimens.ts`): in label order, each mineral once, never the stone's own mineral, a new name made a `minerals` row as on the confirm screen, matrix with no mineral; then `pruneMinerals` deletes any mineral the edit left on no stone.
 - **Kitchen-table tests** (`components/tests-editor.tsx`):
   - The confirm screen's `TestRow`s, editable in place.
+  - A stone with no answer saved opens folded (#45): the heading, "Nothing tried on this stone yet", and a "Record a test" button that opens the rows in place ("Hide the tests" folds them again). With any answer saved, the rows show from the start and there is no button. The rows open on a press, not on data arriving, so the folded card reserves nothing for them.
   - The tests already answered come first (with none, the four DESIGN.md names: glass, streak, vinegar, magnet), and the rest wait behind "Other tests".
-  - Which rows show first is fixed when the page opens, so a save never moves them.
+  - Which rows show first, and whether the card folds, are fixed when the page opens, so a save never moves or folds the rows.
+  - The Save row stays out while something is unsaved, even with the rows folded, so an answer is never hidden unsaved.
   - "Save the answers" appears once something changed, and "Not saved yet." says so meanwhile.
   - The check against Mindat arrives in Phase 2.
 - **Mineral properties** (#23), after the tests, from the record Jasper fetched for the stone's mineral (#21, `jasper.md`).
