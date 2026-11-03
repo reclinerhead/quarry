@@ -17,7 +17,7 @@ import {
   type Sort,
   type Tile,
 } from "@/lib/collection";
-import { kindOf, pieceName } from "@/lib/pills";
+import { FORM_LABEL, kindOf, pieceName } from "@/lib/pills";
 
 // "Your collection" from design/DESIGN.md §5: the count line, Sort by, the
 // filter chips, then the specimen cards. Every tile is on the page already (a
@@ -40,7 +40,7 @@ export function Collection({ tiles }: { tiles: Tile[] }) {
   const q = params.get("q") ?? "";
   const kindParam = params.get("kind");
   const fromParam = params.get("from");
-  const kind: KindFilter = kindParam === "minerals" || kindParam === "rocks" ? kindParam : "all";
+  const kind: KindFilter = kindParam === "crystals" || kindParam === "rocks" || kindParam === "tumbled" ? kindParam : "all";
   const from: FromFilter = fromParam === "found" || fromParam === "bought" ? fromParam : "all";
   const sort: Sort = params.get("sort") === "new" ? "new" : "name";
   const filtered = q.trim() !== "" || kind !== "all" || from !== "all";
@@ -49,7 +49,7 @@ export function Collection({ tiles }: { tiles: Tile[] }) {
 
   function toggle(key: string) {
     if (key === "all") setParams({ kind: "all", from: "all" });
-    else if (key === "minerals" || key === "rocks") setParams({ kind: kind === key ? "all" : key });
+    else if (key === "crystals" || key === "rocks" || key === "tumbled") setParams({ kind: kind === key ? "all" : key });
     else setParams({ from: from === key ? "all" : key });
   }
 
@@ -132,8 +132,9 @@ export function Collection({ tiles }: { tiles: Tile[] }) {
  * The specimen card (DESIGN.md §4): the photo or a tinted "No photo yet" tile,
  * 220 px; the name as a show label gives it (pieceName, #29), wrapping rather
  * than cut; "A kind of Quartz" under a hobby name, no line at all when there
- * is none (#35); "Where it lives · added Nov 1"; the kind as a tag, then the
- * mineral's class (#38), which a rock never has. The whole card is one link, so
+ * is none (#35); "Where it lives · added Nov 1"; the kind as a tag, the form
+ * (#73: "Geode", "Tumbled") when it has one, then the mineral's class (#38),
+ * which a rock never has. The whole card is one link, so
  * the class has no info mark here (a mark is a button); the stone's page has it.
  * No catalog dab (Phase 3) or Mohs tag (Phase 2) yet.
  */
@@ -156,6 +157,7 @@ export function StoneCard({ tile, tint }: { tile: Tile; tint: string }) {
         <span className="text-meta text-ink-3">{metaLine(tile)}</span>
         <span className="mt-2.5 flex flex-wrap gap-2">
           <span className="tag">{KIND_LABEL[tile.kind]}</span>
+          {tile.form && <span className="tag">{FORM_LABEL[tile.form]}</span>}
           {tile.mineralClass && <span className="tag">{tile.mineralClass}</span>}
         </span>
       </div>

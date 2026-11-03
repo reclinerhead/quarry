@@ -177,13 +177,27 @@ def test_made_of_is_none_when_missing_empty_or_the_mineral_itself(over):
     assert c.made_of is None and c.label() == "Pyrite"
 
 
+def test_the_form_is_read_from_the_list_and_goes_in_the_label():
+    """#73: the shape of the piece as a rock hound bins it."""
+    c = identify.parse_answer(json.dumps(answer(candidates=[cand(form=" Geode ", on="matrix")]))).candidates[0]
+    assert c.form == "geode" and c.label() == "Pyrite on matrix [geode]"
+    assert identify.FORMS == ("crystal", "cluster", "geode", "druzy", "rough", "tumbled", "slab", "carved")
+
+
+@pytest.mark.parametrize("over", [{}, {"form": ""}, {"form": "nodule"}, {"form": 3}], ids=["missing (a v5 answer)", "empty", "off the list", "not text"])
+def test_a_form_missing_empty_or_off_the_list_is_none_not_an_invalid_answer(over):
+    c = identify.parse_answer(json.dumps(answer(candidates=[cand(**over)]))).candidates[0]
+    assert c.form is None and c.label() == "Pyrite"
+
+
 # --- the prompt and the schema -------------------------------------------------
 
 
 def test_the_prompt_has_a_version_and_names_every_test_kind():
     version, body = identify.load_prompt()
-    assert version == 5
+    assert version == 6
     assert '"matrix"' in body and "- with:" in body and "- on:" in body and "- made_of:" in body
+    assert "- form:" in body and all(f'"{f}"' in body for f in identify.FORMS)  # #73
     assert "penny is 19 mm" in body and "no scale in the photos" in body  # #67
     assert "answer differently" in body and "return an empty list" in body and "name each candidate" in body  # #69
     assert not body.startswith("---")
@@ -210,7 +224,8 @@ def test_the_schemas_test_kinds_are_the_tables(tmp_path):
     item = identify.SCHEMA["properties"]["candidates"]["items"]
     assert item["properties"]["kind"]["enum"] == list(identify.CANDIDATE_KINDS)
     # Strict structured output: every property is required, with and on included.
-    assert set(item["required"]) == set(item["properties"]) >= {"with", "on", "made_of"}
+    assert set(item["required"]) == set(item["properties"]) >= {"with", "on", "made_of", "form"}
+    assert item["properties"]["form"]["enum"] == [*identify.FORMS, ""]
 
 
 # --- the user message ----------------------------------------------------------

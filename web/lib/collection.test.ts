@@ -27,6 +27,7 @@ function tile(name: string, over: Partial<Tile> = {}): Tile {
     variety: null,
     parts: [],
     madeOf: null,
+    form: null,
     foundAt: null,
     acquired: null,
     location: null,
@@ -37,8 +38,8 @@ function tile(name: string, over: Partial<Tile> = {}): Tile {
   };
 }
 
-const galena = tile("Galena", { foundAt: "Grandpa's collection", location: "Glass case", acquired: "gifted", createdAt: "2026-10-30T12:00:00.000Z" });
-const fluorite = tile("Fluorite", { variety: "Purple", location: "Glass case", createdAt: "2026-11-01T15:00:00.000Z" });
+const galena = tile("Galena", { form: "crystal", foundAt: "Grandpa's collection", location: "Glass case", acquired: "gifted", createdAt: "2026-10-30T12:00:00.000Z" });
+const fluorite = tile("Fluorite", { variety: "Purple", form: "cluster", location: "Glass case", createdAt: "2026-11-01T15:00:00.000Z" });
 const slate = tile("Slate", { kind: "rock", foundAt: "Beach in Michigan", acquired: "found", location: "Windowsill", createdAt: "2026-11-01T16:00:00.000Z" });
 const fossil = tile("Petoskey stone", { kind: "other", acquired: "found", createdAt: "2026-10-31T09:00:00.000Z" });
 const all = [galena, fluorite, slate, fossil];
@@ -66,16 +67,24 @@ describe("filterTiles", () => {
     expect(names(filterTiles([...all, cluster], { ...none, q: "pyrite" }))).toEqual(["Pyrite"]);
   });
 
-  it("puts rocks and everything that isn't a mineral under Rocks and fossils", () => {
-    expect(names(filterTiles(all, { ...none, kind: "minerals" }))).toEqual(["Galena", "Fluorite"]);
+  it("puts rocks and everything that isn't a mineral under Rocks and fossils, and goes by the form for the other two chips (#73)", () => {
+    expect(names(filterTiles(all, { ...none, kind: "crystals" }))).toEqual(["Galena", "Fluorite"]);
     expect(names(filterTiles(all, { ...none, kind: "rocks" }))).toEqual(["Slate", "Petoskey stone"]);
+    const geode = tile("Quartz", { form: "geode" });
+    const tumbledAgate = tile("Chalcedony", { variety: "Agate", form: "tumbled" });
+    const slab = tile("Petoskey stone", { kind: "other", form: "slab" });
+    const rough = tile("Quartz", { form: "rough" });
+    expect(names(filterTiles([geode, tumbledAgate, slab, rough, slate], { ...none, kind: "crystals" }))).toEqual(["Quartz"]);
+    expect(names(filterTiles([geode, tumbledAgate, slab, rough, slate], { ...none, kind: "tumbled" }))).toEqual(["Chalcedony", "Petoskey stone"]);
+    expect(names(filterTiles([geode, tumbledAgate, slab, rough, slate], { ...none, kind: "all" }))).toHaveLength(5); // rough, and a stone with no form, are in Everything only
+    expect(names(filterTiles([geode, tumbledAgate, slab, rough, slate], { ...none, q: "geode" }))).toEqual(["Quartz"]);
   });
 
   it("counts a gift or a trade as bought or gifted, and combines filters", () => {
     expect(names(filterTiles(all, { ...none, from: "bought" }))).toEqual(["Galena"]);
     expect(names(filterTiles(all, { ...none, from: "found" }))).toEqual(["Slate", "Petoskey stone"]);
     expect(names(filterTiles(all, { q: "", kind: "rocks", from: "found" }))).toEqual(["Slate", "Petoskey stone"]);
-    expect(names(filterTiles(all, { q: "slate", kind: "minerals", from: "all" }))).toEqual([]);
+    expect(names(filterTiles(all, { q: "slate", kind: "crystals", from: "all" }))).toEqual([]);
   });
 });
 
@@ -99,7 +108,7 @@ describe("sortTiles", () => {
 describe("filterChips", () => {
   it("counts the whole collection and leaves out chips with nobody in them", () => {
     const chips = filterChips([galena, fluorite], { kind: "all", from: "all" });
-    expect(chips.map((c) => `${c.label} ${c.n}`)).toEqual(["Everything 2", "Minerals 2", "Bought or gifted 1"]);
+    expect(chips.map((c) => `${c.label} ${c.n}`)).toEqual(["Everything 2", "Crystals 2", "Bought or gifted 1"]);
     expect(chips[0].on).toBe(true);
   });
 

@@ -2,8 +2,9 @@
 // its kitchen-table tests. Any subset of: variety, parts (the other minerals on
 // it, #29: `{ with: string[], on: string | null }`, where `on` may be "matrix";
 // it replaces them all), madeOf (what an object that is not a mineral is made
-// of, #62), foundAt, acquired (found, bought, gifted, traded), acquiredOn
-// (yyyy-mm-dd), location, notes, tests. An empty string clears a field.
+// of, #62), form (the shape of the piece, #73, one of FORMS), foundAt,
+// acquired (found, bought, gifted, traded), acquiredOn (yyyy-mm-dd), location,
+// notes, tests. An empty string clears a field.
 //
 // DELETE /api/stones/:id: remove the stone for good. Its photos go from the
 // table and from disk with their thumbnails, and so do the jobs that brought
@@ -14,7 +15,7 @@
 import { openReadWrite } from "@/lib/db";
 import { cleanAnswers } from "@/lib/household-tests";
 import { thumbPathFor } from "@/lib/photos";
-import type { PartRole } from "@/lib/pills";
+import { isForm, type PartRole } from "@/lib/pills";
 import { pruneMinerals, writeMadeOf, writeParts } from "@/lib/specimens";
 import { discardUpload } from "@/lib/storage";
 
@@ -74,6 +75,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (acquired !== undefined && acquired !== null && !ACQUIRED.has(acquired))
     return Response.json({ error: "acquired must be found, bought, gifted or traded" }, { status: 400 });
   set("acquired", acquired);
+  const form = text(body.form, 10);
+  if (form !== undefined && form !== null && !isForm(form))
+    return Response.json({ error: "form must be one of crystal, cluster, geode, druzy, rough, tumbled, slab, carved" }, { status: 400 });
+  set("form", form);
   const on = text(body.acquiredOn, 10);
   if (on !== undefined && on !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(on) || Number.isNaN(Date.parse(on))))
     return Response.json({ error: "acquiredOn must be a date, yyyy-mm-dd" }, { status: 400 });

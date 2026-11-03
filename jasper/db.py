@@ -103,6 +103,16 @@ ALTER TABLE specimens ADD COLUMN made_of_id INTEGER REFERENCES minerals(id) ON D
 CREATE INDEX IF NOT EXISTS specimens_made_of ON specimens (made_of_id);
 """,
     ),
+    # 6 (#73): the shape of a piece as a rock hound bins it: geode, cluster, tumbled. A tag beside the name, never part of it.
+    (
+        6,
+        """
+ALTER TABLE candidates ADD COLUMN form TEXT
+  CHECK (form IN ('crystal', 'cluster', 'geode', 'druzy', 'rough', 'tumbled', 'slab', 'carved'));  -- NULL when the model didn't say
+ALTER TABLE specimens ADD COLUMN form TEXT
+  CHECK (form IN ('crystal', 'cluster', 'geode', 'druzy', 'rough', 'tumbled', 'slab', 'carved'));  -- NULL until someone says
+""",
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else BASELINE_VERSION

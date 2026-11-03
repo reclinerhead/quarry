@@ -38,6 +38,8 @@ PROMPT_PATH = Path(__file__).with_name("prompts") / "identify.md"
 DEFAULT_IDENTIFIER = "anthropic/claude-haiku-5.5"
 DEFAULT_SECOND_OPINION = "google/gemini-3.8-flash"
 CANDIDATE_KINDS = ("mineral", "rock", "other")
+# The shape of a piece as a rock hound bins it (#73); the schema's CHECK on candidates.form and specimens.form.
+FORMS = ("crystal", "cluster", "geode", "druzy", "rough", "tumbled", "slab", "carved")
 # The schema's CHECK on suggested_tests.kind, in the order the user message lists answers.
 TEST_KINDS = ("glass", "steel", "copper", "fingernail", "streak", "vinegar", "magnet", "uv")
 MAX_CANDIDATES = 3
@@ -60,12 +62,13 @@ SCHEMA = {
                     "variety": {"type": "string"},
                     "kind": {"type": "string", "enum": list(CANDIDATE_KINDS)},
                     "made_of": {"type": "string"},
+                    "form": {"type": "string", "enum": [*FORMS, ""]},
                     "with": {"type": "array", "items": {"type": "string"}},
                     "on": {"type": "string"},
                     "confidence": {"type": "number"},
                     "features": {"type": "array", "items": {"type": "string"}},
                 },
-                "required": ["name", "variety", "kind", "made_of", "with", "on", "confidence", "features"],
+                "required": ["name", "variety", "kind", "made_of", "form", "with", "on", "confidence", "features"],
                 "additionalProperties": False,
             },
         },
@@ -239,15 +242,16 @@ class Candidate:
     # coral made of Calcite. None for a mineral, a rock, or when the photos don't say.
     made_of: str | None = None
     made_of_mindat_id: int | None = None  # set by mindat.resolve_outcome, as for a part
+    form: str | None = None  # the shape of the piece (#73), one of FORMS, or None when the model didn't say
 
     def label(self) -> str:
         """The candidate for the log: Galena, Quartz (Amethyst), Pyrite with Sphalerite on Quartz,
-        Fossil coral made of Calcite."""
+        Fossil coral made of Calcite, Quartz on matrix [geode]."""
         withs = [p.name for p in self.parts if p.role == "with"]
         on = next((p.name for p in self.parts if p.role == "on"), None)
         return (self.name + (f" ({self.variety})" if self.variety else "")
                 + (f" with {', '.join(withs)}" if withs else "") + (f" on {on}" if on else "")
-                + (f" made of {self.made_of}" if self.made_of else ""))
+                + (f" made of {self.made_of}" if self.made_of else "") + (f" [{self.form}]" if self.form else ""))
 
 
 @dataclass
@@ -290,6 +294,9 @@ def _candidate(raw: object, rank: int) -> Candidate:
     made_of = _words(made_of)
     if made_of.casefold() == name.casefold():
         made_of = ""
+    # The form (#73): missing before v6, empty when the photos don't say, and a model's
+    # stray word off the list is not an invalid answer, just no form.
+    form = _words(raw.get("form", "")).lower() if isinstance(raw.get("form", ""), str) else ""
     return Candidate(
         name=name,
         variety=_words(raw.get("variety")) or None,
@@ -298,6 +305,7 @@ def _candidate(raw: object, rank: int) -> Candidate:
         features=[f for f in (_words(x) for x in features) if f],
         parts=_parts(raw, name, rank),
         made_of=made_of or None,
+        form=form if form in FORMS else None,
     )
 
 

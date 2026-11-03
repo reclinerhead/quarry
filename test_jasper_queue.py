@@ -174,10 +174,11 @@ def test_identified_writes_what_each_candidate_is_made_of(tmp_path):
     coral.candidates[0].kind = "other"
     coral.candidates[0].made_of = "Calcite"
     coral.candidates[0].made_of_mindat_id = 859
+    coral.candidates[0].form = "rough"
     queue.record_outcome(conn, jid, identify.classify([_opinion(HAIKU, coral), _opinion(FLASH, _answer("Quartz", 0.6))]), NOW)
-    rows = {(r["model"], r["rank"]): (r["made_of"], r["made_of_mindat_id"]) for r in conn.execute("SELECT model, rank, made_of, made_of_mindat_id FROM candidates")}
-    assert rows[(HAIKU.model, 1)] == ("Calcite", 859)
-    assert rows[(HAIKU.model, 2)] == (None, None) and rows[(FLASH.model, 1)] == (None, None)
+    rows = {(r["model"], r["rank"]): (r["made_of"], r["made_of_mindat_id"], r["form"]) for r in conn.execute("SELECT model, rank, made_of, made_of_mindat_id, form FROM candidates")}
+    assert rows[(HAIKU.model, 1)] == ("Calcite", 859, "rough")
+    assert rows[(HAIKU.model, 2)] == (None, None, None) and rows[(FLASH.model, 1)] == (None, None, None)
 
 
 def test_one_opinion_is_written_with_the_others_failure_in_error(tmp_path):

@@ -98,13 +98,36 @@ def test_a_version_4_database_takes_step_5_with_its_rows(tmp_path, monkeypatch):
     old.close()
     monkeypatch.undo()
     conn = db.connect(path)
-    assert db.current_version(conn) == 5
+    assert db.current_version(conn) == db.LATEST_VERSION
     assert {"made_of", "made_of_mindat_id"} <= {r["name"] for r in conn.execute("PRAGMA table_info(candidates)")}
     assert tuple(conn.execute("SELECT mineral_id, made_of_id FROM specimens").fetchone()) == (quartz, None)
     calcite = conn.execute("INSERT INTO minerals (name) VALUES ('Calcite')").lastrowid
     conn.execute("UPDATE specimens SET made_of_id = ?", (calcite,))
     conn.execute("DELETE FROM minerals WHERE id = ?", (calcite,))
     assert conn.execute("SELECT made_of_id FROM specimens").fetchone()[0] is None  # ON DELETE SET NULL
+
+
+def test_a_version_5_database_takes_step_6_and_a_form_is_one_of_the_eight(tmp_path, monkeypatch):
+    """#73: the form on candidates and specimens, checked against the list."""
+    path = tmp_path / "q.db"
+    monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS[:4])
+    old = db.connect(path)
+    assert db.current_version(old) == 5
+    quartz = old.execute("INSERT INTO minerals (name) VALUES ('Quartz')").lastrowid
+    old.execute("INSERT INTO specimens (mineral_id) VALUES (?)", (quartz,))
+    old.commit()
+    old.close()
+    monkeypatch.undo()
+    conn = db.connect(path)
+    assert db.current_version(conn) == 6
+    assert tuple(conn.execute("SELECT mineral_id, form FROM specimens").fetchone()) == (quartz, None)
+    conn.execute("UPDATE specimens SET form = 'geode'")
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE specimens SET form = 'nodule'")
+    job = conn.execute("INSERT INTO jobs DEFAULT VALUES").lastrowid
+    conn.execute("INSERT INTO candidates (job_id, model, rank, name, kind, confidence, form) VALUES (?, 'm', 1, 'Quartz', 'mineral', 0.5, 'cluster')", (job,))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO candidates (job_id, model, rank, name, kind, confidence, form) VALUES (?, 'm', 2, 'Quartz', 'mineral', 0.5, 'point')", (job,))
 
 
 def test_a_stones_parts_need_a_mineral_unless_it_sits_on_matrix(tmp_path):

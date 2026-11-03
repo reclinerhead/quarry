@@ -8,7 +8,7 @@ import { Term } from "@/components/term";
 import { ACQUIRED_LABEL, KIND_LABEL, longDay, missingDetails, type Acquired } from "@/lib/collection";
 import type { MineralHit } from "@/lib/minerals";
 import { norm } from "@/lib/names";
-import { isMatrix, MATRIX, stoneName, type StoneKind } from "@/lib/pills";
+import { FORM_LABEL, FORMS, isMatrix, MATRIX, stoneName, type Form, type StoneKind } from "@/lib/pills";
 import type { StonePart } from "@/lib/specimens";
 
 // "This specimen" (#9): the specimen label from DESIGN.md §4 (paper, a double
@@ -22,7 +22,8 @@ import type { StonePart } from "@/lib/specimens";
 // The first row is the stone's own mineral (#33), the species the title leads
 // with or hides behind a hobby name; it is read-only, since the main mineral
 // changes through "Change" on the naming, not the form. A stone that is not a
-// mineral has a "Made of" row too (#62), the mineral it is made of.
+// mineral has a "Made of" row too (#62), the mineral it is made of. "Form"
+// (#73) is the shape of the piece, chips in the form as "How it came" is.
 
 export type StoneFacts = {
   name: string;
@@ -30,6 +31,7 @@ export type StoneFacts = {
   variety: string | null;
   parts: StonePart[];
   madeOf: string | null;
+  form: Form | null;
   foundAt: string | null;
   acquired: Acquired | null;
   acquiredOn: string | null;
@@ -40,6 +42,7 @@ export type StoneFacts = {
 type Draft = {
   variety: string;
   madeOf: string;
+  form: Form | "";
   withs: Array<{ name: string; kept: boolean }>; // untick to take one off, so a slip is one tap to undo
   on: string; // "" for nothing under it, MATRIX for unnamed rock
   foundAt: string;
@@ -55,6 +58,7 @@ function toDraft(f: StoneFacts): Draft {
   return {
     variety: f.variety ?? "",
     madeOf: f.madeOf ?? "",
+    form: f.form ?? "",
     withs: f.parts.filter((p) => p.role === "with").map((p) => ({ name: p.name, kept: true })),
     on: f.parts.find((p) => p.role === "on")?.name ?? "",
     foundAt: f.foundAt ?? "",
@@ -68,6 +72,7 @@ function toDraft(f: StoneFacts): Draft {
 const ROWS: Array<{ field: Field; label: string; show: (f: StoneFacts) => React.ReactNode | null }> = [
   { field: "variety", label: "Variety", show: (f) => f.variety },
   { field: "madeOf", label: "Made of", show: (f) => (f.madeOf ? stoneName(f.madeOf) : null) },
+  { field: "form", label: "Form", show: (f) => (f.form ? FORM_LABEL[f.form] : null) },
   {
     field: "withs",
     label: "With",
@@ -90,7 +95,7 @@ const ROWS: Array<{ field: Field; label: string; show: (f: StoneFacts) => React.
 ];
 
 /** The Add link's name where "Add with" or "Add on" would make no sense read aloud. */
-const ADD_LABEL: Partial<Record<Field, string>> = { withs: "Add the other minerals on it", on: "Add what it sits on", madeOf: "Add what it is made of" };
+const ADD_LABEL: Partial<Record<Field, string>> = { withs: "Add the other minerals on it", on: "Add what it sits on", madeOf: "Add what it is made of", form: "Add its form" };
 
 /** "Made of" is a fossil's row, a shell's, sea glass's: a mineral is itself, and a rock is a mix. */
 function hasMadeOf(f: StoneFacts): boolean {
@@ -196,7 +201,7 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
                   <div key={row.field} className="flex flex-col gap-0.5 border-b border-rule py-2.5 last:border-b-0 sm:flex-row sm:items-baseline sm:gap-6">
                     <dt className="flex-none font-label text-ink-2 sm:w-[140px]">
                       {row.label}
-                      {row.field === "variety" ? <Term k="variety" bare /> : row.field === "madeOf" ? <Term k="madeOf" bare /> : null}
+                      {row.field === "variety" ? <Term k="variety" bare /> : row.field === "madeOf" ? <Term k="madeOf" bare /> : row.field === "form" ? <Term k="form" bare /> : null}
                     </dt>
                     <dd className="min-w-0 whitespace-pre-line break-words">
                       {value ?? (
@@ -231,7 +236,7 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
       </div>
     );
 
-  const input = (field: Exclude<Field, "acquired" | "notes" | "withs" | "on">, label: string, placeholder: string, list?: string) => (
+  const input = (field: Exclude<Field, "acquired" | "notes" | "withs" | "on" | "form">, label: string, placeholder: string, list?: string) => (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={`${ids}-${field}`} className="font-bold">
         {label}
@@ -273,6 +278,23 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
         </datalist>
       </div>
       {partsFields()}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="float-left mb-2 flex w-full items-center font-bold">
+          Form <Term k="form" bare />
+        </legend>
+        <div className="flex flex-wrap gap-2">
+          {FORMS.map((f) => (
+            <button key={f} type="button" aria-pressed={draft.form === f} onClick={() => setDraft({ ...draft, form: draft.form === f ? "" : f })} className="chip">
+              {draft.form === f ? <CheckIcon className="size-4" /> : null}
+              {FORM_LABEL[f]}
+            </button>
+          ))}
+          <button type="button" aria-pressed={draft.form === ""} onClick={() => setDraft({ ...draft, form: "" })} className="chip chip-dashed">
+            {draft.form === "" ? <CheckIcon className="size-4" /> : null}
+            Not recorded
+          </button>
+        </div>
+      </fieldset>
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 font-bold">How it came</legend>
         <div className="flex flex-wrap gap-2">

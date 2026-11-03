@@ -85,6 +85,10 @@ export const GLOSSARY = {
     term: "Mohs scale",
     text: "Friedrich Mohs picked ten minerals in 1812, talc to diamond, and numbered them so that each one scratches the one below it. A stone’s Mohs number says which of the ten it would scratch. The ten reference minerals are a set a collection can complete.",
   },
+  form: {
+    term: "form",
+    text: "The shape of the piece, the way a rock hound bins it at a show: a single crystal, a cluster, a geode, a druzy crust, a rough chunk, a tumbled stone, a slab, or something cut and carved. It says how the piece came to look as it does, not what mineral it is. A tumbled agate and a rough agate are the same stone.",
+  },
   madeOf: {
     term: "made of",
     text: "A fossil, a shell or a piece of sea glass is not a mineral itself, but it is made of one. A coral from a lime-rich sea is usually preserved as calcite, while one buried in silica-rich water is replaced by quartz or chalcedony. The name says what the object is; this says what it is made of.",

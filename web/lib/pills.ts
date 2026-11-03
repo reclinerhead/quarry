@@ -15,12 +15,34 @@
 // the pill, never part of the name, and in doubt when the two opinions differ
 // on it the way a variety can be. Since #71 a pill carries its reasons: the
 // models' own short phrases for the readings that merged into it, for the
-// "Why?" under it.
+// "Why?" under it. Since #73 a candidate and a pill carry the piece's form,
+// the shape a rock hound bins it by (geode, cluster, tumbled): a tag beside the
+// name, never part of it, and never a reason two readings differ.
 
 import { misfit, TESTS, type Answers, type Misfit, type TestKind } from "./household-tests";
 import { finer, norm, sameStone, varietySplit, type MindatRecord, type Named } from "./names";
 
 export type StoneKind = "mineral" | "rock" | "other";
+
+/** The shape of a piece as a rock hound bins it (#73): Jasper's FORMS and the schema's CHECK, in the same order. */
+export const FORMS = ["crystal", "cluster", "geode", "druzy", "rough", "tumbled", "slab", "carved"] as const;
+export type Form = (typeof FORMS)[number];
+
+/** The form as a tag or a chip says it. */
+export const FORM_LABEL: Record<Form, string> = {
+  crystal: "Crystal",
+  cluster: "Cluster",
+  geode: "Geode",
+  druzy: "Druzy",
+  rough: "Rough",
+  tumbled: "Tumbled",
+  slab: "Slab",
+  carved: "Cut or carved",
+};
+
+export function isForm(s: unknown): s is Form {
+  return typeof s === "string" && (FORMS as readonly string[]).includes(s);
+}
 
 export type PartRole = "with" | "on";
 
@@ -48,6 +70,7 @@ export type Candidate = {
   parts?: Part[]; // the other minerals the model saw on the piece; none on a prompt v1 answer
   madeOf?: MadeOf | null; // a fossil coral made of Calcite; none on a mineral, a rock, or an answer before prompt v3
   features?: string[]; // the model's own short phrases for this reading, as Jasper stored them
+  form?: Form | null; // the shape of the piece (#73); none when the model didn't say, or on an answer before prompt v6
 };
 
 export type Verdict = "probably" | "could_be" | "none";
@@ -71,6 +94,7 @@ export type Pill = {
   // made of a different mineral, so neither is taken.
   madeOfDoubt?: { guesses: string[] };
   reasons: string[]; // what the models saw (#71): the features of every candidate that merged into this pill, each once, at most MAX_REASONS
+  form: Form | null; // the shape of the piece (#73): on the lead pill the identifier's, else the other model's; a could-be pill's own
 };
 
 /** How many of the models' phrases a pill keeps for its "Why?". */
@@ -142,6 +166,7 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
         misfit: c.parts?.length ? null : misfit(c.chain ?? [], answers),
         madeOf: c.madeOf ?? null,
         reasons: addReasons({ reasons: [] }, c).reasons,
+        form: c.form ?? null,
       });
   };
 
@@ -178,6 +203,7 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
     const made = agreedMadeOf(a[0], b[0]);
     lead.madeOf = made.madeOf;
     if (made.doubt) lead.madeOfDoubt = made.doubt;
+    lead.form = a[0].form ?? b[0].form ?? null;
     for (const c of rest) add(c, "could also be", true);
     return { verdict: "probably", opinions: 2, pills };
   }
