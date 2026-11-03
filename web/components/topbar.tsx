@@ -7,11 +7,12 @@ import { CameraIcon, GemMark } from "@/components/icons";
 
 // The top bar from design/DESIGN.md §5: gem mark and wordmark, nav pills, the
 // search, the primary "Add a rock", then the strata band. Only pages that
-// exist get a nav pill; Minerals, Periodic table, Labels and Gem Show join as
-// their phases land.
+// exist get a nav pill (Collection, Periodic table); Minerals, Labels and Gem
+// Show join as their phases land.
 //
 // Below lg the bar is two rows: the wordmark with Add, then the nav with the
-// search. From lg it is the canvas's one row.
+// search, which drops under the pills on a phone once there are two (#48).
+// From lg it is the canvas's one row.
 export function TopBar() {
   const pathname = usePathname();
   return (
@@ -25,10 +26,13 @@ export function TopBar() {
 
           {/* Nav and search share a row of their own until lg, so the search
               never squeezes between the wordmark and Add. */}
-          <div className="order-3 flex min-w-0 basis-full items-center gap-3 lg:order-2 lg:flex-1 lg:basis-auto lg:gap-7">
+          <div className="order-3 flex min-w-0 basis-full flex-wrap items-center gap-3 lg:order-2 lg:flex-1 lg:basis-auto lg:flex-nowrap lg:gap-7">
             <nav aria-label="Main" className="flex flex-wrap gap-1.5">
               <Link href="/" aria-current={pathname === "/" ? "page" : undefined} className="nav-pill px-4 sm:px-5">
                 Collection
+              </Link>
+              <Link href="/periodic-table" aria-current={pathname === "/periodic-table" ? "page" : undefined} className="nav-pill px-4 sm:px-5">
+                Periodic table
               </Link>
             </nav>
 
@@ -103,7 +107,7 @@ function SearchForm({ value, onChange, onSubmit }: { value: string; onChange?: (
         e.preventDefault();
         onSubmit?.();
       }}
-      className="flex min-w-0 flex-1 sm:max-w-[400px] lg:ml-auto lg:w-[300px] lg:flex-none xl:w-[340px]"
+      className="flex min-w-0 flex-1 basis-[220px] sm:max-w-[400px] lg:ml-auto lg:w-[300px] lg:flex-none lg:basis-auto xl:w-[340px]"
     >
       <label className="field flex w-full items-center gap-2.5 px-4 sm:px-[18px]">
         <svg aria-hidden width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-none text-ink-2">

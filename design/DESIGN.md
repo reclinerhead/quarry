@@ -296,6 +296,22 @@ primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
      made of (element tiles + link to the periodic table) · On your Mohs scale
      · Its story so far (timeline) · Box label (preview + Print labels).
 
+**Periodic table page** (`/periodic-table`), designed at laptop width:
+1. Title "Your periodic table" with its info mark, the count line ("14 of the
+   118 elements lit, from 47 stones") and the newest arrival ("Fluorine came
+   with your Fluorite on Oct 31").
+2. **Your elements**: the lit elements as element tiles (§4), by atomic
+   number, each with its stone count; each is a link that selects it.
+3. **The table**: the standard 18-column layout in a card, lanthanides and
+   actinides in two rows below. Cells are 48 px squares, number over symbol.
+   Unlit = the Mohs set's dashed slot in `ink-3`; lit = `azurite-soft`, a
+   link; selected = solid azurite. Lit means any named mineral on a confirmed
+   stone carries the element: a piece's elements are additive, unlike its
+   formula.
+4. **Stones with calcium**: the side-panel rows (§4) for the stones that carry
+   the selected element, newest first, each naming the mineral on the piece
+   that has it and its formula. With nothing selected the card holds its room.
+
 Rocks (granite, obsidian) and fossils get a thinner property card, per the
 README: Mindat's record where there is one, otherwise the specimen's own notes
 and tests. Hide cells that have no value. Never show an empty cell.
@@ -308,7 +324,10 @@ never sticky or `100vh`; card grids are `auto-fill` with a minimum, so they go
 to one column on a phone without breakpoints; chip rows wrap; the specimen
 label's two columns stack below ~520 px; the photo hero drops to 360 px tall;
 the test rows go to one column. Text never shrinks on small screens: 18 px
-stays 18 px.
+stays 18 px. One exception, decided for #48: the periodic table's card scrolls
+sideways inside itself on a narrow screen, since 18 readable columns can't fit
+in 358 px; the page itself never scrolls sideways, and the element tiles above
+the table are the phone's way in.
 
 ## 7. Accessibility
 
