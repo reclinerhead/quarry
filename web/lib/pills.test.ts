@@ -233,6 +233,37 @@ describe("planPills", () => {
     expect(old.pills[0].madeOfDoubt).toBeUndefined();
   });
 
+  // #71: each pill carries what the models saw, for the "Why?" under it.
+  const seen = (c: Candidate, ...features: string[]): Candidate => ({ ...c, features });
+
+  it("gives the lead pill both first choices' reasons, each once ignoring case, and a runner-up its own plus what folded in", () => {
+    const [haiku, haiku2] = cands(HAIKU, "Galena", "Sphalerite");
+    const [flash, flash2] = cands(FLASH, "Galena", "Sphalerite");
+    const plan = planPills(
+      [seen(haiku, "metallic grey", "cubic cleavage"), seen(haiku2, "resinous luster"), seen(flash, "Cubic cleavage", "heavy for its size"), seen(flash2, "brown", "resinous luster")],
+      HAIKU,
+    );
+    expect(plan.pills[0].reasons).toEqual(["metallic grey", "cubic cleavage", "heavy for its size"]);
+    expect(plan.pills[1].reasons).toEqual(["resinous luster", "brown"]);
+  });
+
+  it("caps the reasons at five, and keeps none from a row that carried none", () => {
+    const [haiku] = cands(HAIKU, "Galena");
+    const [flash] = cands(FLASH, "Galena");
+    const plan = planPills([seen(haiku, "a", "b", "c", "d"), seen(flash, "e", "f", "g")], HAIKU);
+    expect(plan.pills[0].reasons).toEqual(["a", "b", "c", "d", "e"]);
+    const bare = planPills([...cands(HAIKU, "Galena"), ...cands(FLASH, "Galena")], HAIKU);
+    expect(bare.pills[0].reasons).toEqual([]);
+  });
+
+  it("keeps the reasons when the piece agrees mineral by mineral rather than by name", () => {
+    const [haiku] = cands(HAIKU, "Pyrite");
+    const [flash] = cands(FLASH, "Quartz");
+    const plan = planPills([seen(piece(haiku, ON("Quartz")), "brassy cubes"), seen(piece(flash, W("Pyrite")), "clear points")], HAIKU);
+    expect(plan.verdict).toBe("probably");
+    expect(plan.pills[0].reasons).toEqual(["brassy cubes", "clear points"]);
+  });
+
   it("puts no scratch misfit on a piece with parts, since the answer could be about any of them", () => {
     const [haiku] = cands(HAIKU, "Calcite");
     const [flash] = cands(FLASH, "Calcite");

@@ -13,7 +13,9 @@
 // Since #62 an object that is not a mineral (a fossil, sea glass) is named for
 // what it is, and the mineral it is made of rides beside the name: shown under
 // the pill, never part of the name, and in doubt when the two opinions differ
-// on it the way a variety can be.
+// on it the way a variety can be. Since #71 a pill carries its reasons: the
+// models' own short phrases for the readings that merged into it, for the
+// "Why?" under it.
 
 import { misfit, TESTS, type Answers, type Misfit, type TestKind } from "./household-tests";
 import { finer, norm, sameStone, varietySplit, type MindatRecord, type Named } from "./names";
@@ -45,6 +47,7 @@ export type Candidate = {
   chain?: MindatRecord[]; // its Mindat record and those above it, when Jasper looked it up
   parts?: Part[]; // the other minerals the model saw on the piece; none on a prompt v1 answer
   madeOf?: MadeOf | null; // a fossil coral made of Calcite; none on a mineral, a rock, or an answer before prompt v3
+  features?: string[]; // the model's own short phrases for this reading, as Jasper stored them
 };
 
 export type Verdict = "probably" | "could_be" | "none";
@@ -67,7 +70,11 @@ export type Pill = {
   // The lead pill only: both first choices name this object, but each says it is
   // made of a different mineral, so neither is taken.
   madeOfDoubt?: { guesses: string[] };
+  reasons: string[]; // what the models saw (#71): the features of every candidate that merged into this pill, each once, at most MAX_REASONS
 };
+
+/** How many of the models' phrases a pill keeps for its "Why?". */
+export const MAX_REASONS = 5;
 
 export type Plan = { verdict: Verdict; opinions: number; pills: Pill[] };
 
@@ -112,11 +119,13 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
     if (same) {
       if (!same.models.includes(c.model)) same.models.push(c.model);
       if (!same.variety && !same.doubt && c.variety) same.variety = c.variety;
+      addReasons(same, c);
       return;
     }
     const piece = afterLead ? pills.find((p) => [...p.parts, ...p.maybe].some((x) => !isMatrix(x.name) && sameStone(asNamed(x), c))) : undefined;
     if (piece) {
       if (!piece.models.includes(c.model)) piece.models.push(c.model);
+      addReasons(piece, c);
       return;
     }
     if (pills.length < MAX_PILLS)
@@ -132,6 +141,7 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
         maybe: [],
         misfit: c.parts?.length ? null : misfit(c.chain ?? [], answers),
         madeOf: c.madeOf ?? null,
+        reasons: addReasons({ reasons: [] }, c).reasons,
       });
   };
 
@@ -157,7 +167,10 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
         lead.chain = b[0].chain;
         lead.misfit = misfit(b[0].chain ?? [], answers);
       }
-    } else lead.models.push(b[0].model);
+    } else {
+      lead.models.push(b[0].model);
+      addReasons(lead, b[0]);
+    }
     const { parts, maybe } = agreedParts(a[0], b[0]);
     lead.parts = parts;
     lead.maybe = maybe;
@@ -172,6 +185,20 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
   add(b[0], "could be");
   for (const c of rest) add(c, "could be");
   return { verdict: "could_be", opinions: 2, pills };
+}
+
+/** Put a candidate's features on the pill it merged into (#71): in order, each phrase once ignoring case, at most MAX_REASONS. */
+function addReasons<P extends { reasons: string[] }>(pill: P, c: Candidate): P {
+  const seen = new Set(pill.reasons.map(norm));
+  for (const f of c.features ?? []) {
+    if (pill.reasons.length >= MAX_REASONS) break;
+    const key = norm(f);
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      pill.reasons.push(f);
+    }
+  }
+  return pill;
 }
 
 /** A part as a stone to match: a name with no variety, and its Mindat chain. */

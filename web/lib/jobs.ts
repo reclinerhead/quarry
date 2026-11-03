@@ -59,10 +59,16 @@ export function candidatesOf(db: DatabaseSync, jobId: number): Candidate[] {
   const rows = (
     db
       .prepare(
-        "SELECT model, rank, name, variety, kind, confidence, mindat_id, parts, made_of, made_of_mindat_id FROM candidates WHERE job_id = ? ORDER BY model, rank",
+        "SELECT model, rank, name, variety, kind, confidence, mindat_id, parts, made_of, made_of_mindat_id, features FROM candidates WHERE job_id = ? ORDER BY model, rank",
       )
       .all(jobId) as Array<
-      Omit<Candidate, "chain" | "parts" | "madeOf"> & { mindat_id: number | null; parts: string | null; made_of: string | null; made_of_mindat_id: number | null }
+      Omit<Candidate, "chain" | "parts" | "madeOf" | "features"> & {
+        mindat_id: number | null;
+        parts: string | null;
+        made_of: string | null;
+        made_of_mindat_id: number | null;
+        features: string | null;
+      }
     >
   ).map((r) => ({ ...r, parts: parseParts(r.parts) }));
   const seeds = rows.flatMap((r) => [r.mindat_id, ...r.parts.map((p) => p.mindatId), r.made_of_mindat_id]).filter((id) => id !== null);
@@ -88,7 +94,18 @@ export function candidatesOf(db: DatabaseSync, jobId: number): Candidate[] {
     chain: chainOf(r.mindat_id, byId),
     parts: r.parts.map((p) => ({ role: p.role, name: p.name, chain: chainOf(p.mindatId, byId) })),
     madeOf: r.made_of ? { name: r.made_of, chain: chainOf(r.made_of_mindat_id, byId) } : null,
+    features: parseFeatures(r.features),
   }));
+}
+
+/** A candidate's `features` column (a JSON array of short phrases, as Jasper writes it); anything malformed is none. */
+function parseFeatures(json: string | null): string[] {
+  try {
+    const raw: unknown = JSON.parse(json ?? "[]");
+    return Array.isArray(raw) ? raw.filter((f): f is string => typeof f === "string" && f.trim() !== "").map((f) => f.trim()) : [];
+  } catch {
+    return [];
+  }
 }
 
 export function readJob(db: DatabaseSync, jobId: number): JobView | null {
