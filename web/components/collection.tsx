@@ -64,12 +64,20 @@ export function Collection({ tiles }: { tiles: Tile[] }) {
             {countLine(shown.length, tiles.length, filtered)}
           </p>
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-3">
           <label htmlFor="sort" className="text-meta font-bold text-ink-2">
             Sort by
           </label>
-          <div className="relative">
-            <select id="sort" value={sort} onChange={(e) => setParams({ sort: e.target.value })} className="select">
+          <div className="relative grid">
+            {/* A styled select (base-select) is as wide as the chosen label;
+                every label, invisible in the same cell, holds it at the
+                widest, as a native one is, so choosing moves nothing. */}
+            {SORTS.map((s) => (
+              <span key={s.key} aria-hidden className="select invisible col-start-1 row-start-1 h-0 min-h-0 border-y-0">
+                {s.label}
+              </span>
+            ))}
+            <select id="sort" value={sort} onChange={(e) => setParams({ sort: e.target.value })} className="select col-start-1 row-start-1">
               {SORTS.map((s) => (
                 <option key={s.key} value={s.key}>
                   {s.label}
