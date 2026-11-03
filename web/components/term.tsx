@@ -30,8 +30,11 @@ export function Term({ k, children, bare = false }: { k: GlossaryKey; children?:
     }
     const gutter = 16;
     const r = note.current.getBoundingClientRect();
-    const over = r.right - (window.innerWidth - gutter);
-    const under = gutter - r.left;
+    // The rect is in screen px; the gutter and `left` are in the page's own,
+    // which a desktop's 90% zoom (#55) shrinks. Their ratio converts between them.
+    const zoom = r.width / note.current.offsetWidth;
+    const over = (r.right - window.innerWidth) / zoom + gutter;
+    const under = gutter - r.left / zoom;
     setShift(over > 0 ? -over : under > 0 ? under : 0);
   }, [open]);
 

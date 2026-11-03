@@ -299,6 +299,16 @@
    outrank the component recipes above (a link styled `btn-primary` would keep
    the link colour and vanish into its own fill). */
 @layer base {
+  /* On a desktop (a mouse or trackpad) the whole site renders at 90% (#55),
+     as the browser's one notch smaller does: type, spacing, targets and
+     photos together, so DESIGN.md's px and the canvas keep their
+     proportions. 18 px body text reads at 16.2. Phones and tablets draw at
+     full size. */
+  @media (hover: hover) and (pointer: fine) {
+    html {
+      zoom: 0.9;
+    }
+  }
   h1,
   h2,
   h3 {
