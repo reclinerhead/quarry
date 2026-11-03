@@ -194,7 +194,11 @@ in…", "Giving it a lick…", "Hand lens out…"). The lines are plain words, n
 a term that needs an info mark, and short enough to stay on one line in a
 narrow row. It's decoration beside a status that says where things stand, so
 it's hidden from screen readers. Under reduced motion the hammer rests on the
-stone and the line holds.
+stone and the line holds. It sits in the add page's sent rows, the dashboard's
+working strip, and under the confirm screen's heading while Jasper has the
+stone ("Jasper is looking…", and "Jasper is looking again…" after a test
+answer). The cursor never says "busy": a disabled control keeps the arrow,
+since the progress cursor reads as a hung browser.
 
 **Candidate pills** (naming, and "How it was named"): confirmed name = solid
 azurite with a check. Other candidates = outlined, 64 px tall, the piece's
