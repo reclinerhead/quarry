@@ -164,7 +164,7 @@ describe("propertyCard", () => {
     ]);
     expect(card.cells[0].segments).toEqual([{ text: "CaF", pos: null }, { text: "2", pos: "sub" }]);
     expect(card.cells.at(-1)?.detail).toMatch(/^Blue under long-wave UV/);
-    expect([card.mineralClass, card.mohs, card.glow]).toEqual(["Halide", "4", "can"]);
+    expect([card.mineralClass, card.mohs, card.mohsRange, card.glow]).toEqual(["Halide", "4", [4, 4], "can"]);
   });
 
   it("takes what a variety lacks from the record above, and keeps what it has", () => {
@@ -172,6 +172,7 @@ describe("propertyCard", () => {
     const cells = Object.fromEntries(card.cells.map((c) => [c.key, c.value]));
     expect(cells).toMatchObject({ hardness: "6.5 to 7", crystalSystem: "Trigonal", luster: "Waxy", cleavage: "None", specificGravity: "2.6", fluorescence: "Can glow" });
     expect(card.mineralClass).toBe("Oxide");
+    expect(card.mohsRange).toEqual([6.5, 7]);
   });
 
   it("gives a variety its parent's hardness and hides a glow neither one has", () => {
@@ -179,11 +180,12 @@ describe("propertyCard", () => {
     const cells = Object.fromEntries(card.cells.map((c) => [c.key, c.value]));
     expect(cells).toMatchObject({ hardness: "7", crystalSystem: "Trigonal", specificGravity: "2.65 to 2.66", cleavage: "Poor" });
     expect(cells.fluorescence).toBeUndefined();
+    expect(card.mohsRange).toEqual([7, 7]);
     expect(card.glow).toBeNull();
   });
 
   it("is empty for a rock Mindat records nothing about", () => {
-    expect(propertyCard([GRANITE], false)).toMatchObject({ state: "empty", mindatId: 48141, cells: [], mineralClass: null, mohs: null });
+    expect(propertyCard([GRANITE], false)).toMatchObject({ state: "empty", mindatId: 48141, cells: [], mineralClass: null, mohs: null, mohsRange: null });
   });
 
   it("is unknown for a name Mindat doesn't have, and pending before Jasper links or fetches it", () => {

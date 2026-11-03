@@ -7,9 +7,11 @@ import { RemoveStone, StoneEditor } from "@/components/stone-editor";
 import { Term } from "@/components/term";
 import { TestsEditor } from "@/components/tests-editor";
 import { fullDay, KIND_LABEL } from "@/lib/collection";
+import { elementsLine } from "@/lib/elements";
 import type { GlossaryKey } from "@/lib/glossary";
 import { readJob, withReadDb, type JobView } from "@/lib/jobs";
-import type { PropertyKey, Segment } from "@/lib/mindat";
+import { mohsLabel, type PropertyKey, type Segment } from "@/lib/mindat";
+import { mohsRowLabel } from "@/lib/mohs";
 import { HOW_SUMMARY } from "@/lib/naming";
 import { sameStone } from "@/lib/names";
 import { PieceTitle } from "@/components/piece-title";
@@ -20,9 +22,9 @@ import { readStone, type StoneView } from "@/lib/specimens";
 // has data: the breadcrumb, the title block (with the formula and Mindat's
 // tags, #23), the photo gallery, then two columns. Main: "This specimen" (the
 // editable specimen label), "Kitchen-table tests" and "Mineral properties".
-// Side: "How it was named" and Remove. About, handling notes, elements, the
-// Mohs scale, relatives, the story log and the box label arrive later in
-// Phases 2 and 3.
+// Side: "How it was named", "What it's made of", "On your Mohs scale" (#42)
+// and Remove. About, handling notes, relatives, the story log and the box
+// label arrive later in Phases 2 and 3.
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -126,6 +128,8 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
             </h2>
             {naming?.confirmation ? <HowNamed job={naming} morePhotos={stone.morePhotosNamed} /> : <p className="text-ink-2">No record of its naming.</p>}
           </section>
+          <MadeOf stone={stone} name={mineral} />
+          <MohsSet stone={stone} name={mineral} />
           <section aria-labelledby="remove-h" className="card flex flex-col gap-3 p-card">
             <h2 id="remove-h" className="text-h3 leading-tight">
               Remove
@@ -254,29 +258,119 @@ function MineralProperties({ stone, name }: { stone: StoneView; name: string }) 
             </div>
           ))}
         </dl>
-      ) : p.state === "empty" ? (
-        <p className="text-ink-2">
-          {stone.kind === "rock" ? (
-            <>
-              {`Mindat lists no single formula or hardness for ${name}: a `}
-              <Term k="rock">rock</Term>
-              {" is a mix of minerals."}
-            </>
-          ) : (
-            `Mindat has no properties recorded for ${name}.`
-          )}
-        </p>
-      ) : p.state === "unknown" ? (
+      ) : (
+        <NoRecord stone={stone} name={name} missing="single formula or hardness" none="properties" />
+      )}
+    </section>
+  );
+}
+
+/**
+ * The one line that takes a Mindat card's place when there are no cells (#23),
+ * so the page never has a hole: a rock (`missing` says what Mindat lists none
+ * of), a fetched record with none of it (`none`), a name Mindat doesn't have,
+ * or a record Jasper hasn't fetched yet.
+ */
+function NoRecord({ stone, name, missing, none }: { stone: StoneView; name: string; missing: string; none: string }) {
+  const state = stone.properties.state;
+  if (state === "unknown")
+    return (
+      <>
+        <p className="text-ink-2">{`Mindat has no entry called ${name}. If it goes by another name there, the name can be changed to Mindat’s.`}</p>
+        {stone.namedBy ? (
+          <Link href={`/name/${stone.namedBy}`} className="text-link self-start">
+            Change the name
+          </Link>
+        ) : null}
+      </>
+    );
+  if (state === "pending") return <p className="text-ink-2">{`Jasper hasn’t looked ${name} up in Mindat yet.`}</p>;
+  return (
+    <p className="text-ink-2">
+      {stone.kind === "rock" ? (
         <>
-          <p className="text-ink-2">{`Mindat has no entry called ${name}. If it goes by another name there, the name can be changed to Mindat’s.`}</p>
-          {stone.namedBy ? (
-            <Link href={`/name/${stone.namedBy}`} className="text-link self-start">
-              Change the name
-            </Link>
-          ) : null}
+          {`Mindat lists no ${missing} for ${name}: a `}
+          <Term k="rock">rock</Term>
+          {" is a mix of minerals."}
         </>
       ) : (
-        <p className="text-ink-2">{`Jasper hasn’t looked ${name} up in Mindat yet.`}</p>
+        `Mindat has no ${none} recorded for ${name}.`
+      )}
+    </p>
+  );
+}
+
+/**
+ * DESIGN.md §5's "What it's made of" (#42): the main mineral's elements as
+ * tiles, solid with "· new" when this stone was the first to bring one, then
+ * the line that says so and counts the household's lit elements. "Open your
+ * periodic table" joins when that page exists.
+ */
+function MadeOf({ stone, name }: { stone: StoneView; name: string }) {
+  const card = stone.elements;
+  return (
+    <section aria-labelledby="made-h" className="card flex flex-col gap-3.5 p-card">
+      <h2 id="made-h" className="text-h3 leading-tight">
+        What it&rsquo;s made of
+        <Term k="element" bare />
+      </h2>
+      {card.tiles.length ? (
+        <>
+          <ul aria-label="Elements" className="flex flex-wrap gap-3">
+            {card.tiles.map((t) => (
+              <li key={t.symbol} className={t.isNew ? "element-tile element-tile-new" : "element-tile"}>
+                <span className="text-tag font-bold tabular-nums">{t.number}</span>
+                <span className="font-display text-[36px] font-bold leading-[1.1]">{t.symbol}</span>
+                <span className="text-meta">{t.isNew ? `${t.name} · new` : t.name}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-ink-2">{elementsLine(card)}</p>
+        </>
+      ) : (
+        <NoRecord stone={stone} name={name} missing="formula" none="elements" />
+      )}
+    </section>
+  );
+}
+
+/**
+ * DESIGN.md §5's "On your Mohs scale" (#42): the household's set of the ten
+ * reference minerals as one row, this stone's slot solid, then where the
+ * stone sits. The row is always drawn: the set is the household's, not the
+ * stone's, so a rock still shows the slots the collection owns.
+ */
+function MohsSet({ stone, name }: { stone: StoneView; name: string }) {
+  const card = stone.mohsSet;
+  return (
+    <section aria-labelledby="mohs-h" className="card flex flex-col gap-3 p-card">
+      <h2 id="mohs-h" className="text-h3 leading-tight">
+        On your Mohs scale
+        <Term k="mohsScale" bare />
+      </h2>
+      <div role="img" aria-label={mohsRowLabel(card, name)} className="grid grid-cols-10 gap-1">
+        {card.slots.map((s) => (
+          <span key={s.n} className={s.state === "this" ? "mohs-slot mohs-slot-this" : s.state === "owned" ? "mohs-slot mohs-slot-owned" : "mohs-slot"}>
+            {s.n}
+          </span>
+        ))}
+      </div>
+      {card.reference ? (
+        <p className="text-ink-2">
+          {`${card.reference.name} is the official ${card.reference.n} on the scale. `}
+          {card.first ? "This stone fills that slot in your set." : `Another ${card.reference.name} already filled that slot.`}
+        </p>
+      ) : card.range && card.place ? (
+        <p className="text-ink-2">
+          {`${name} is `}
+          <Term k="hardness">{`Mohs ${mohsLabel(card.range[0], card.range[1])}`}</Term>
+          {card.place.kind === "between"
+            ? `, between ${card.place.below.name} (${card.place.below.n}) and ${card.place.above.name} (${card.place.above.n}). `
+            : `, the same as ${card.place.as.name}. `}
+          Only the ten reference minerals fill a slot.
+        </p>
+      ) : (
+        <NoRecord stone={stone} name={name} missing="single hardness" none="hardness" />
       )}
     </section>
   );

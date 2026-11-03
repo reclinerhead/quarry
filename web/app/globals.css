@@ -176,6 +176,52 @@
     background: var(--color-sand-2);
   }
 
+  /* Element tile (DESIGN.md §4): number, symbol, name. Lit already is the
+     soft azurite; new with this stone is solid. Tiles share a wrapping row,
+     so a silicate's six go to two rows on a phone without shrinking. */
+  .element-tile {
+    flex: 1 1 96px;
+    max-width: 170px;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 14px;
+    border-radius: var(--radius-thumb);
+    border: 2px solid var(--color-azurite);
+    background: var(--color-azurite-soft);
+    color: var(--color-azurite-note);
+  }
+  .element-tile-new {
+    background: var(--color-azurite);
+    color: #fff;
+  }
+
+  /* Mohs slot (DESIGN.md §4): numbered in Courier Prime. Missing is dashed,
+     owned is the soft azurite, this stone's (or the one just added) is
+     solid. Every state keeps its 1 px border, so nothing shifts. */
+  .mohs-slot {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: 1px dashed var(--color-line-2);
+    color: var(--color-ink-3);
+    font-family: var(--font-label);
+    font-weight: 700;
+  }
+  .mohs-slot-owned {
+    border-style: solid;
+    border-color: var(--color-azurite-soft);
+    background: var(--color-azurite-soft);
+    color: var(--color-azurite-note);
+  }
+  .mohs-slot-this {
+    border-style: solid;
+    border-color: var(--color-azurite);
+    background: var(--color-azurite);
+    color: #fff;
+  }
+
   /* A text field: the chip's pill, white, control border, 52 px. The pill is
      a <label> around a bare <input>, so the focus ring goes on the pill. */
   .field {

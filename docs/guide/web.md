@@ -88,7 +88,7 @@ pnpm dev
 
 ## A stone
 
-`app/stones/[id]/page.tsx` is one stone, read by `readStone` in `lib/specimens.ts`. It is DESIGN.md §5's specimen page as far as the data goes: Mindat's properties are here (#23); About, handling notes, elements, the Mohs scale, relatives, the story log and the box label arrive later in Phases 2 and 3.
+`app/stones/[id]/page.tsx` is one stone, read by `readStone` in `lib/specimens.ts`. It is DESIGN.md §5's specimen page as far as the data goes: Mindat's properties (#23), the elements and the Mohs set (#42) are here; About, handling notes, relatives, the story log and the box label arrive later in Phases 2 and 3.
 
 - **The breadcrumb** ("Collection › Galena").
 - **The title block:**
@@ -134,9 +134,18 @@ pnpm dev
   - The date, and how the person knew (`HOW_SUMMARY` in `lib/naming.ts`, beside the confirm screen's chip labels).
   - How many more photos were added as the same stone.
   - "Change the name", which goes to that job's confirm screen.
+- **What it's made of** (#42), the main mineral's elements from Mindat's `elements` (`lib/elements.ts`, pure, tested), read up the chain like every other property: the first record that lists any, none until the mineral's own record is fetched, none for a rock.
+  - **The tiles** (DESIGN.md §4's element tile, the `element-tile` recipe): atomic number, symbol in Zilla 36, name, in a wrapping row. An element is **new with this stone** when no stone added before it (by `created_at`, then id) carries it, which makes "new" a fact about the stone rather than about today: the first Fluorite keeps "Fluorine · new" and the second never shows it. New is the solid tile; already lit is the soft one.
+  - **The line** (`elementsLine`): what is new ("Fluorine is new to your periodic table.", "Calcium and fluorine are new…", or "Both were already on your periodic table.") and how many distinct elements the collection's main minerals light ("You now have 14 elements lit.").
+  - `readStone` reads every stone's chain in one query (`mineralChains`, shared with the tiles' classes), taking only `strunz10ed1` and `elements` out of `detail`. The parser takes Mindat's comma-joined symbols, or an array should Mindat send one, and drops a symbol not on the table.
+  - "Open your periodic table" joins when that page exists, as the top bar's nav pill does.
+- **On your Mohs scale** (#42), the household's set of the ten reference minerals, talc to diamond (`lib/mohs.ts`, pure, tested). A slot is **owned by having a stone of that mineral**, by its name or any name up its Mindat chain (Amethyst fills 7 through Quartz; Fluorapatite fills 5, since Mindat's Apatite is a group), so a typed "Fluorite" fills 4 before Jasper has linked it. A hardness alone never fills a slot: Galena at 2.5 fills nothing.
+  - **The row** (DESIGN.md §4's Mohs set as the specimen page draws it, the `mohs-slot` recipe): ten slots numbered in Courier Prime, missing dashed, owned soft, this stone's solid; a `role="img"` whose label says it in words (`mohsRowLabel`). It is always drawn, since the set is the household's, not the stone's.
+  - **The line:** a reference mineral reads "Fluorite is the official 4 on the scale. This stone fills that slot in your set." (or "Another Fluorite already filled that slot."). Any other mineral with a hardness says where it sits, from `mohsRange` on the property card (`placeOf`): "Galena is Mohs 2.5, between Gypsum (2) and Calcite (3). Only the ten reference minerals fill a slot.", or "the same as Fluorite" for one on a whole number, the Mohs figure with the hardness mark.
+  - Both cards' headings carry a mark (`element`, `mohsScale`), and with nothing to show, both take the property card's one-line fallbacks (`NoRecord`): a rock, a name Mindat doesn't have, or a record Jasper hasn't fetched.
 - **Remove** (`RemoveStone`): two taps, "Remove this stone" then "Yes, remove it", with "Keep it" to back out. `DELETE /api/stones/[id]` removes the photo rows and the jobs that brought them, found through the photos and through the stone's confirmations; candidates, suggested tests and confirmations cascade. It then removes the stone (its parts cascade), and each of its minerals, main or on it, that no stone uses any more (`pruneMinerals`), and unlinks the files and their thumbnails. Then home.
 
-Tests: `lib/collection.test.ts` (search, by a part too, the kind and source filters, both sorts, by the shown name, the chips, the count line, the side column, date labels, what changed today, missing details), `lib/greeting.test.ts`, and `lib/mindat.test.ts` (formula runs, plain text, the luster, gravity and fluorescence rules on Mindat's own strings, inheritance up the chain, the card's four states, the class on the tiles' shape (`mineralClassOf`), and `fold` on Jasper's cases).
+Tests: `lib/collection.test.ts` (search, by a part too, the kind and source filters, both sorts, by the shown name, the chips, the count line, the side column, date labels, what changed today, missing details), `lib/greeting.test.ts`, `lib/mindat.test.ts` (formula runs, plain text, the luster, gravity and fluorescence rules on Mindat's own strings, inheritance up the chain, the card's four states, the class on the tiles' shape (`mineralClassOf`), and `fold` on Jasper's cases), `lib/elements.test.ts` (the table, Mindat's string in its shapes, inheritance, what is new on each of three stones in date order with a tie broken by id, the lit count, and the line) and `lib/mohs.test.ts` (the set, the slot by name, through the chain and for Apatite's species, where a hardness sits, the slots' states, first versus already filled, and the row's label).
 
 ## Adding a rock
 
