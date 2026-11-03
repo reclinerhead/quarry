@@ -72,7 +72,7 @@ export default async function PeriodicTablePage({ searchParams }: { searchParams
         {n === 0 ? (
           <p className="text-ink-2">Nothing yet. Each element you have will be a tile here, and tapping it shows the stones that carry it.</p>
         ) : (
-          <ul className="flex flex-wrap gap-3">
+          <ul className="element-tiles">
             {table.lit.map((l) => (
               <li key={l.element.symbol} className="contents">
                 <Link

@@ -233,12 +233,17 @@
     background: var(--color-sand-2);
   }
 
-  /* Element tile (DESIGN.md §4): number, symbol, name. Lit already is the
-     soft azurite; new with this stone is solid. Tiles share a wrapping row,
-     so a silicate's six go to two rows on a phone without shrinking. */
+  /* Element tiles (DESIGN.md §4): number, symbol, name. Lit already is the
+     soft azurite; new with this stone is solid. The row is a grid of equal
+     tracks (§6's auto-fill with a minimum), so a tile alone on the last row
+     is the same width as the ones on a full row, and a silicate's six go to
+     more rows on a phone without shrinking. */
+  .element-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+  }
   .element-tile {
-    flex: 1 1 96px;
-    max-width: 170px;
     display: flex;
     flex-direction: column;
     padding: 12px 14px;
