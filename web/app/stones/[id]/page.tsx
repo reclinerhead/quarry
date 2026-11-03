@@ -316,7 +316,7 @@ function MadeOf({ stone, name }: { stone: StoneView; name: string }) {
       </h2>
       {card.tiles.length ? (
         <>
-          <ul aria-label="Elements" className="flex flex-wrap gap-3">
+          <ul aria-label="Elements" className="element-tiles">
             {card.tiles.map((t) => (
               <li key={t.symbol} className={t.isNew ? "element-tile element-tile-new" : "element-tile"}>
                 <span className="text-tag font-bold tabular-nums">{t.number}</span>
