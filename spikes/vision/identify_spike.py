@@ -10,6 +10,7 @@ Usage
     python identify_spike.py photos --group              # photos sharing a stem are one specimen
     python identify_spike.py photos --models anthropic/claude-haiku-5.5,anthropic/claude-sonnet-5.5
     python identify_spike.py photos --effort low         # thinking depth, for every model
+    python identify_spike.py photos --prompt 2           # the whole piece, as a show label names it (#29)
 
 Photo layout
 ------------
@@ -38,6 +39,11 @@ photo's stem (or the group key with --group):
     Magnet: no. Streak: white. About 3 cm.
 
 A specimen with notes is identified twice: photo alone, then photo plus notes.
+
+A piece of several minerals can list the others in a .parts file named the same
+way, one a line ("with Sphalerite", "on Quartz", or just the name). The scorer
+then counts how many of them the top reading found, and how many it named that
+aren't there.
 
 Every response is cached in out/responses/ so re-running the scoring costs
 nothing. Delete a cached file to re-query it. Results land in out/results.md
@@ -106,6 +112,48 @@ If any photo shows a label, tag, or card with writing on it, copy that text into
 label_text; otherwise leave label_text empty.
 """
 
+# Prompt v2 (#29): the same question, asking for the whole piece the way a rock-show
+# label names it, as Jasper's jasper/prompts/identify.md version 2 does. The tests
+# stay free text, so the only change between the two runs is the piece.
+SYSTEM_V2 = SYSTEM.replace(
+    "Return one to three candidates, most likely first.\n"
+    "- name: the mineral species or rock type, as Mindat names it (Quartz, Calcite,\n"
+    "  Pyrite, Granite, Obsidian). Name the species, not the variety, here.\n"
+    "- variety: the variety or trade name when one applies (Amethyst, Rose Quartz,\n"
+    "  Agate, Tiger's Eye), otherwise an empty string.\n",
+    "Describe the piece the way a dealer's label at a rock show would: the main mineral\n"
+    "first, then the other minerals you can see on it, then what it grew on (\"Fluorite with\n"
+    "Pyrite on Quartz\", \"Amethyst on matrix\"). Most stones are one mineral or one rock, and\n"
+    "then there is nothing more to add.\n\n"
+    "Return one to three candidates, most likely first. Each is one reading of the whole piece.\n"
+    "- name: the main mineral or rock, as Mindat names the species or rock type (Quartz,\n"
+    "  Calcite, Pyrite, Granite, Obsidian). On a piece with several minerals it is the\n"
+    "  showpiece a buyer would notice first, not the base it grew on. Name the species, not\n"
+    "  the variety, here.\n"
+    "- variety: the variety or trade name a rock shop would put on the label when one applies\n"
+    "  (Amethyst, Rose Quartz, Agate, Blue Lace Agate, Tiger's Eye), otherwise an empty string.\n"
+    "  Not a colour on its own.\n"
+    "- with: the other minerals clearly visible on the piece, as Mindat names them, most\n"
+    "  prominent first, at most three. An empty list when there are none.\n"
+    "- on: what the main mineral grew on: a mineral or rock as Mindat names it (Quartz,\n"
+    "  Basalt), \"matrix\" for rock you can't name, or an empty string for a loose crystal or\n"
+    "  a tumbled, polished or carved stone.\n",
+).replace(
+    "- confidence: your honest probability from 0 to 1 that this candidate is right.",
+    "- confidence: your honest probability from 0 to 1 that this candidate's main mineral is right.",
+).replace(
+    "Then suggest one to three",
+    "Name only the minerals you can see in the photos. Never add one because it usually\n"
+    "comes with another: sphalerite often grows with galena, but galena belongs in \"with\"\n"
+    "only when it is there to see.\n\n"
+    "Then suggest one to three",
+).replace(
+    "to do it and what each candidate would show. Skip any test the notes already answer.\n",
+    "to do it and what each candidate would show. On a piece with several minerals, say\n"
+    "which part to test (\"scratch one of the gold crystals across the glass\"). Skip any test\n"
+    "the notes already answer.\n",
+)
+
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -142,6 +190,14 @@ SCHEMA = {
     "required": ["candidates", "tests", "label_text"],
     "additionalProperties": False,
 }
+
+SCHEMA_V2 = json.loads(json.dumps(SCHEMA))
+_item = SCHEMA_V2["properties"]["candidates"]["items"]
+_item["properties"] |= {"with": {"type": "array", "items": {"type": "string"}}, "on": {"type": "string"}}
+_item["required"] = ["name", "variety", "kind", "with", "on", "confidence", "features"]
+PROMPTS = {1: (SYSTEM, SCHEMA), 2: (SYSTEM_V2, SCHEMA_V2)}
+assert SYSTEM_V2.count("with:") == 1 and "Name only" in SYSTEM_V2 and "which part to test" in SYSTEM_V2, "SYSTEM_V2's replacements missed"
+MATRIX = "matrix"
 
 
 # ----------------------------------------------------------------------------
@@ -183,10 +239,14 @@ class Candidate:
     kind: str
     confidence: float
     features: list[str] = field(default_factory=list)
+    withs: list[str] = field(default_factory=list)  # prompt v2: the other minerals on the piece
+    on: str = ""  # prompt v2: its base, a mineral or rock, or "matrix"
 
     def display(self) -> str:
         v = f" ({self.variety})" if self.variety else ""
-        return f"{self.name}{v} {self.confidence:.2f}"
+        w = f" with {', '.join(self.withs)}" if self.withs else ""
+        o = f" on {self.on}" if self.on else ""
+        return f"{self.name}{v}{w}{o} {self.confidence:.2f}"
 
     def answers(self) -> set[str]:
         """Every way this candidate could be naming the expected specimen."""
@@ -196,10 +256,19 @@ class Candidate:
             out |= {v, f"{v} {norm(self.name)}", f"{norm(self.name)} {v}"}
         return out - {""}
 
+    def parts(self) -> set[str]:
+        """The reading's other minerals, normalized, never plain matrix."""
+        return {norm(p) for p in [*self.withs, self.on] if norm(p) and norm(p) != MATRIX}
+
+    def minerals(self) -> list[str]:
+        """The reading's minerals, its main one first: what compare_runs agrees on."""
+        return [norm(self.name), *sorted(self.parts() - {norm(self.name)})]
+
 
 def candidates_from(result: dict) -> list[Candidate]:
     out = []
     for c in result.get("candidates", [])[:TOP_N]:
+        withs = c.get("with", [])
         out.append(
             Candidate(
                 name=str(c.get("name", "")),
@@ -207,6 +276,8 @@ def candidates_from(result: dict) -> list[Candidate]:
                 kind=str(c.get("kind", "")),
                 confidence=float(c.get("confidence", 0.0) or 0.0),
                 features=list(c.get("features", [])),
+                withs=[str(w).strip() for w in withs if str(w).strip()] if isinstance(withs, list) else [],
+                on=str(c.get("on", "") or "").strip(),
             )
         )
     return out
@@ -215,8 +286,22 @@ def candidates_from(result: dict) -> list[Candidate]:
 def is_hit(expected: Expected, cand: Candidate) -> bool:
     """An expected name appearing as whole words in any of the candidate's names, so rock
     names with qualifiers count ('Andesite porphyry' for Porphyry, 'Smoky quartz' for
-    Quartz) but a longer mineral name does not ('Chalcopyrite' is not Pyrite)."""
-    return any(f" {e} " in f" {a} " for e in expected.names for a in cand.answers())
+    Quartz) but a longer mineral name does not ('Chalcopyrite' is not Pyrite). Since #29
+    a reading also counts when the expected name is among its other minerals: a show
+    label may lead with the pyrite on a quartz the folder is named for."""
+    return any(f" {e} " in f" {a} " for e in expected.names for a in cand.answers() | cand.parts())
+
+
+def score_parts(expected: Expected, parts: set[str], cand: Candidate | None) -> tuple[int, int]:
+    """For a specimen whose other minerals are known (a .parts sidecar): how many of
+    them the top-1 reading found, and how many it named that aren't on the piece."""
+    if cand is None:
+        return 0, 0
+    named = cand.parts() | {norm(cand.name)}
+    found = sum(1 for p in parts if any(f" {p} " in f" {n} " for n in named))
+    known = parts | expected.names
+    invented = sum(1 for n in cand.parts() if not any(f" {k} " in f" {n} " for k in known))
+    return found, invented
 
 
 @dataclass
@@ -262,6 +347,8 @@ def summarize(rows: list[dict]) -> list[dict]:
         scored = [r for r in ok if r["expected"]]
         costs = [r["cost_usd"] for r in ok if r["cost_usd"] != ""]
         secs = [r["seconds"] for r in ok]
+        pieces = [r for r in ok if r["parts_found"] != ""]  # specimens with a .parts sidecar
+        on_them = sum(len(r["parts_expected"].split("; ")) for r in pieces if r["parts_expected"])
         bands = {}
         for r in scored:
             b = bands.setdefault(r["top1_band"], [0, 0])
@@ -276,6 +363,8 @@ def summarize(rows: list[dict]) -> list[dict]:
                 "top-1": pct(sum(r["top1"] for r in scored), len(scored)),
                 "top-3": pct(sum(r["top3"] for r in scored), len(scored)),
                 "label read": str(sum(1 for r in ok if r["label_text"])),
+                "parts found": pct(sum(r["parts_found"] for r in pieces), on_them),
+                "parts invented": str(sum(r["parts_invented"] for r in pieces)) if pieces else "n/a",
                 "by confidence": "; ".join(f"{k} {pct(*v)}" for k, v in sorted(bands.items())) or "n/a",
                 "cost / ID": f"${sum(costs) / len(costs):.5f}" if costs else "n/a",
                 "cost / 1000": f"${1000 * sum(costs) / len(costs):.2f}" if costs else "n/a",
@@ -316,10 +405,11 @@ class Reply:
     cost_usd: float | None = None
 
 
-def ask(model: str, images: list[bytes], notes: str | None, effort: str) -> Reply:
+def ask(model: str, images: list[bytes], notes: str | None, effort: str, prompt: int = 1) -> Reply:
     """One identification, any model, through the gateway's Anthropic Messages endpoint."""
     import anthropic
 
+    system, schema = PROMPTS[prompt]
     client = anthropic.Anthropic(api_key=os.environ["AI_GATEWAY_API_KEY"], base_url=GATEWAY_URL)
     content = [
         {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.standard_b64encode(b).decode()}}
@@ -331,9 +421,9 @@ def ask(model: str, images: list[bytes], notes: str | None, effort: str) -> Repl
         resp = client.messages.create(
             model=model,
             max_tokens=16000,
-            system=SYSTEM,
+            system=system,
             messages=[{"role": "user", "content": content}],
-            output_config={"effort": effort, "format": {"type": "json_schema", "schema": SCHEMA}},
+            output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
         )
     except anthropic.RateLimitError as e:
         return Reply(f"rate limited: {e.message}", {}, 0, 0, time.monotonic() - t0)
@@ -363,6 +453,19 @@ class Specimen:
     key: str
     photos: list[Path]
     notes: str | None
+    parts: set[str] | None = None  # the other minerals on the piece, from a .parts sidecar
+
+
+def parse_parts(text: str) -> set[str]:
+    """A .parts sidecar: the piece's other minerals, one a line, each optionally led by
+    "with" or "on" as a label would say it ("with Sphalerite", "on Quartz"). Matrix is
+    no mineral to find, so it is dropped."""
+    out = set()
+    for line in text.splitlines():
+        name = norm(re.sub(r"^\s*(with|on)\s+", "", line, flags=re.IGNORECASE))
+        if name and name != MATRIX:
+            out.add(name)
+    return out
 
 
 def collect_specimens(root: Path, grouped: bool) -> list[Specimen]:
@@ -378,7 +481,9 @@ def collect_specimens(root: Path, grouped: bool) -> list[Specimen]:
         for key, photos in groups.items():
             notes_file = folder / f"{key}.txt"
             notes = notes_file.read_text(encoding="utf-8").strip() if notes_file.exists() else None
-            specimens.append(Specimen(expected, key, photos[:MAX_PHOTOS], notes or None))
+            parts_file = folder / f"{key}.parts"
+            parts = parse_parts(parts_file.read_text(encoding="utf-8")) if parts_file.exists() else None
+            specimens.append(Specimen(expected, key, photos[:MAX_PHOTOS], notes or None, parts))
     return specimens
 
 
@@ -403,6 +508,7 @@ def main() -> int:
     ap.add_argument("--group", action="store_true", help="send photos sharing a stem as one specimen")
     ap.add_argument("--models", default=DEFAULT_MODELS, help=f"comma-separated gateway slugs (default {DEFAULT_MODELS})")
     ap.add_argument("--effort", default="medium", help="thinking depth for every model: low, medium, high (default medium)")
+    ap.add_argument("--prompt", type=int, choices=sorted(PROMPTS), default=1, help="1: the Phase 0 prompt; 2: the whole piece, as a show label names it (#29)")
     ap.add_argument("--out", type=Path, default=Path(__file__).parent / "out")
     ap.add_argument("--sleep", type=float, default=1.0, help="seconds between live calls")
     args = ap.parse_args()
@@ -421,7 +527,9 @@ def main() -> int:
 
     specimens = collect_specimens(args.photos, args.group)
     with_notes = sum(1 for s in specimens if s.notes)
-    print(f"{len(specimens)} specimens from {args.photos} ({with_notes} with notes), effort {args.effort}, models: {', '.join(models)}\n")
+    print(f"{len(specimens)} specimens from {args.photos} ({with_notes} with notes), prompt v{args.prompt}, effort {args.effort}, models: {', '.join(models)}\n")
+    # v1 answers keep their Phase 0 file names, so a v1 run reads the old cache for free
+    version = "" if args.prompt == 1 else f"__p{args.prompt}"
 
     rows: list[dict] = []
     for sp in specimens:
@@ -431,13 +539,13 @@ def main() -> int:
             for pass_ in passes:
                 notes = sp.notes if pass_ == "notes" else None
                 digest = photo_digest(sp.photos, notes)
-                cache_file = cache_dir / safe(f"{model}__{args.effort}__{sp.key}__{pass_}__{digest}.json")
+                cache_file = cache_dir / safe(f"{model}__{args.effort}__{sp.key}__{pass_}__{digest}{version}.json")
                 if cache_file.exists():
                     reply = Reply(**json.loads(cache_file.read_text(encoding="utf-8")))
                     source = "cache"
                 else:
                     images = images or [prepare_image(p) for p in sp.photos]
-                    reply = ask(model, images, notes, args.effort)
+                    reply = ask(model, images, notes, args.effort, args.prompt)
                     if reply.status == "ok":  # errors are not cached, so a re-run retries them
                         cache_file.write_text(json.dumps(reply.__dict__, indent=1), encoding="utf-8")
                     source = "live"
@@ -447,6 +555,7 @@ def main() -> int:
                 sc = score(sp.expected, cands)
                 cost = reply.cost_usd
                 tests = reply.result.get("tests", [])
+                found, invented = score_parts(sp.expected, sp.parts, cands[0] if cands else None) if sp.parts is not None else ("", "")
                 rows.append(
                     {
                         "model": model,
@@ -459,6 +568,10 @@ def main() -> int:
                         "top1_band": band(cands[0].confidence) if cands else "none named",
                         # an empty list is a real answer: the model declined to name anything
                         "candidates": " | ".join(c.display() for c in cands) or ("(none named)" if reply.status == "ok" else ""),
+                        "top1_minerals": "; ".join(cands[0].minerals()) if cands else "",
+                        "parts_expected": "; ".join(sorted(sp.parts)) if sp.parts is not None else "",
+                        "parts_found": found,
+                        "parts_invented": invented,
                         "features": " | ".join("; ".join(c.features) for c in cands),
                         "tests": " | ".join(f"{t.get('test', '')}: {t.get('expected', '')}" for t in tests),
                         "label_text": reply.result.get("label_text", ""),
@@ -486,7 +599,7 @@ def main() -> int:
         w.writerows(rows)
 
     cols = list(summary[0].keys())
-    lines = ["# Vision model spike results", "", f"Effort: {args.effort}", ""]
+    lines = ["# Vision model spike results", "", f"Prompt: v{args.prompt}. Effort: {args.effort}.", ""]
     lines += ["| " + " | ".join(cols) + " |", "|" + " --- |" * len(cols)]
     lines += ["| " + " | ".join(str(s[c]) for c in cols) + " |" for s in summary]
     lines += ["", "| model | pass | expected | top-3 | candidates | tests | label |", "| --- | --- | --- | --- | --- | --- | --- |"]

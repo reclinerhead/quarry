@@ -133,6 +133,21 @@ def test_identified_writes_each_models_candidates_tests_label_and_cost(tmp_path)
     ]
 
 
+def test_identified_writes_each_candidates_parts_as_json(tmp_path):
+    conn = _db(tmp_path)
+    jid = _job(conn)
+    queue.claim_next(conn, NOW)
+    piece = _answer("Pyrite", 0.7)
+    piece.candidates[0].parts = [identify.Part("with", "Sphalerite"), identify.Part("on", "Quartz")]
+    queue.record_outcome(conn, jid, identify.classify([_opinion(HAIKU, piece), _opinion(FLASH, _answer("Quartz", 0.6))]), NOW)
+    parts = {(r["model"], r["rank"]): json.loads(r["parts"]) for r in conn.execute("SELECT model, rank, parts FROM candidates")}
+    assert parts[(HAIKU.model, 1)] == [
+        {"role": "with", "name": "Sphalerite", "mindat_id": None},
+        {"role": "on", "name": "Quartz", "mindat_id": None},
+    ]
+    assert parts[(HAIKU.model, 2)] == [] and parts[(FLASH.model, 1)] == []  # a single-mineral reading, not a v1 NULL
+
+
 def test_one_opinion_is_written_with_the_others_failure_in_error(tmp_path):
     conn = _db(tmp_path)
     jid = _job(conn)

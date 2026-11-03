@@ -7,12 +7,26 @@
 // every render, so the rule can change without rewriting rows. Since #18 the
 // candidates carry their Mindat chains, so "the same stone" includes two
 // levels of one lineage, and the plan says when the two agree on the stone but
-// not on its variety.
+// not on its variety. Since #29 a candidate is a reading of the whole piece, as
+// a rock-show label names it (Pyrite with Sphalerite on Quartz): agreement is
+// judged mineral by mineral, and pieceName builds the name every screen shows.
 
 import { misfit, TESTS, type Answers, type Misfit, type TestKind } from "./household-tests";
-import { finer, sameStone, varietySplit, type MindatRecord } from "./names";
+import { finer, norm, sameStone, varietySplit, type MindatRecord, type Named } from "./names";
 
 export type StoneKind = "mineral" | "rock" | "other";
+
+export type PartRole = "with" | "on";
+
+/** Another mineral on the piece (#29): one the main mineral is `with`, or the base it is `on`, which may be MATRIX. */
+export type Part = { role: PartRole; name: string; chain?: MindatRecord[] };
+
+/** A base of rock nobody names: "Amethyst on matrix". It names no mineral, so it is never matched or looked up. */
+export const MATRIX = "matrix";
+
+export function isMatrix(name: string): boolean {
+  return norm(name) === MATRIX;
+}
 
 export type Candidate = {
   model: string; // the gateway slug
@@ -22,6 +36,7 @@ export type Candidate = {
   kind: StoneKind;
   confidence: number;
   chain?: MindatRecord[]; // its Mindat record and those above it, when Jasper looked it up
+  parts?: Part[]; // the other minerals the model saw on the piece; none on a prompt v1 answer
 };
 
 export type Verdict = "probably" | "could_be" | "none";
@@ -37,7 +52,9 @@ export type Pill = {
   // The lead pill only: both first choices name this stone, but Mindat puts
   // them on different varieties of it, so neither variety is taken.
   doubt?: { level: string; guesses: string[] };
-  misfit: Misfit | null; // an answered scratch test this stone can't fit
+  parts: Part[]; // the other minerals on the piece that a tap saves: on the lead pill, those both models saw
+  maybe: Part[]; // the lead pill only: minerals one model saw, offered but never saved by the tap alone
+  misfit: Misfit | null; // an answered scratch test this stone can't fit; never on a piece with parts
 };
 
 export type Plan = { verdict: Verdict; opinions: number; pills: Pill[] };
@@ -53,29 +70,41 @@ export function byModel(candidates: Candidate[], identifier: string): Candidate[
 }
 
 /**
- * - **probably**: both first choices name the same stone. One lead pill, then
- *   up to two "could also be" from the rest of both lists. When Mindat puts
- *   the two first choices on different varieties of that stone (Amethyst and
- *   Citrine, both Quartz), the lead pill carries the `doubt` and no variety;
- *   when one is only finer than the other (Agate under Chalcedony), the lead
- *   pill takes the finer variety.
+ * - **probably**: the two first choices name the same piece. One lead pill,
+ *   then up to two "could also be" from the rest of both lists. They name the
+ *   same piece when their main minerals are the same stone, or when each model
+ *   saw the other's main mineral on it (Pyrite on Quartz, and Quartz with
+ *   Pyrite). The lead pill is the identifier's reading: its main mineral, its
+ *   base, the `with` minerals the other model saw too, and as `maybe` the
+ *   minerals only one of them saw.
+ *   When Mindat puts the two first choices on different varieties of that
+ *   stone (Amethyst and Citrine, both Quartz), the lead pill carries the
+ *   `doubt` and no variety; when one is only finer than the other (Agate under
+ *   Chalcedony), the lead pill takes the finer variety.
  * - **could_be**, two opinions: each model's first choice, the identifier's
- *   first, then one more from the rest.
+ *   first, then one more from the rest, each pill its whole reading.
  * - **could_be**, one opinion (the other model failed): its candidates, never
  *   "probably".
  * - **none**: no candidates; the name field leads.
  * A candidate naming a stone already on a pill adds its model to that pill
- * instead of a second pill. `answers` are the job's test answers, for each
- * pill's `misfit`.
+ * instead of a second pill, and so, after a lead pill, does one led by a
+ * mineral already on the piece. `answers` are the job's test answers, for each
+ * pill's `misfit`, which a piece with parts never gets: the answer could be
+ * about any of them.
  */
 export function planPills(candidates: Candidate[], identifier: string, answers: Answers = {}): Plan {
   const lists = byModel(candidates, identifier).slice(0, 2);
   const pills: Pill[] = [];
-  const add = (c: Candidate, word: Pill["word"]) => {
+  const add = (c: Candidate, word: Pill["word"], afterLead = false) => {
     const same = pills.find((p) => sameStone(p, c));
     if (same) {
       if (!same.models.includes(c.model)) same.models.push(c.model);
       if (!same.variety && !same.doubt && c.variety) same.variety = c.variety;
+      return;
+    }
+    const piece = afterLead ? pills.find((p) => [...p.parts, ...p.maybe].some((x) => !isMatrix(x.name) && sameStone(asNamed(x), c))) : undefined;
+    if (piece) {
+      if (!piece.models.includes(c.model)) piece.models.push(c.model);
       return;
     }
     if (pills.length < MAX_PILLS)
@@ -87,7 +116,9 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
         pick: { model: c.model, rank: c.rank },
         models: [c.model],
         word,
-        misfit: misfit(c.chain ?? [], answers),
+        parts: c.parts ?? [],
+        maybe: [],
+        misfit: c.parts?.length ? null : misfit(c.chain ?? [], answers),
       });
   };
 
@@ -98,26 +129,95 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
   }
   const [a, b] = lists;
   const rest = interleave(a.slice(1), b.slice(1));
-  if (sameStone(a[0], b[0])) {
+  const sameMain = sameStone(a[0], b[0]);
+  if (sameMain || (saw(a[0], b[0]) && saw(b[0], a[0]))) {
     add(a[0], "probably");
-    add(b[0], "probably");
     const lead = pills[0];
-    const split = varietySplit(a[0], b[0]);
-    if (split) {
-      lead.doubt = { level: split.level.name, guesses: split.guesses.map((g) => g.name) };
-      lead.variety = null;
-    } else if (b[0].variety && finer(b[0], a[0])) {
-      lead.variety = b[0].variety;
-      lead.chain = b[0].chain;
-      lead.misfit = misfit(b[0].chain ?? [], answers);
-    }
-    for (const c of rest) add(c, "could also be");
+    if (sameMain) {
+      add(b[0], "probably");
+      const split = varietySplit(a[0], b[0]);
+      if (split) {
+        lead.doubt = { level: split.level.name, guesses: split.guesses.map((g) => g.name) };
+        lead.variety = null;
+      } else if (b[0].variety && finer(b[0], a[0])) {
+        lead.variety = b[0].variety;
+        lead.chain = b[0].chain;
+        lead.misfit = misfit(b[0].chain ?? [], answers);
+      }
+    } else lead.models.push(b[0].model);
+    const { parts, maybe } = agreedParts(a[0], b[0]);
+    lead.parts = parts;
+    lead.maybe = maybe;
+    if (parts.length > 0) lead.misfit = null;
+    for (const c of rest) add(c, "could also be", true);
     return { verdict: "probably", opinions: 2, pills };
   }
   add(a[0], "could be");
   add(b[0], "could be");
   for (const c of rest) add(c, "could be");
   return { verdict: "could_be", opinions: 2, pills };
+}
+
+/** A part as a stone to match: a name with no variety, and its Mindat chain. */
+function asNamed(p: Part): Named {
+  return { name: p.name, variety: null, chain: p.chain };
+}
+
+/** Every mineral a reading names: its main one, then its parts, but not plain matrix. */
+function mineralsOf(c: Candidate): Named[] {
+  return [c, ...(c.parts ?? []).filter((p) => !isMatrix(p.name)).map(asNamed)];
+}
+
+/** Whether a reading names `x` among its minerals. */
+function saw(c: Candidate, x: Named): boolean {
+  return mineralsOf(c).some((m) => sameStone(m, x));
+}
+
+/**
+ * The lead pill's parts and maybes: the lead reading's base as it gave it
+ * (matrix included), each of its `with` minerals the other reading saw too,
+ * and as `maybe` every other mineral only one of the two saw, each once.
+ */
+function agreedParts(lead: Candidate, other: Candidate): { parts: Part[]; maybe: Part[] } {
+  const parts: Part[] = [];
+  const maybe: Part[] = [];
+  const known = (p: Part) => [...parts, ...maybe].some((q) => !isMatrix(q.name) && sameStone(asNamed(q), asNamed(p)));
+  for (const p of lead.parts ?? []) {
+    if (p.role === "on" || saw(other, asNamed(p))) parts.push(p);
+    else if (!known(p)) maybe.push(p);
+  }
+  for (const p of other.parts ?? []) if (!isMatrix(p.name) && !saw(lead, asNamed(p)) && !known(p)) maybe.push(p);
+  return { parts, maybe };
+}
+
+/**
+ * What a tap on a pill saves as the stone's other minerals: the pill's parts,
+ * then each of its `maybe` the person ticked, by name. A label has one base, so
+ * a second "on" reads as "with"; the withs come first, then the base.
+ */
+export function savedParts(pill: Pick<Pill, "parts" | "maybe">, ticked: readonly string[]): Array<{ role: PartRole; name: string }> {
+  const want = new Set(ticked.map(norm));
+  const all = [...pill.parts, ...pill.maybe.filter((p) => want.has(norm(p.name)))];
+  const base = all.find((p) => p.role === "on");
+  const withs = all.filter((p) => p !== base && !isMatrix(p.name)).map((p) => ({ role: "with" as const, name: p.name }));
+  return base ? [...withs, { role: "on", name: base.name }] : withs;
+}
+
+/** A candidate's stored `parts` (JSON, as Jasper writes it), with anything malformed left out. */
+export function parseParts(json: string | null): Array<{ role: PartRole; name: string; mindatId: number | null }> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json ?? "[]");
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((p: unknown) => {
+    if (!p || typeof p !== "object") return [];
+    const { role, name, mindat_id } = p as { role?: unknown; name?: unknown; mindat_id?: unknown };
+    if ((role !== "with" && role !== "on") || typeof name !== "string" || !name.trim()) return [];
+    return [{ role, name: name.trim(), mindatId: typeof mindat_id === "number" ? mindat_id : null }];
+  });
 }
 
 function interleave<T>(a: T[], b: T[]): T[] {
@@ -134,12 +234,56 @@ export function stoneName(name: string): string {
   return name.replace(/(^|[\s-])([a-z])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
 }
 
-/** The verdict as one line: "Probably Galena", "Could be Chalcopyrite or Marcasite", "No guess". */
+// A variety that is only a colour or a look, as models sometimes give: it reads
+// in front of the mineral ("Milky Quartz") rather than standing for it.
+const LOOKS = new Set(
+  "milky smoky clear colorless colourless specular banded massive red orange yellow green blue purple violet pink white black grey gray brown golden".split(" "),
+);
+
+/**
+ * A stone's own name, as a rock hound says it (#29): the hobby or trade name when
+ * there is one (Amethyst, Blue Lace Agate), else the mineral or rock. A variety that
+ * is only a colour or a look goes in front of the mineral: Milky Quartz.
+ */
+export function ownName(name: string, variety: string | null | undefined): string {
+  const v = variety?.trim();
+  if (!v) return stoneName(name);
+  return stoneName(LOOKS.has(norm(v)) ? `${v} ${name}` : v);
+}
+
+/**
+ * The name every screen shows, built as a rock-show label is (#29): the stone's own
+ * name, then "with" the other minerals in order, then "on" its base. Pyrite with
+ * Sphalerite on Quartz; Amethyst on matrix; Galena.
+ */
+export function pieceName(p: { name: string; variety?: string | null; parts?: ReadonlyArray<{ role: PartRole; name: string }> }): string {
+  const parts = p.parts ?? [];
+  const withs = parts.filter((x) => x.role === "with").map((x) => stoneName(x.name));
+  const on = parts.find((x) => x.role === "on");
+  const list = withs.length <= 2 ? withs.join(" and ") : `${withs.slice(0, -1).join(", ")}, and ${withs[withs.length - 1]}`;
+  return ownName(p.name, p.variety) + (withs.length ? ` with ${list}` : "") + (on ? ` on ${isMatrix(on.name) ? MATRIX : stoneName(on.name)}` : "");
+}
+
+/**
+ * The line under a hobby name, where the Mindat plumbing shows: "A kind of Quartz"
+ * under Amethyst. Null when the name already says the mineral (Galena, Rose Quartz).
+ */
+export function kindOf(p: { name: string; variety?: string | null }): string | null {
+  if (!p.variety?.trim()) return null;
+  return ` ${norm(ownName(p.name, p.variety))} `.includes(` ${norm(p.name)} `) ? null : `A kind of ${stoneName(p.name)}`;
+}
+
+/**
+ * The verdict as one line: "Probably Galena", "Could be Chalcopyrite or Marcasite", "No guess".
+ * After a reading with parts the "or" takes a comma, so "on Quartz, or Calcite" can't read as
+ * the base being either.
+ */
 export function verdictLine(plan: Plan): string {
   const [first, second] = plan.pills;
   if (plan.verdict === "none" || !first) return "No guess";
-  if (plan.verdict === "probably") return `Probably ${stoneName(first.name)}`;
-  return second ? `Could be ${stoneName(first.name)} or ${stoneName(second.name)}` : `Could be ${stoneName(first.name)}`;
+  if (plan.verdict === "probably") return `Probably ${pieceName(first)}`;
+  if (!second) return `Could be ${pieceName(first)}`;
+  return `Could be ${pieceName(first)}${first.parts.length > 0 ? "," : ""} or ${pieceName(second)}`;
 }
 
 /**

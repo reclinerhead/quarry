@@ -1,17 +1,21 @@
 // PATCH /api/stones/:id: edit a stone's own facts, from its specimen label and
-// its kitchen-table tests. Any subset of: variety, associates (other minerals
-// on it), foundAt, acquired (found, bought, gifted, traded), acquiredOn
-// (yyyy-mm-dd), location, notes, tests. An empty string clears a field.
+// its kitchen-table tests. Any subset of: variety, parts (the other minerals on
+// it, #29: `{ with: string[], on: string | null }`, where `on` may be "matrix";
+// it replaces them all), foundAt, acquired (found, bought, gifted, traded),
+// acquiredOn (yyyy-mm-dd), location, notes, tests. An empty string clears a
+// field.
 //
 // DELETE /api/stones/:id: remove the stone for good. Its photos go from the
 // table and from disk with their thumbnails, and so do the jobs that brought
 // them (otherwise an identified job with no naming would reappear in the
-// pending strip; candidates and confirmations cascade). The mineral row goes
-// too when no stone is left on it, as Change does on the confirm screen.
+// pending strip; candidates and confirmations cascade). Each of its minerals
+// goes too when no stone uses it any more, as Change does on the confirm screen.
 
 import { openReadWrite } from "@/lib/db";
 import { cleanAnswers } from "@/lib/household-tests";
 import { thumbPathFor } from "@/lib/photos";
+import type { PartRole } from "@/lib/pills";
+import { pruneMinerals, writeParts } from "@/lib/specimens";
 import { discardUpload } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +37,18 @@ function parseId(id: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+/** The stone's other minerals as sent, in label order; undefined when not sent, null when malformed. */
+function partsOf(v: unknown): Array<{ role: PartRole; name: string }> | null | undefined {
+  if (v === undefined) return undefined;
+  if (!v || typeof v !== "object") return null;
+  const { with: withs = [], on = null } = v as { with?: unknown; on?: unknown };
+  if (!Array.isArray(withs) || withs.length > MAX_PARTS || !withs.every((w) => typeof w === "string") || (on !== null && typeof on !== "string"))
+    return null;
+  return [...withs.map((name: string) => ({ role: "with" as const, name })), ...(on ? [{ role: "on" as const, name: on }] : [])];
+}
+
+const MAX_PARTS = 8;
+
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const id = parseId((await ctx.params).id);
   if (!id) return Response.json({ error: "bad id" }, { status: 400 });
@@ -51,7 +67,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     values.push(value);
   };
   set("variety", text(body.variety, 80));
-  set("associates", text(body.associates, 120));
   set("found_at", text(body.foundAt, 120));
   set("location", text(body.location, 80));
   set("notes", text(body.notes, 1000));
@@ -64,7 +79,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return Response.json({ error: "acquiredOn must be a date, yyyy-mm-dd" }, { status: 400 });
   set("acquired_on", on);
   if (body.tests !== undefined) set("tests", JSON.stringify(cleanAnswers(body.tests)));
-  if (sets.length === 0) return Response.json({ error: "nothing to change" }, { status: 400 });
+  const parts = partsOf(body.parts);
+  if (parts === null) return Response.json({ error: `parts must be { with: up to ${MAX_PARTS} names, on: a name or null }` }, { status: 400 });
+  if (sets.length === 0 && parts === undefined) return Response.json({ error: "nothing to change" }, { status: 400 });
 
   let db;
   try {
@@ -73,10 +90,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return Response.json({ error: (err as Error).message }, { status: 503 });
   }
   try {
-    const r = db.prepare(`UPDATE specimens SET ${sets.join(", ")} WHERE id = ?`).run(...values, id);
-    if (Number(r.changes) === 0) return Response.json({ error: "no such stone" }, { status: 404 });
+    if (!db.prepare("SELECT 1 FROM specimens WHERE id = ?").get(id)) return Response.json({ error: "no such stone" }, { status: 404 });
+    db.exec("BEGIN IMMEDIATE");
+    if (sets.length > 0) db.prepare(`UPDATE specimens SET ${sets.join(", ")} WHERE id = ?`).run(...values, id);
+    if (parts !== undefined) pruneMinerals(db, writeParts(db, id, parts));
+    db.exec("COMMIT");
     return Response.json({ ok: true });
   } catch (err) {
+    if (db.isTransaction) db.exec("ROLLBACK");
     return Response.json({ error: (err as Error).message }, { status: 500 });
   } finally {
     db.close();
@@ -98,21 +119,21 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     const photos = db.prepare("SELECT path, job_id FROM photos WHERE specimen_id = ?").all(id) as Array<{ path: string; job_id: number | null }>;
     const named = db.prepare("SELECT job_id FROM confirmations WHERE specimen_id = ?").all(id) as Array<{ job_id: number }>;
     const jobIds = [...new Set([...photos.flatMap((p) => (p.job_id === null ? [] : [p.job_id])), ...named.map((c) => c.job_id)])];
+    const parts = db.prepare("SELECT mineral_id FROM specimen_parts WHERE specimen_id = ? AND mineral_id IS NOT NULL").all(id) as Array<{ mineral_id: number }>;
 
     db.exec("BEGIN IMMEDIATE");
     db.prepare("DELETE FROM photos WHERE specimen_id = ?").run(id);
     const delJob = db.prepare("DELETE FROM jobs WHERE id = ?"); // candidates, suggested tests and confirmations cascade
     for (const j of jobIds) delJob.run(j);
-    db.prepare("DELETE FROM specimens WHERE id = ?").run(id);
-    const others = (db.prepare("SELECT COUNT(*) AS n FROM specimens WHERE mineral_id = ?").get(sp.mineral_id) as { n: number }).n;
-    if (others === 0) db.prepare("DELETE FROM minerals WHERE id = ?").run(sp.mineral_id);
+    db.prepare("DELETE FROM specimens WHERE id = ?").run(id); // its parts cascade
+    const mineralsRemoved = pruneMinerals(db, [sp.mineral_id, ...parts.map((p) => p.mineral_id)]);
     db.exec("COMMIT");
 
     for (const p of photos) {
       await discardUpload(p.path);
       await discardUpload(thumbPathFor(p.path));
     }
-    return Response.json({ ok: true, photosRemoved: photos.length, mineralRemoved: others === 0 });
+    return Response.json({ ok: true, photosRemoved: photos.length, mineralsRemoved });
   } catch (err) {
     if (db.isTransaction) db.exec("ROLLBACK");
     return Response.json({ error: (err as Error).message }, { status: 500 });

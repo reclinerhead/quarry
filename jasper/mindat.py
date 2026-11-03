@@ -5,8 +5,9 @@ The two models name a stone at different levels. One says Quartz, variety
 Agate; the other says Chalcedony, "Agate, banded". Mindat knows Agate is a
 variety of Chalcedony, which is a variety of Quartz, so the confirm screen can
 see that both said agate. Jasper looks each candidate up after the models
-answer and before the job is written; the web app reads the cache and never
-calls Mindat.
+answer and before the job is written, and, since #29, each other mineral the
+model saw on the piece (its `parts`, by name alone; a base of plain matrix is
+never asked). The web app reads the cache and never calls Mindat.
 
 Which term: the most specific one Mindat knows, in this order: the variety as
 written, the variety before its first comma ("Agate, banded" gives "Agate"),
@@ -48,6 +49,8 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
+
+from .identify import MATRIX
 
 if TYPE_CHECKING:
     from .identify import Outcome
@@ -270,6 +273,10 @@ def resolve_outcome(conn: sqlite3.Connection, api: Api, outcome: Outcome, budget
         for o in outcome.opinions:
             for c in o.answer.candidates if o.answer else []:
                 c.mindat_id = resolve(conn, api, c.name, c.variety, deadline, clock)
+                # The other minerals on the piece (#29), by name alone; plain matrix is no mineral.
+                for p in c.parts:
+                    if p.name != MATRIX:
+                        p.mindat_id = resolve(conn, api, p.name, None, deadline, clock)
     except Unreachable as e:
         return f"mindat stopped: {e}"
     n = api.requests - before
@@ -287,10 +294,22 @@ SELECT c.job_id, c.model, c.rank, c.name, c.variety
 """
 
 
+# Their parts (#29): every waiting candidate that has any; which part lacks an id is
+# read from the JSON here rather than in SQL.
+WAITING_PARTS = """
+SELECT c.job_id, c.model, c.rank, c.parts
+  FROM candidates c JOIN jobs j ON j.id = c.job_id
+ WHERE c.parts IS NOT NULL AND c.parts <> '[]' AND j.status = 'identified'
+   AND NOT EXISTS (SELECT 1 FROM confirmations f WHERE f.job_id = c.job_id)
+ ORDER BY j.created_at, c.job_id, c.model, c.rank
+"""
+
+
 def catch_up(conn: sqlite3.Connection, api: Api, deadline: float, clock: Clock = time.monotonic) -> int:
-    """Look up the waiting candidates with no Mindat id. A term already cached costs
-    no request, so a name Mindat doesn't know is not asked again. Returns how many
-    candidates it filled; stops there when the time runs out. Raises Unreachable."""
+    """Look up the waiting candidates with no Mindat id, then their parts with none. A
+    term already cached costs no request, so a name Mindat doesn't know is not asked
+    again. Returns how many candidates and parts it filled; stops there when the time
+    runs out. Raises Unreachable."""
     filled = 0
     try:
         for row in conn.execute(WAITING).fetchall():
@@ -302,9 +321,34 @@ def catch_up(conn: sqlite3.Connection, api: Api, deadline: float, clock: Clock =
                         (rid, row["job_id"], row["model"], row["rank"]),
                     )
                 filled += 1
+        for row in conn.execute(WAITING_PARTS).fetchall():
+            parts = _parts_of(row["parts"])
+            n = 0
+            for p in parts:
+                if p.get("mindat_id") is None and p.get("name") and p["name"] != MATRIX:
+                    rid = resolve(conn, api, str(p["name"]), None, deadline, clock)
+                    if rid is not None:
+                        p["mindat_id"] = rid
+                        n += 1
+            if n:
+                with conn:
+                    conn.execute(
+                        "UPDATE candidates SET parts = ? WHERE job_id = ? AND model = ? AND rank = ?",
+                        (json.dumps(parts), row["job_id"], row["model"], row["rank"]),
+                    )
+                filled += n
     except OutOfTime:
         pass  # the rest wait for the next idle pass
     return filled
+
+
+def _parts_of(text: str | None) -> list[dict]:
+    """A candidate's `parts` column as a list of objects; anything else is no parts."""
+    try:
+        parts = json.loads(text or "[]")
+    except json.JSONDecodeError:
+        return []
+    return [p for p in parts if isinstance(p, dict)] if isinstance(parts, list) else []
 
 
 # ----------------------------------------------------------------------------

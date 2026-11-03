@@ -96,8 +96,12 @@ crystal and the words "No photo yet". Vary the tint between neighbours.
   19 lead and info-note text · 18 body · 16 meta · 15 tag.
 - Formulas use real subscript characters (`CaF₂`, `SiO₂`), not `<sub>`.
 - Mineral names are upright and capitalized (Fluorite, Milky Quartz). There
-  is no italic binomial here. A variety or trade name goes on the line under
-  the name ("Quartz · geode half", "Chalcedony · banded").
+  is no italic binomial here. A stone is named as a rock-show label names it
+  (#29): the hobby or trade name leads (Amethyst, Blue Lace Agate), the other
+  minerals follow with "with" and the base with "on" ("Fluorite with Pyrite on
+  Quartz", "Amethyst on matrix", "matrix" lowercase). The species goes on the
+  line under a hobby name ("A kind of Quartz"), the only place it shows. Long
+  names wrap; they are never cut with an ellipsis.
 
 ## 4. Components
 
@@ -129,7 +133,7 @@ photo or tile. 20 px above the title on the specimen page.
 `line-strong` plus `shadow-hover`.
 
 **Specimen card** (collection grid): photo or tinted tile 220 px tall with the
-catalog dab, then name (Zilla 24/600), the variety or description line
+catalog dab, then name (Zilla 24/600), the "A kind of …" or description line
 (ink-2, 17), "Where it lives · added Month D" (ink-3, 16), then a row of tags
 (Mohs, kind, UV). The whole card is one `<a>`.
 
@@ -179,9 +183,14 @@ with Jasper's guess for the first one and the test that would settle it, and
 one primary button ("Name them").
 
 **Candidate pills** (naming, and "How it was named"): confirmed name = solid
-azurite with a check. Other candidates = outlined, 64 px tall, the name in
-Zilla 24 with the variety under it. Each carries a plain word, never a
-percentage. "probably" goes on the lead pill when Jasper's two opinions agree,
+azurite with a check. Other candidates = outlined, 64 px tall, the piece's
+name in Zilla 24 with "A kind of …" under a hobby name. Corners are half the
+one-line height (32 px; 24 on the 48 px "How it was named" rows), so a long
+name wraps into a rounded card rather than an oval. Each carries a plain
+word, never a percentage. A mineral only one opinion saw sits under the lead
+pill as a chip, off by default ("Jasper also saw Sphalerite (one opinion).
+Add it?"); ticking it adds it to the pill's name, so the pill always says
+what a tap saves. "probably" goes on the lead pill when Jasper's two opinions agree,
 with an `azurite-soft` tag and a 2 px azurite border. "could be" goes on each
 pill when they differ, and "could also be" on the rest, both as sand tags.
 Phase 0 (#1) settled this: two models agreeing were right about 9 times in 10,
@@ -251,10 +260,11 @@ primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
 
 **Specimen page**:
 1. Breadcrumb.
-2. Title block: catalog dab · name (60) · description · formula and its plain
-   name ("CaF₂, calcium fluoride") · tags (class, habit, Mohs, UV, "N in your
-   collection") · right: Print label (soft), Edit details (soft), Add photos
-   (primary).
+2. Title block: catalog dab · the piece's name (60), "matrix" with its info
+   mark · "A kind of Quartz" under a hobby name, then the formula and its
+   plain name ("CaF₂, calcium fluoride") · tags (class, habit, Mohs, UV, "N in
+   your collection"), all for the main mineral · right: Print label (soft),
+   Edit details (soft), Add photos (primary).
 3. Photo gallery.
 4. Two columns, same split as the dashboard.
    - Main: **This specimen** (the label card) · **Kitchen-table tests** (with

@@ -12,7 +12,8 @@ import { readJob, withReadDb, type JobView } from "@/lib/jobs";
 import type { PropertyKey, Segment } from "@/lib/mindat";
 import { HOW_SUMMARY } from "@/lib/naming";
 import { sameStone } from "@/lib/names";
-import { stoneName } from "@/lib/pills";
+import { PieceTitle } from "@/components/piece-title";
+import { kindOf, pieceName, stoneName } from "@/lib/pills";
 import { readStone, type StoneView } from "@/lib/specimens";
 
 // /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 2
@@ -26,8 +27,8 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
-  const name = Number.isInteger(id) ? withReadDb((db) => readStone(db, id)?.name ?? null, null) : null;
-  return { title: name ? `${stoneName(name)} · The Quarry` : "The Quarry" };
+  const stone = Number.isInteger(id) ? withReadDb((db) => readStone(db, id), null) : null;
+  return { title: stone ? `${pieceName(stone)} · The Quarry` : "The Quarry" };
 }
 
 export default async function StonePage({ params }: { params: Promise<{ id: string }> }) {
@@ -40,7 +41,9 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
   }, null);
   if (!data) notFound();
   const { stone, naming } = data;
-  const name = stoneName(stone.name);
+  const name = pieceName(stone); // the piece, as its label reads (#29)
+  const mineral = stoneName(stone.name); // the main mineral, which the property card and tags follow
+  const kind = kindOf(stone);
   const props = stone.properties;
 
   return (
@@ -62,11 +65,13 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
       </nav>
 
       <header className="flex flex-col gap-3">
-        <h1 className="text-[40px] leading-[1.05] sm:text-page-title">{name}</h1>
-        {stone.variety || props.formula ? (
+        <h1 className="text-balance text-[40px] leading-[1.05] sm:text-page-title">
+          <PieceTitle piece={stone} />
+        </h1>
+        {kind || props.formula ? (
           <p className="text-[22px] text-ink-2">
-            {stone.variety}
-            {stone.variety && props.formula ? " · " : null}
+            {kind}
+            {kind && props.formula ? " · " : null}
             {props.formula ? (
               <span className="font-label font-bold text-ink">
                 <span className="sr-only">Formula: </span>
@@ -90,7 +95,7 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
             </TagTerm>
           ) : null}
           <span className="tag">{stone.photos.length === 1 ? "1 photo" : `${stone.photos.length} photos`}</span>
-          {stone.sameMineral > 1 ? <span className="tag">{`${stone.sameMineral} ${name} in your collection`}</span> : null}
+          {stone.sameMineral > 1 ? <span className="tag">{`${stone.sameMineral} ${mineral} in your collection`}</span> : null}
           <span className="tag">{`Added ${stone.added}`}</span>
         </p>
       </header>
@@ -111,7 +116,7 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
             </h2>
             <TestsEditor id={stone.id} initial={stone.tests} />
           </section>
-          <MineralProperties stone={stone} name={name} />
+          <MineralProperties stone={stone} name={mineral} />
         </div>
 
         <aside aria-label="About its naming" className="flex w-full min-w-0 flex-[1_1_320px] flex-col gap-6 lg:max-w-sidebar">
@@ -135,8 +140,10 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
 
 /**
  * The models' pills as they were (DESIGN.md §4): the name chosen solid azurite
- * with a check, the other candidates outlined with their word. A name typed
- * by hand that no model offered leads, solid. Then when, and how they knew.
+ * with a check, the other candidates outlined with their word, each naming its
+ * whole reading (#29). The chosen pill reads as the stone is named now, with
+ * any minerals the person added. A name typed by hand that no model
+ * offered leads, solid. Then when, and how they knew.
  */
 function HowNamed({ job, morePhotos }: { job: JobView; morePhotos: number }) {
   const conf = job.confirmation!;
@@ -145,14 +152,14 @@ function HowNamed({ job, morePhotos }: { job: JobView; morePhotos: number }) {
   return (
     <>
       <ul aria-label="Jasper’s suggestions, and the name chosen" className="flex flex-col gap-2">
-        {inPlan ? null : <ChosenPill name={conf.name} note="typed by you" />}
+        {inPlan ? null : <ChosenPill piece={conf} note="typed by you" />}
         {job.plan.pills.map((p) =>
           sameStone(p, chosen) ? (
-            <ChosenPill key={`${p.pick.model}-${p.pick.rank}`} name={p.name} note={p.word} />
+            <ChosenPill key={`${p.pick.model}-${p.pick.rank}`} piece={conf} note={p.word} />
           ) : (
-            <li key={`${p.pick.model}-${p.pick.rank}`} className="flex min-h-12 items-center justify-between gap-3 rounded-pill border border-line-2 px-5 py-2">
-              <span className="font-display text-[20px] font-semibold">{stoneName(p.name)}</span>
-              <span className="rounded-pill bg-sand px-3 py-1 text-tag font-bold text-tag-ink">{p.word}</span>
+            <li key={`${p.pick.model}-${p.pick.rank}`} className="flex min-h-12 items-center justify-between gap-3 rounded-[24px] border border-line-2 px-5 py-2">
+              <span className="min-w-0 break-words font-display text-[20px] font-semibold leading-tight">{pieceName(p)}</span>
+              <span className="shrink-0 rounded-pill bg-sand px-3 py-1 text-tag font-bold text-tag-ink">{p.word}</span>
             </li>
           ),
         )}
@@ -160,7 +167,7 @@ function HowNamed({ job, morePhotos }: { job: JobView; morePhotos: number }) {
       <dl className="flex flex-col gap-1">
         <div>
           <dt className="sr-only">Named</dt>
-          <dd>Named {stoneName(conf.name)} on {fullDay(conf.confirmedAt)}.</dd>
+          <dd>Named {pieceName(conf)} on {fullDay(conf.confirmedAt)}.</dd>
         </div>
         <div>
           <dt className="sr-only">How</dt>
@@ -177,14 +184,15 @@ function HowNamed({ job, morePhotos }: { job: JobView; morePhotos: number }) {
   );
 }
 
-function ChosenPill({ name, note }: { name: string; note: string }) {
+function ChosenPill({ piece, note }: { piece: Parameters<typeof pieceName>[0]; note: string }) {
   return (
-    <li className="flex min-h-12 items-center justify-between gap-3 rounded-pill bg-azurite px-5 py-2 text-white">
-      <span className="flex items-center gap-2 font-display text-[20px] font-semibold">
-        <CheckIcon className="size-4" />
-        {stoneName(name)}
+    // 24 px corners: a pill on one line, a rounded card when a long name wraps.
+    <li className="flex min-h-12 items-center justify-between gap-3 rounded-[24px] bg-azurite px-5 py-2 text-white">
+      <span className="flex min-w-0 items-center gap-2 font-display text-[20px] font-semibold leading-tight">
+        <CheckIcon className="size-4 flex-none" />
+        <span className="min-w-0 break-words">{pieceName(piece)}</span>
       </span>
-      <span className="rounded-pill bg-white/15 px-3 py-1 text-tag font-bold">{note}</span>
+      <span className="shrink-0 rounded-pill bg-white/15 px-3 py-1 text-tag font-bold">{note}</span>
     </li>
   );
 }

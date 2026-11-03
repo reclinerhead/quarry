@@ -8,7 +8,8 @@ import type { JobStatus } from "./job-state";
 import { chainOf, MAX_DEPTH, type MindatRecord } from "./names";
 import type { ConfirmHow } from "./naming";
 import { thumbPathFor } from "./photos";
-import { planPills, type Candidate, type Plan } from "./pills";
+import { parseParts, planPills, type Candidate, type Plan } from "./pills";
+import { stoneParts, type StonePart } from "./specimens";
 
 export type { ConfirmHow };
 
@@ -27,6 +28,7 @@ export type JobView = {
     specimenId: number;
     name: string;
     variety: string | null;
+    parts: StonePart[];
     how: ConfirmHow;
     source: "pill" | "typed" | "same_as_last";
     confirmedAt: string;
@@ -46,22 +48,26 @@ export function identifierSlug(): string {
  * A job's candidates, each with its Mindat chain (#18) when Jasper looked it
  * up: the record from `candidates.mindat_id`, then each `varietyof` above it in
  * the cache. Jasper writes the chain whole before the candidate, so a missing
- * record only shortens it.
+ * record only shortens it. Each of a candidate's parts (#29) gets its chain the
+ * same way, from the `mindat_id` in its `parts` JSON.
  */
 export function candidatesOf(db: DatabaseSync, jobId: number): Candidate[] {
-  const rows = db
-    .prepare("SELECT model, rank, name, variety, kind, confidence, mindat_id FROM candidates WHERE job_id = ? ORDER BY model, rank")
-    .all(jobId) as Array<Omit<Candidate, "chain"> & { mindat_id: number | null }>;
+  const rows = (
+    db
+      .prepare("SELECT model, rank, name, variety, kind, confidence, mindat_id, parts FROM candidates WHERE job_id = ? ORDER BY model, rank")
+      .all(jobId) as Array<Omit<Candidate, "chain" | "parts"> & { mindat_id: number | null; parts: string | null }>
+  ).map((r) => ({ ...r, parts: parseParts(r.parts) }));
+  const seeds = rows.flatMap((r) => [r.mindat_id, ...r.parts.map((p) => p.mindatId)]).filter((id) => id !== null);
   const records = db
     .prepare(
       `WITH RECURSIVE up(id, depth) AS (
-         SELECT mindat_id, 1 FROM candidates WHERE job_id = ? AND mindat_id IS NOT NULL
+         SELECT value, 1 FROM json_each(?)
          UNION
          SELECT r.varietyof, up.depth + 1 FROM up JOIN mindat_records r ON r.id = up.id
           WHERE r.varietyof IS NOT NULL AND up.depth < ?)
        SELECT id, name, varietyof, hmin, hmax FROM mindat_records WHERE id IN (SELECT id FROM up)`,
     )
-    .all(jobId, MAX_DEPTH) as Array<MindatRecord & { varietyof: number | null }>;
+    .all(JSON.stringify([...new Set(seeds)]), MAX_DEPTH) as Array<MindatRecord & { varietyof: number | null }>;
   const byId = new Map(records.map((r) => [r.id, r]));
   // Plain objects: node:sqlite rows have a null prototype, which React refuses to pass to a client component.
   return rows.map((r) => ({
@@ -72,6 +78,7 @@ export function candidatesOf(db: DatabaseSync, jobId: number): Candidate[] {
     kind: r.kind,
     confidence: r.confidence,
     chain: chainOf(r.mindat_id, byId),
+    parts: r.parts.map((p) => ({ role: p.role, name: p.name, chain: chainOf(p.mindatId, byId) })),
   }));
 }
 
@@ -123,7 +130,15 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
     plan: planPills(candidates, identifier, answers),
     suggestedTests: suggestedOrder(tests, identifier).map(({ kind, how, expected }) => ({ kind, how, expected })),
     confirmation: conf
-      ? { specimenId: conf.specimen_id, name: conf.name, variety: conf.variety, how: conf.how, source: conf.source, confirmedAt: conf.confirmed_at }
+      ? {
+          specimenId: conf.specimen_id,
+          name: conf.name,
+          variety: conf.variety,
+          parts: stoneParts(db, conf.specimen_id),
+          how: conf.how,
+          source: conf.source,
+          confirmedAt: conf.confirmed_at,
+        }
       : null,
   };
 }
@@ -151,7 +166,7 @@ export function nextWaitingJob(ids: number[], current: number): number | null {
 }
 
 /** The stone the person named most recently, for "Same stone as the last one". */
-export function lastNamedStone(db: DatabaseSync): { id: number; name: string; variety: string | null } | null {
+export function lastNamedStone(db: DatabaseSync): { id: number; name: string; variety: string | null; parts: StonePart[] } | null {
   const row = db
     .prepare(
       `SELECT sp.id, m.name, sp.variety
@@ -162,7 +177,7 @@ export function lastNamedStone(db: DatabaseSync): { id: number; name: string; va
     )
     .get() as { id: number; name: string; variety: string | null } | undefined;
   // node:sqlite rows have a null prototype, which React refuses to pass to a client component.
-  return row ? { id: row.id, name: row.name, variety: row.variety } : null;
+  return row ? { id: row.id, name: row.name, variety: row.variety, parts: stoneParts(db, row.id) } : null;
 }
 
 /** The pending strip: how many stones wait, up to three thumbnails, and the first one's job. */

@@ -58,9 +58,49 @@ def test_a_version_2_database_takes_step_3_with_its_rows(tmp_path, monkeypatch):
     old.close()
     monkeypatch.undo()
     conn = db.connect(path)
-    assert db.current_version(conn) == 3
+    assert db.current_version(conn) == db.LATEST_VERSION
     assert tuple(conn.execute("SELECT name, mindat_id FROM minerals").fetchone()) == ("Quartz", None)
     assert tuple(conn.execute("SELECT name, detail, detail_at FROM mindat_records").fetchone()) == ("Quartz", None, None)
+
+
+def test_a_version_3_database_takes_step_4_and_moves_also_on_it_into_the_notes(tmp_path, monkeypatch):
+    path = tmp_path / "q.db"
+    monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS[:2])
+    old = db.connect(path)
+    assert db.current_version(old) == 3
+    quartz = old.execute("INSERT INTO minerals (name) VALUES ('Quartz')").lastrowid
+    for associates, notes in (("on sphalerite", None), ("  ", "Kept as is."), ("with pyrite", "From the Tucson show."), (None, None)):
+        old.execute("INSERT INTO specimens (mineral_id, associates, notes) VALUES (?, ?, ?)", (quartz, associates, notes))
+    old.commit()
+    old.close()
+    monkeypatch.undo()
+    conn = db.connect(path)
+    assert db.current_version(conn) == 4
+    rows = [tuple(r) for r in conn.execute("SELECT associates, notes FROM specimens ORDER BY id")]
+    assert rows == [
+        (None, "Also on it: on sphalerite"),
+        ("  ", "Kept as is."),
+        (None, "From the Tucson show.\nAlso on it: with pyrite"),
+        (None, None),
+    ]
+    assert "parts" in {r["name"] for r in conn.execute("PRAGMA table_info(candidates)")}
+
+
+def test_a_stones_parts_need_a_mineral_unless_it_sits_on_matrix(tmp_path):
+    conn = db.connect(tmp_path / "q.db")
+    pyrite = conn.execute("INSERT INTO minerals (name) VALUES ('Pyrite')").lastrowid
+    quartz = conn.execute("INSERT INTO minerals (name) VALUES ('Quartz')").lastrowid
+    stone = conn.execute("INSERT INTO specimens (mineral_id) VALUES (?)", (pyrite,)).lastrowid
+    conn.execute("INSERT INTO specimen_parts (specimen_id, position, role, mineral_id) VALUES (?, 1, 'on', ?)", (stone, quartz))
+    conn.execute("INSERT INTO specimen_parts (specimen_id, position, role, mineral_id) VALUES (?, 2, 'on', NULL)", (stone,))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO specimen_parts (specimen_id, position, role, mineral_id) VALUES (?, 3, 'with', NULL)", (stone,))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO specimen_parts (specimen_id, position, role, mineral_id) VALUES (?, 4, 'under', ?)", (stone, quartz))
+    with pytest.raises(sqlite3.IntegrityError):  # a mineral still on a stone can't be deleted
+        conn.execute("DELETE FROM minerals WHERE id = ?", (quartz,))
+    conn.execute("DELETE FROM specimens WHERE id = ?", (stone,))
+    assert conn.execute("SELECT COUNT(*) FROM specimen_parts").fetchone()[0] == 0
 
 
 @pytest.mark.parametrize(

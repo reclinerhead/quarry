@@ -69,6 +69,10 @@ export const GLOSSARY = {
     term: "rock",
     text: "A mix of minerals, or of grains of them, rather than a single mineral. Granite is quartz, feldspar and mica together, so it has no one formula or hardness. That is why a rock’s card says less than a mineral’s.",
   },
+  matrix: {
+    term: "matrix",
+    text: "The ordinary rock a crystal grew on or in. When nobody can name that rock, a show label calls it matrix: “Amethyst on matrix”. Collectors often leave it on, because it shows how the crystal was found.",
+  },
 } satisfies Record<string, GlossaryEntry>;
 
 export type GlossaryKey = keyof typeof GLOSSARY;

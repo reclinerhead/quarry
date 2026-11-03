@@ -41,6 +41,8 @@ CANDIDATE_KINDS = ("mineral", "rock", "other")
 # The schema's CHECK on suggested_tests.kind, in the order the user message lists answers.
 TEST_KINDS = ("glass", "steel", "copper", "fingernail", "streak", "vinegar", "magnet", "uv")
 MAX_CANDIDATES = 3
+MAX_WITH = 3  # other minerals on one piece, as a show label names them (#29)
+MATRIX = "matrix"  # a base of rock nobody names: "Amethyst on matrix"
 MAX_TESTS = 3
 MAX_IMAGES = 5
 LONG_SIDE = 1280
@@ -57,10 +59,12 @@ SCHEMA = {
                     "name": {"type": "string"},
                     "variety": {"type": "string"},
                     "kind": {"type": "string", "enum": list(CANDIDATE_KINDS)},
+                    "with": {"type": "array", "items": {"type": "string"}},
+                    "on": {"type": "string"},
                     "confidence": {"type": "number"},
                     "features": {"type": "array", "items": {"type": "string"}},
                 },
-                "required": ["name", "variety", "kind", "confidence", "features"],
+                "required": ["name", "variety", "kind", "with", "on", "confidence", "features"],
                 "additionalProperties": False,
             },
         },
@@ -209,6 +213,19 @@ class InvalidAnswer(ValueError):
 
 
 @dataclass
+class Part:
+    """Another mineral on the piece (#29): `with` the main one, or the base it is `on`.
+    The base may be MATRIX, rock nobody names, which is never looked up."""
+
+    role: str  # with | on
+    name: str
+    mindat_id: int | None = None  # set by mindat.resolve_outcome, as for the candidate
+
+    def as_json(self) -> dict:
+        return {"role": self.role, "name": self.name, "mindat_id": self.mindat_id}
+
+
+@dataclass
 class Candidate:
     name: str
     variety: str | None
@@ -216,6 +233,14 @@ class Candidate:
     confidence: float
     features: list[str] = field(default_factory=list)
     mindat_id: int | None = None  # set by mindat.resolve_outcome before the job is written (#18)
+    parts: list[Part] = field(default_factory=list)  # the `with` minerals in order, then the `on`
+
+    def label(self) -> str:
+        """The candidate for the log: Galena, Quartz (Amethyst), Pyrite with Sphalerite on Quartz."""
+        withs = [p.name for p in self.parts if p.role == "with"]
+        on = next((p.name for p in self.parts if p.role == "on"), None)
+        return (self.name + (f" ({self.variety})" if self.variety else "")
+                + (f" with {', '.join(withs)}" if withs else "") + (f" on {on}" if on else ""))
 
 
 @dataclass
@@ -257,7 +282,31 @@ def _candidate(raw: object, rank: int) -> Candidate:
         kind=kind,
         confidence=min(1.0, max(0.0, float(conf))),
         features=[f for f in (_words(x) for x in features) if f],
+        parts=_parts(raw, name, rank),
     )
+
+
+def _parts(raw: dict, name: str, rank: int) -> list[Part]:
+    """`with` and `on` (#29). Either may be missing, as in a prompt v1 answer, and is then
+    empty. A name that repeats the main mineral, the base or an earlier one is dropped,
+    at most MAX_WITH are kept, and the base `matrix` is spelled as such."""
+    withs, on = raw.get("with", []), raw.get("on", "")
+    if not isinstance(withs, list):
+        raise InvalidAnswer(f"candidate {rank} ({name}): with is not a list")
+    if not isinstance(on, str):
+        raise InvalidAnswer(f"candidate {rank} ({name}): on is not text")
+    on = _words(on)
+    if on.casefold() == MATRIX:
+        on = MATRIX
+    if on.casefold() == name.casefold():
+        on = ""
+    seen = {name.casefold(), on.casefold()}
+    parts: list[Part] = []
+    for w in (_words(x) for x in withs):
+        if w and w.casefold() not in seen and w.casefold() != MATRIX and len(parts) < MAX_WITH:
+            seen.add(w.casefold())
+            parts.append(Part("with", w))
+    return parts + ([Part("on", on)] if on else [])
 
 
 def _test(raw: object) -> SuggestedTest | None:
@@ -337,7 +386,7 @@ class Opinion:
         if not self.answer.candidates:
             return f"{self.role.short} nothing named"
         c = self.answer.candidates[0]
-        return f"{self.role.short} {c.name}{f' ({c.variety})' if c.variety else ''} {c.confidence:.2f}"
+        return f"{self.role.short} {c.label()} {c.confidence:.2f}"
 
 
 def opinion(role: Role, resp: llm.Response) -> Opinion:

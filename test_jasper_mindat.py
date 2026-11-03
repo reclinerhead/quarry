@@ -256,6 +256,51 @@ def test_catch_up_fills_only_jobs_still_waiting_for_a_name(tmp_path):
     assert mindat.catch_up(conn, api, float("inf")) == 0
 
 
+def _piece(name, withs=(), on=None):
+    """A candidate with its other minerals (#29), as the validator makes it."""
+    c = identify.Candidate(name, None, "mineral", 0.6)
+    c.parts = [identify.Part("with", w) for w in withs] + ([identify.Part("on", on)] if on else [])
+    return c
+
+
+def test_each_part_is_looked_up_by_name_and_written_with_its_record(tmp_path):
+    conn, api = _db(tmp_path), FakeApi(RECORDS + [rec(3314, "Pyrite"), rec(3727, "Sphalerite")])
+    opinions = [
+        identify.Opinion(HAIKU, 200, identify.Answer([_piece("Pyrite", ["Sphalerite", "Galena"], "Quartz")], [], None)),
+        identify.Opinion(FLASH, 200, identify.Answer([_piece("Quartz", ["Pyrite"]), _piece("Agate", on="matrix")], [], None)),
+    ]
+    out = identify.classify(opinions)
+    mindat.resolve_outcome(conn, api, out)
+    assert "matrix" not in [t.casefold() for t in api.asked]
+    jid = _job(conn)
+    queue.record_outcome(conn, jid, out, NOW)
+    written = {(r["model"], r["rank"]): json.loads(r["parts"]) for r in conn.execute("SELECT model, rank, parts FROM candidates")}
+    assert written[(HAIKU.model, 1)] == [
+        {"role": "with", "name": "Sphalerite", "mindat_id": 3727},
+        {"role": "with", "name": "Galena", "mindat_id": None},  # not in this Mindat
+        {"role": "on", "name": "Quartz", "mindat_id": 3337},
+    ]
+    assert written[(FLASH.model, 1)] == [{"role": "with", "name": "Pyrite", "mindat_id": 3314}]
+    assert written[(FLASH.model, 2)] == [{"role": "on", "name": "matrix", "mindat_id": None}]
+
+
+def test_catch_up_fills_a_waiting_candidates_parts_too(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    jid = _job(conn, "identified")
+    parts = [{"role": "with", "name": "Hematite", "mindat_id": None}, {"role": "on", "name": "matrix", "mindat_id": None}]
+    conn.execute(
+        "INSERT INTO candidates (job_id, model, rank, name, variety, kind, confidence, mindat_id, parts) VALUES (?, ?, 1, 'Quartz', NULL, 'mineral', 0.5, 3337, ?)",
+        (jid, HAIKU.model, json.dumps(parts)),
+    )
+    conn.commit()
+    assert mindat.catch_up(conn, api, float("inf")) == 1
+    filled = json.loads(conn.execute("SELECT parts FROM candidates").fetchone()[0])
+    assert [p["mindat_id"] for p in filled] == [1856, None]
+    asked = api.requests
+    assert mindat.catch_up(conn, api, float("inf")) == 0
+    assert api.requests == asked
+
+
 def test_run_once_looks_up_the_candidates_and_says_so(tmp_path, caplog):
     conn = _db(tmp_path)
     data = tmp_path / "data"

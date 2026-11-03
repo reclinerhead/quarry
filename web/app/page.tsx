@@ -4,7 +4,7 @@ import { CameraIcon, CrystalIcon } from "@/components/icons";
 import { addedToday, glance, places, sortTiles, type Tile } from "@/lib/collection";
 import { dateLine, greeting } from "@/lib/greeting";
 import { waitingStrip, withReadDb } from "@/lib/jobs";
-import { stoneName, stripLine } from "@/lib/pills";
+import { kindOf, pieceName, stripLine } from "@/lib/pills";
 import { collectionTiles } from "@/lib/specimens";
 
 // The dashboard from design/DESIGN.md §5, Phase 1 subset (#9): the greeting
@@ -149,8 +149,8 @@ function SideColumn({ tiles }: { tiles: Tile[] }) {
                   </span>
                 )}
                 <span className="flex min-w-0 flex-col">
-                  <span className="truncate font-bold group-hover:underline">{stoneName(t.name)}</span>
-                  <span className="truncate text-meta text-ink-3">{t.variety ? `${t.variety} · added ${t.added}` : `added ${t.added}`}</span>
+                  <span className="line-clamp-2 font-bold group-hover:underline">{pieceName(t)}</span>
+                  <span className="truncate text-meta text-ink-3">{kindOf(t) ? `${kindOf(t)} · added ${t.added}` : `added ${t.added}`}</span>
                 </span>
               </Link>
             </li>

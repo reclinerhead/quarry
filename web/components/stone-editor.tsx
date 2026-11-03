@@ -1,23 +1,29 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { CheckIcon } from "@/components/icons";
+import { PieceTitle } from "@/components/piece-title";
 import { Term } from "@/components/term";
 import { ACQUIRED_LABEL, longDay, missingDetails, type Acquired } from "@/lib/collection";
-import { stoneName } from "@/lib/pills";
+import type { MineralHit } from "@/lib/minerals";
+import { norm } from "@/lib/names";
+import { isMatrix, MATRIX, stoneName } from "@/lib/pills";
+import type { StonePart } from "@/lib/specimens";
 
 // "This specimen" (#9): the specimen label from DESIGN.md §4 (paper, a double
 // rule, the name over a 2 px ink rule, Courier field names) with the stone's
 // own facts. Unknowns read "Not recorded yet" with an Add link, and an amber
 // note counts the details a collector's label would want (missingDetails).
 // "Edit details", "Add" or "Fill in details" turns the label into a form; one
-// Save sends the lot through PATCH /api/stones/[id].
+// Save sends the lot through PATCH /api/stones/[id]. Since #29 the label's
+// name is the piece's (pieceName), and the other minerals on it are rows,
+// "With" and "On", picked in the form with the name field's autocomplete.
 
 export type StoneFacts = {
   name: string;
   variety: string | null;
-  associates: string | null;
+  parts: StonePart[];
   foundAt: string | null;
   acquired: Acquired | null;
   acquiredOn: string | null;
@@ -25,14 +31,24 @@ export type StoneFacts = {
   notes: string | null;
 };
 
-type Draft = { variety: string; associates: string; foundAt: string; acquired: Acquired | ""; acquiredOn: string; location: string; notes: string };
+type Draft = {
+  variety: string;
+  withs: Array<{ name: string; kept: boolean }>; // untick to take one off, so a slip is one tap to undo
+  on: string; // "" for nothing under it, MATRIX for unnamed rock
+  foundAt: string;
+  acquired: Acquired | "";
+  acquiredOn: string;
+  location: string;
+  notes: string;
+};
 
 type Field = keyof Draft;
 
 function toDraft(f: StoneFacts): Draft {
   return {
     variety: f.variety ?? "",
-    associates: f.associates ?? "",
+    withs: f.parts.filter((p) => p.role === "with").map((p) => ({ name: p.name, kept: true })),
+    on: f.parts.find((p) => p.role === "on")?.name ?? "",
     foundAt: f.foundAt ?? "",
     acquired: f.acquired ?? "",
     acquiredOn: f.acquiredOn ?? "",
@@ -41,15 +57,31 @@ function toDraft(f: StoneFacts): Draft {
   };
 }
 
-const ROWS: Array<{ field: Field; label: string; show: (f: StoneFacts) => string | null }> = [
+const ROWS: Array<{ field: Field; label: string; show: (f: StoneFacts) => React.ReactNode | null }> = [
   { field: "variety", label: "Variety", show: (f) => f.variety },
-  { field: "associates", label: "Also on it", show: (f) => f.associates },
+  {
+    field: "withs",
+    label: "With",
+    show: (f) => f.parts.filter((p) => p.role === "with").map((p) => stoneName(p.name)).join(", ") || null,
+  },
+  {
+    field: "on",
+    label: "On",
+    show: (f) => {
+      const base = f.parts.find((p) => p.role === "on");
+      if (!base) return null;
+      return isMatrix(base.name) ? <Term k="matrix">{MATRIX}</Term> : stoneName(base.name);
+    },
+  },
   { field: "foundAt", label: "Where from", show: (f) => f.foundAt },
   { field: "acquired", label: "How it came", show: (f) => (f.acquired ? ACQUIRED_LABEL[f.acquired] : null) },
   { field: "acquiredOn", label: "When", show: (f) => longDay(f.acquiredOn) },
   { field: "location", label: "Lives in", show: (f) => f.location },
   { field: "notes", label: "Notes", show: (f) => f.notes },
 ];
+
+/** The Add link's name where "Add with" or "Add on" would make no sense read aloud. */
+const ADD_LABEL: Partial<Record<Field, string>> = { withs: "Add the other minerals on it", on: "Add what it sits on" };
 
 export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFacts; places: string[] }) {
   const router = useRouter();
@@ -58,21 +90,58 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
   const [draft, setDraft] = useState<Draft>(toDraft(facts));
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [withText, setWithText] = useState(""); // a mineral being typed for "With"
+  const [hits, setHits] = useState<MineralHit[]>([]);
   const firstField = useRef<Field>("variety");
   const missing = missingDetails(facts);
+
+  // The name field's autocomplete (rankMinerals) over the collection's
+  // minerals, for whichever of With and On is being typed in.
+  const [typing, setTyping] = useState<"withs" | "on">("withs");
+  const query = (typing === "on" ? draft.on : withText).trim();
+  useEffect(() => {
+    if (!editing || !query || isMatrix(query)) return;
+    let stopped = false;
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/minerals?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+        if (r.ok && !stopped) setHits((await r.json()) as MineralHit[]);
+      } catch {
+        /* no suggestions */
+      }
+    }, 150);
+    return () => {
+      stopped = true;
+      clearTimeout(t);
+    };
+  }, [editing, query]);
+  const shownHits = query && !isMatrix(query) ? hits.filter((h) => norm(h.name) !== norm(facts.name)) : [];
 
   function edit(field: Field = "variety") {
     firstField.current = field;
     setDraft(toDraft(facts));
+    setWithText("");
     setStatus(null);
     setEditing(true);
+  }
+
+  /** Put a mineral on the "With" list, ticked; one already there is ticked again rather than repeated. */
+  function addWith(name: string) {
+    const n = name.trim().replace(/\s+/g, " ");
+    if (!n || isMatrix(n)) return;
+    const there = draft.withs.some((w) => norm(w.name) === norm(n));
+    setDraft({ ...draft, withs: there ? draft.withs.map((w) => (norm(w.name) === norm(n) ? { ...w, kept: true } : w)) : [...draft.withs, { name: n, kept: true }] });
+    setWithText("");
   }
 
   async function save() {
     setBusy(true);
     setStatus(null);
+    const { withs, on, ...rest } = draft;
+    const pending = withText.trim() && !isMatrix(withText) ? [withText.trim()] : []; // typed but not added: Save adds it
+    const body = { ...rest, parts: { with: [...withs.filter((w) => w.kept).map((w) => w.name), ...pending], on: on.trim() || null } };
     try {
-      const r = await fetch(`/api/stones/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(draft) });
+      const r = await fetch(`/api/stones/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const data = (await r.json()) as { error?: string };
       if (!r.ok) throw new Error(data.error ?? `server ${r.status}`);
       setEditing(false);
@@ -96,7 +165,9 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
       <div className="flex flex-col gap-4">
         <div className="rounded-[6px] border border-line-2 bg-label p-2.5">
           <div className="flex flex-col gap-3 border border-line px-5 py-4 sm:px-6">
-            <p className="border-b-2 border-ink pb-2 font-display text-h3 font-semibold leading-tight">{stoneName(facts.name)}</p>
+            <p className="text-balance border-b-2 border-ink pb-2 font-display text-h3 font-semibold leading-tight">
+              <PieceTitle piece={facts} />
+            </p>
             <dl className="flex flex-col">
               {ROWS.map((row) => {
                 const value = row.show(facts);
@@ -110,7 +181,7 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
                       {value ?? (
                         <span className="flex flex-wrap items-center gap-x-2">
                           <span className="italic text-ink-3">Not recorded yet</span>
-                          <button type="button" onClick={() => edit(row.field)} className="text-link" aria-label={`Add ${row.label.toLowerCase()}`}>
+                          <button type="button" onClick={() => edit(row.field)} className="text-link" aria-label={ADD_LABEL[row.field] ?? `Add ${row.label.toLowerCase()}`}>
                             Add
                           </button>
                         </span>
@@ -139,7 +210,7 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
       </div>
     );
 
-  const input = (field: Exclude<Field, "acquired" | "notes">, label: string, placeholder: string, list?: string) => (
+  const input = (field: Exclude<Field, "acquired" | "notes" | "withs" | "on">, label: string, placeholder: string, list?: string) => (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={`${ids}-${field}`} className="font-bold">
         {label}
@@ -170,7 +241,6 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
     >
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         {input("variety", "Variety or shop name", "Amethyst, or Blue Lace Agate")}
-        {input("associates", "Also on it", "On sphalerite, with a little quartz")}
         {input("foundAt", "Where it came from", "Grand Marais beach, or the Tucson show")}
         {input("acquiredOn", "When", "")}
         {input("location", "Where it lives now", "Glass case, top shelf", `${ids}-places`)}
@@ -180,6 +250,7 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
           ))}
         </datalist>
       </div>
+      {partsFields()}
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 font-bold">How it came</legend>
         <div className="flex flex-wrap gap-2">
@@ -221,6 +292,106 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
       </div>
     </form>
   );
+
+  // The other minerals on it, as a show label lists them: "With", most
+  // prominent first, then "On", a mineral or rock, or plain matrix.
+  // A render function, not a nested component, so typing keeps the focus.
+  function partsFields() {
+    const onMatrix = isMatrix(draft.on);
+    const hitChips = (pick: (name: string) => void) =>
+      shownHits.length > 0 ? (
+        <ul aria-label="Already in your collection" className="flex flex-wrap gap-2">
+          {shownHits.map((h) => (
+            <li key={h.id}>
+              <button type="button" onClick={() => pick(h.name)} className="chip">
+                {stoneName(h.name)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null;
+    return (
+      <fieldset className="flex flex-col gap-5 rounded-tile border border-line px-4 pb-5 pt-1 sm:px-5">
+        <legend className="px-1 font-bold">Other minerals on it</legend>
+        <p className="-mt-2 text-ink-2">As a show label lists them: the main one first, then what&rsquo;s with it, then what it sits on.</p>
+        <div className="flex flex-col gap-2">
+          <label htmlFor={`${ids}-with`} className="font-bold">
+            With
+          </label>
+          {draft.withs.length > 0 ? (
+            <ul aria-label="With it" className="flex flex-wrap gap-2">
+              {draft.withs.map((w) => (
+                <li key={w.name}>
+                  <button
+                    type="button"
+                    aria-pressed={w.kept}
+                    onClick={() => setDraft({ ...draft, withs: draft.withs.map((x) => (x === w ? { ...x, kept: !x.kept } : x)) })}
+                    className="chip"
+                  >
+                    {w.kept ? <CheckIcon className="size-4" /> : null}
+                    {stoneName(w.name)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="flex flex-wrap gap-3">
+            <div className="field flex min-w-[200px] flex-1 items-center">
+              <input
+                id={`${ids}-with`}
+                type="text"
+                value={withText}
+                onChange={(e) => setWithText(e.target.value)}
+                onFocus={() => setTyping("withs")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addWith(withText);
+                  }
+                }}
+                placeholder="Sphalerite"
+                maxLength={120}
+                autoComplete="off"
+                autoFocus={firstField.current === "withs"}
+              />
+            </div>
+            <button type="button" onClick={() => addWith(withText)} className="btn btn-soft">
+              Add
+            </button>
+          </div>
+          {typing === "withs" ? hitChips(addWith) : null}
+        </div>
+        <div className="flex flex-col gap-2">
+          <label htmlFor={`${ids}-on`} className="font-bold">
+            On
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="field flex min-w-[200px] flex-1 items-center">
+              <input
+                id={`${ids}-on`}
+                type="text"
+                value={onMatrix ? "" : draft.on}
+                onChange={(e) => setDraft({ ...draft, on: e.target.value })}
+                onFocus={() => setTyping("on")}
+                placeholder={onMatrix ? "On matrix" : "Quartz, or Basalt"}
+                maxLength={120}
+                autoComplete="off"
+                autoFocus={firstField.current === "on"}
+              />
+            </div>
+            <span className="inline-flex items-center">
+              <button type="button" aria-pressed={onMatrix} onClick={() => setDraft({ ...draft, on: onMatrix ? "" : MATRIX })} className="chip">
+                {onMatrix ? <CheckIcon className="size-4" /> : null}
+                On matrix
+              </button>
+              <Term k="matrix" bare />
+            </span>
+          </div>
+          {typing === "on" ? hitChips((name) => setDraft({ ...draft, on: name })) : null}
+        </div>
+      </fieldset>
+    );
+  }
 }
 
 function firstMissing(f: StoneFacts): Field {
