@@ -5,10 +5,10 @@ import { useEffect, useId, useRef, useState } from "react";
 import { CheckIcon } from "@/components/icons";
 import { PieceTitle } from "@/components/piece-title";
 import { Term } from "@/components/term";
-import { ACQUIRED_LABEL, longDay, missingDetails, type Acquired } from "@/lib/collection";
+import { ACQUIRED_LABEL, KIND_LABEL, longDay, missingDetails, type Acquired } from "@/lib/collection";
 import type { MineralHit } from "@/lib/minerals";
 import { norm } from "@/lib/names";
-import { isMatrix, MATRIX, stoneName } from "@/lib/pills";
+import { isMatrix, MATRIX, stoneName, type StoneKind } from "@/lib/pills";
 import type { StonePart } from "@/lib/specimens";
 
 // "This specimen" (#9): the specimen label from DESIGN.md §4 (paper, a double
@@ -19,9 +19,13 @@ import type { StonePart } from "@/lib/specimens";
 // Save sends the lot through PATCH /api/stones/[id]. Since #29 the label's
 // name is the piece's (pieceName), and the other minerals on it are rows,
 // "With" and "On", picked in the form with the name field's autocomplete.
+// The first row is the stone's own mineral (#33), the species the title leads
+// with or hides behind a hobby name; it is read-only, since the main mineral
+// changes through "Change" on the naming, not the form.
 
 export type StoneFacts = {
   name: string;
+  kind: StoneKind;
   variety: string | null;
   parts: StonePart[];
   foundAt: string | null;
@@ -169,6 +173,13 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
               <PieceTitle piece={facts} />
             </p>
             <dl className="flex flex-col">
+              <div className="flex flex-col gap-0.5 border-b border-rule py-2.5 sm:flex-row sm:items-baseline sm:gap-6">
+                <dt className="flex-none font-label text-ink-2 sm:w-[140px]">
+                  {KIND_LABEL[facts.kind]}
+                  {facts.kind === "other" ? null : <Term k={facts.kind} bare />}
+                </dt>
+                <dd className="min-w-0 break-words">{stoneName(facts.name)}</dd>
+              </div>
               {ROWS.map((row) => {
                 const value = row.show(facts);
                 return (
