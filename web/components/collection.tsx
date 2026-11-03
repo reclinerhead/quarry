@@ -124,8 +124,10 @@ export function Collection({ tiles }: { tiles: Tile[] }) {
  * The specimen card (DESIGN.md §4): the photo or a tinted "No photo yet" tile,
  * 220 px; the name as a show label gives it (pieceName, #29), wrapping rather
  * than cut; "A kind of Quartz" under a hobby name, no line at all when there
- * is none (#35); "Where it lives · added Nov 1"; the kind as a tag. The whole
- * card is one link. No catalog dab (Phase 3) or Mohs tag (Phase 2) yet.
+ * is none (#35); "Where it lives · added Nov 1"; the kind as a tag, then the
+ * mineral's class (#38), which a rock never has. The whole card is one link, so
+ * the class has no info mark here (a mark is a button); the stone's page has it.
+ * No catalog dab (Phase 3) or Mohs tag (Phase 2) yet.
  */
 export function StoneCard({ tile, tint }: { tile: Tile; tint: string }) {
   const kind = kindOf(tile);
@@ -146,6 +148,7 @@ export function StoneCard({ tile, tint }: { tile: Tile; tint: string }) {
         <span className="text-meta text-ink-3">{metaLine(tile)}</span>
         <span className="mt-2.5 flex flex-wrap gap-2">
           <span className="tag">{KIND_LABEL[tile.kind]}</span>
+          {tile.mineralClass && <span className="tag">{tile.mineralClass}</span>}
         </span>
       </div>
     </Link>

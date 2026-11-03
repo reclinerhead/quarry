@@ -14,6 +14,7 @@ export type Tile = {
   id: number;
   name: string; // the mineral or rock
   kind: StoneKind;
+  mineralClass: string | null; // "Sulfide" (#38); none for a rock, or before Jasper fetched the record
   variety: string | null;
   parts: Array<{ role: PartRole; name: string }>; // the other minerals on it (#29)
   foundAt: string | null; // where it was found or bought

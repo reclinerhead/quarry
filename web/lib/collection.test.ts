@@ -23,6 +23,7 @@ function tile(name: string, over: Partial<Tile> = {}): Tile {
     id,
     name,
     kind: "mineral",
+    mineralClass: null,
     variety: null,
     parts: [],
     foundAt: null,

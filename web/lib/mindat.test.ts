@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fold, formulaSegments, glowOf, gravityLabel, lusterLabel, plain, propertyCard, type ChainRecord } from "./mindat";
+import { fold, formulaSegments, glowOf, gravityLabel, lusterLabel, mineralClassOf, plain, propertyCard, type ChainRecord } from "./mindat";
 
 // Shaped on Mindat's own records, fetched on 2026-11-02 (#21): the fields the card reads.
 function rec(id: number, name: string, entrytype: string, d: Record<string, unknown> | null,
@@ -195,5 +195,31 @@ describe("propertyCard", () => {
   it("shows a value not on Mindat's lists as written", () => {
     const odd = rec(1, "Oddite", "mineral", { csystem: "Icosahedral", cleavagetype: "Eminent" });
     expect(propertyCard([odd], false).cells.map((c) => c.value)).toEqual(["Icosahedral", "Eminent"]);
+  });
+});
+
+describe("mineralClassOf", () => {
+  // The tiles hand over only `detail`, with only Strunz's field in it (#38).
+  const only = (strunz: unknown) => ({ detail: { strunz10ed1: strunz } });
+
+  it("names the mineral's own class, singular", () => {
+    expect(mineralClassOf([FLUORITE])).toBe("Halide");
+    expect(mineralClassOf([only("2")])).toBe("Sulfide");
+    expect(mineralClassOf([only(1)])).toBe("Native element");
+  });
+
+  it("gives a variety its parent's class", () => {
+    expect(mineralClassOf([AMETHYST, QUARTZ])).toBe("Oxide");
+    expect(mineralClassOf([only("0"), only(null), only("9")])).toBe("Silicate");
+  });
+
+  it("has none for a rock, or a class Strunz doesn't number", () => {
+    expect(mineralClassOf([GRANITE])).toBeNull();
+    expect(mineralClassOf([only("11")])).toBeNull();
+  });
+
+  it("has none until Jasper fetched the mineral's own record", () => {
+    expect(mineralClassOf([])).toBeNull();
+    expect(mineralClassOf([{ detail: null }, QUARTZ])).toBeNull();
   });
 });
