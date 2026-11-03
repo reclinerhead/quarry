@@ -77,6 +77,10 @@ export const GLOSSARY = {
     term: "element",
     text: "The simplest ingredients everything is made of: calcium, fluorine, iron and about ninety more, each with a symbol and a number on the periodic table. A mineral’s formula is a recipe of them, so CaF₂ is calcium and fluorine. Every element in your stones lights up on your periodic table.",
   },
+  periodicTable: {
+    term: "periodic table",
+    text: "The chart of every element there is, in rows and columns that put look-alikes together: the metals on the left, the gases on the right. Yours lights up an element the first time a stone that contains it is named. It comes from Mindat’s formulas for the minerals on your stones, not from a guess.",
+  },
   mohsScale: {
     term: "Mohs scale",
     text: "Friedrich Mohs picked ten minerals in 1812, talc to diamond, and numbered them so that each one scratches the one below it. A stone’s Mohs number says which of the ten it would scratch. The ten reference minerals are a set a collection can complete.",

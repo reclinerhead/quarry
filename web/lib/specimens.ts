@@ -5,9 +5,9 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { shortDay, type Acquired, type Tile } from "./collection";
-import { elementsCard, elementsOf, type ElementsCard } from "./elements";
+import { elementsCard, elementsOf, pieceElements, type ElementsCard, type PieceMineral, type StoneMinerals } from "./elements";
 import { cleanAnswers, type Answers } from "./household-tests";
-import { fold, mineralClassOf, propertyCard, type ChainRecord, type PropertyCard } from "./mindat";
+import { fold, formulaSegments, mineralClassOf, propertyCard, type ChainRecord, type PropertyCard } from "./mindat";
 import { mohsCard, type MohsCard } from "./mohs";
 import { chainOf, MAX_DEPTH } from "./names";
 import { thumbPathFor } from "./photos";
@@ -19,45 +19,119 @@ const NEWEST_PHOTO = "COALESCE(p.taken_at, p.uploaded_at) DESC, p.id DESC";
 /** A stone's other minerals as the screens show them: a base of plain matrix is named "matrix". */
 export type StonePart = { role: PartRole; name: string };
 
-const PARTS = `SELECT sp.specimen_id, sp.role, m.name FROM specimen_parts sp LEFT JOIN minerals m ON m.id = sp.mineral_id`;
+const PARTS = `SELECT sp.specimen_id, sp.role, sp.mineral_id, m.name FROM specimen_parts sp LEFT JOIN minerals m ON m.id = sp.mineral_id`;
 
-type PartRow = { specimen_id: number; role: PartRole; name: string | null };
+type PartRow = { specimen_id: number; role: PartRole; mineral_id: number | null; name: string | null };
 
 const partOf = (r: PartRow): StonePart => ({ role: r.role, name: r.name ?? MATRIX });
+
+/** Every stone's other minerals, in order, by specimen id. */
+function partsByStone(db: DatabaseSync): Map<number, PartRow[]> {
+  const parts = new Map<number, PartRow[]>();
+  for (const r of db.prepare(`${PARTS} ORDER BY sp.specimen_id, sp.position`).all() as PartRow[])
+    parts.set(r.specimen_id, [...(parts.get(r.specimen_id) ?? []), r]);
+  return parts;
+}
 
 /** One stone's other minerals, in order. */
 export function stoneParts(db: DatabaseSync, specimenId: number): StonePart[] {
   return (db.prepare(`${PARTS} WHERE sp.specimen_id = ? ORDER BY sp.position`).all(specimenId) as PartRow[]).map(partOf);
 }
 
-/** A record in a stone's mineral's chain, as the collection-wide pass reads it: its name, and two fields of `detail`. */
-type ChainLink = { name: string; detail: { strunz10ed1: unknown; elements: unknown } | null };
+/** A record in a mineral's chain, as the collection-wide pass reads it: its name, and three fields of `detail`. */
+type ChainLink = { name: string; detail: { strunz10ed1: unknown; elements: unknown; mindat_formula: unknown } | null };
 
 /**
- * The chain of each stone's own mineral, by `minerals.id`, for the tiles (#38)
- * and the stone page's side cards (#42): every chain read at once, as
- * `readProperties` reads one, with only Strunz's class and the elements taken
- * out of `detail`, so the dashboard never parses whole records.
+ * The chain of every mineral on any stone, by `minerals.id`, for the tiles
+ * (#38), the stone page's side cards (#42) and the periodic table (#48):
+ * every chain read at once, as `readProperties` reads one, with only Strunz's
+ * class, the elements and the formula taken out of `detail`, so no page
+ * parses whole records for the whole collection.
  */
 function mineralChains(db: DatabaseSync): Map<number, ChainLink[]> {
   const rows = db
     .prepare(
       `WITH RECURSIVE up(mineral, id, depth) AS (
          SELECT m.id, m.mindat_id, 1 FROM minerals m
-          WHERE m.mindat_id IS NOT NULL AND m.id IN (SELECT mineral_id FROM specimens)
+          WHERE m.mindat_id IS NOT NULL
+            AND (m.id IN (SELECT mineral_id FROM specimens) OR m.id IN (SELECT mineral_id FROM specimen_parts WHERE mineral_id IS NOT NULL))
          UNION
          SELECT up.mineral, r.varietyof, up.depth + 1 FROM up JOIN mindat_records r ON r.id = up.id
           WHERE r.varietyof IS NOT NULL AND up.depth < ?)
        SELECT up.mineral, r.name, r.detail IS NOT NULL AS fetched,
               CASE WHEN json_valid(r.detail) THEN json_extract(r.detail, '$.strunz10ed1') END AS strunz,
-              CASE WHEN json_valid(r.detail) THEN json_extract(r.detail, '$.elements') END AS elements
+              CASE WHEN json_valid(r.detail) THEN json_extract(r.detail, '$.elements') END AS elements,
+              CASE WHEN json_valid(r.detail) THEN json_extract(r.detail, '$.mindat_formula') END AS formula
          FROM up JOIN mindat_records r ON r.id = up.id ORDER BY up.mineral, up.depth`,
     )
-    .all(MAX_DEPTH) as Array<{ mineral: number; name: string; fetched: number; strunz: string | number | null; elements: string | null }>;
+    .all(MAX_DEPTH) as Array<{ mineral: number; name: string; fetched: number; strunz: string | number | null; elements: string | null; formula: string | null }>;
   const chains = new Map<number, ChainLink[]>();
   for (const r of rows)
-    chains.set(r.mineral, [...(chains.get(r.mineral) ?? []), { name: r.name, detail: r.fetched ? { strunz10ed1: r.strunz, elements: r.elements } : null }]);
+    chains.set(r.mineral, [
+      ...(chains.get(r.mineral) ?? []),
+      { name: r.name, detail: r.fetched ? { strunz10ed1: r.strunz, elements: r.elements, mindat_formula: r.formula } : null },
+    ]);
   return chains;
+}
+
+/** A mineral's formula from the first record in its chain that has one, once its own record is fetched; Mindat's "0" and "" are none. */
+function formulaOf(chain: ChainLink[]): PieceMineral["formula"] {
+  if (!chain[0]?.detail) return null;
+  for (const c of chain) {
+    const f = c.detail?.mindat_formula;
+    if (typeof f === "string" && f.trim() && f.trim() !== "0") {
+      const segments = formulaSegments(f);
+      return segments.length ? segments : null;
+    }
+  }
+  return null;
+}
+
+/** A stone with every named mineral on it, and what the periodic table's rows need to draw it (#48). */
+export type PieceElements = StoneMinerals & {
+  name: string;
+  kind: StoneKind;
+  variety: string | null;
+  parts: StonePart[];
+  added: string;
+  thumbUrl: string | null;
+  minerals: Array<PieceMineral & { chainNames: string[] }>; // the main mineral first; each with its name and the names up its chain
+};
+
+/**
+ * Every stone with every named mineral on it, main first, then with, then on,
+ * each with its elements and formula from its own chain. Plain matrix has no
+ * mineral and is left out. The stone page's card and the periodic table both
+ * read this, so a piece's elements are the same on both.
+ */
+export function collectionElements(db: DatabaseSync): PieceElements[] {
+  const chains = mineralChains(db);
+  const parts = partsByStone(db);
+  const mineralOn = (name: string, mineralId: number) => {
+    const chain = chains.get(mineralId) ?? [];
+    return { name, chainNames: [name, ...chain.map((c) => c.name)], elements: elementsOf(chain), formula: formulaOf(chain) };
+  };
+  const rows = db
+    .prepare(
+      `SELECT sp.id, sp.mineral_id, m.name, m.kind, sp.variety, sp.created_at,
+              (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${NEWEST_PHOTO} LIMIT 1) AS path
+         FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id`,
+    )
+    .all() as Array<{ id: number; mineral_id: number; name: string; kind: StoneKind; variety: string | null; created_at: string; path: string | null }>;
+  return rows.map((r) => {
+    const own = parts.get(r.id) ?? [];
+    return {
+      id: r.id,
+      name: r.name,
+      kind: r.kind,
+      variety: r.variety,
+      parts: own.map(partOf),
+      createdAt: r.created_at,
+      added: shortDay(r.created_at),
+      thumbUrl: r.path ? `/media/${thumbPathFor(r.path)}` : null,
+      minerals: [mineralOn(r.name, r.mineral_id), ...own.filter((p) => p.mineral_id !== null && p.name !== null).map((p) => mineralOn(p.name!, p.mineral_id!))],
+    };
+  });
 }
 
 /** The class of each stone's own mineral, by `minerals.id`, for the tiles (#38). */
@@ -67,9 +141,7 @@ function mineralClasses(db: DatabaseSync): Map<number, string | null> {
 
 /** Every stone as a dashboard tile, its date label worked out in the station's time zone. */
 export function collectionTiles(db: DatabaseSync): Tile[] {
-  const parts = new Map<number, StonePart[]>();
-  for (const r of db.prepare(`${PARTS} ORDER BY sp.specimen_id, sp.position`).all() as PartRow[])
-    parts.set(r.specimen_id, [...(parts.get(r.specimen_id) ?? []), partOf(r)]);
+  const parts = partsByStone(db);
   const classes = mineralClasses(db);
   const rows = db
     .prepare(
@@ -95,7 +167,7 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
     kind: r.kind,
     mineralClass: classes.get(r.mineral_id) ?? null,
     variety: r.variety,
-    parts: parts.get(r.id) ?? [],
+    parts: (parts.get(r.id) ?? []).map(partOf),
     foundAt: r.found_at,
     acquired: r.acquired,
     location: r.location,
@@ -201,19 +273,11 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     .prepare("SELECT location FROM specimens WHERE location IS NOT NULL GROUP BY lower(location) ORDER BY COUNT(*) DESC, location")
     .all() as Array<{ location: string }>;
   const properties = readProperties(db, s.name, s.mindat_id);
-  // Every stone's main mineral with its chain, for what this one was the first to bring (#42).
-  const chains = mineralChains(db);
-  const stones = (
-    db.prepare("SELECT sp.id, sp.mineral_id, m.name, sp.created_at FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id").all() as Array<{
-      id: number;
-      mineral_id: number;
-      name: string;
-      created_at: string;
-    }>
-  ).map((r) => {
-    const chain = chains.get(r.mineral_id) ?? [];
-    return { id: r.id, createdAt: r.created_at, elements: elementsOf(chain), names: [r.name, ...chain.map((c) => c.name)] };
-  });
+  // Every stone with every mineral on it, for what this one was the first to bring (#42, #48)
+  // and, by the main mineral alone, which Mohs slot each fills.
+  const pieces = collectionElements(db);
+  const stones = pieces.map((p) => ({ id: p.id, createdAt: p.createdAt, elements: pieceElements(p) }));
+  const names = pieces.map((p) => ({ id: p.id, createdAt: p.createdAt, names: p.minerals[0].chainNames }));
   return {
     id: s.id,
     name: s.name,
@@ -235,7 +299,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     places: places.map((p) => p.location),
     properties,
     elements: elementsCard(s.id, stones),
-    mohsSet: mohsCard(s.id, stones, properties.mohsRange),
+    mohsSet: mohsCard(s.id, names, properties.mohsRange),
   };
 }
 

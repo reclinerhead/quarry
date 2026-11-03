@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Fragment } from "react";
+import { Formula } from "@/components/formula";
 import { Gallery } from "@/components/gallery";
 import { CheckIcon } from "@/components/icons";
 import { RemoveStone, StoneEditor } from "@/components/stone-editor";
@@ -10,7 +10,7 @@ import { fullDay, KIND_LABEL } from "@/lib/collection";
 import { elementsLine } from "@/lib/elements";
 import type { GlossaryKey } from "@/lib/glossary";
 import { readJob, withReadDb, type JobView } from "@/lib/jobs";
-import { mohsLabel, type PropertyKey, type Segment } from "@/lib/mindat";
+import { mohsLabel, type PropertyKey } from "@/lib/mindat";
 import { mohsRowLabel } from "@/lib/mohs";
 import { HOW_SUMMARY } from "@/lib/naming";
 import { sameStone } from "@/lib/names";
@@ -301,10 +301,10 @@ function NoRecord({ stone, name, missing, none }: { stone: StoneView; name: stri
 }
 
 /**
- * DESIGN.md §5's "What it's made of" (#42): the main mineral's elements as
- * tiles, solid with "· new" when this stone was the first to bring one, then
- * the line that says so and counts the household's lit elements. "Open your
- * periodic table" joins when that page exists.
+ * DESIGN.md §5's "What it's made of" (#42): the elements of every named
+ * mineral on the piece (#48), the main one's first, as tiles, solid with
+ * "· new" when this stone was the first to bring one, then the line that says
+ * so and counts the household's lit elements, and the way to the table.
  */
 function MadeOf({ stone, name }: { stone: StoneView; name: string }) {
   const card = stone.elements;
@@ -326,6 +326,9 @@ function MadeOf({ stone, name }: { stone: StoneView; name: string }) {
             ))}
           </ul>
           <p className="text-ink-2">{elementsLine(card)}</p>
+          <Link href="/periodic-table" className="text-link self-start">
+            Open your periodic table
+          </Link>
         </>
       ) : (
         <NoRecord stone={stone} name={name} missing="formula" none="elements" />
@@ -373,13 +376,6 @@ function MohsSet({ stone, name }: { stone: StoneView; name: string }) {
         <NoRecord stone={stone} name={name} missing="single hardness" none="hardness" />
       )}
     </section>
-  );
-}
-
-/** A formula's runs, with real subscripts and superscripts. */
-function Formula({ segments }: { segments: Segment[] }) {
-  return segments.map((s, i) =>
-    s.pos === "sub" ? <sub key={i}>{s.text}</sub> : s.pos === "sup" ? <sup key={i}>{s.text}</sup> : <Fragment key={i}>{s.text}</Fragment>,
   );
 }
 

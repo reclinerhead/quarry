@@ -190,7 +190,48 @@
     background: var(--color-azurite-soft);
     color: var(--color-azurite-note);
   }
-  .element-tile-new {
+  .element-tile-new,
+  .element-tile[aria-current] {
+    background: var(--color-azurite);
+    color: #fff;
+  }
+  a.element-tile {
+    text-decoration: none;
+    transition: box-shadow 120ms ease;
+  }
+  a.element-tile:hover {
+    box-shadow: var(--shadow-hover);
+  }
+
+  /* Periodic table cell (#48): a square with the atomic number over the
+     symbol. Unlit is the Mohs row's dashed slot; lit is the soft azurite and
+     a link; the selected one is solid. */
+  .periodic-cell {
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    border-radius: 8px;
+    border: 1px dashed var(--color-line-2);
+    color: var(--color-ink-3);
+    font-weight: 700;
+    text-decoration: none;
+    line-height: 1;
+  }
+  .periodic-cell-lit {
+    border: 2px solid var(--color-azurite);
+    background: var(--color-azurite-soft);
+    color: var(--color-azurite-note);
+    transition: box-shadow 120ms ease;
+  }
+  .periodic-cell-lit:hover {
+    color: var(--color-azurite-note);
+    box-shadow: var(--shadow-hover);
+  }
+  .periodic-cell[aria-current],
+  .periodic-cell[aria-current]:hover {
     background: var(--color-azurite);
     color: #fff;
   }
