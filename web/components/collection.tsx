@@ -123,12 +123,12 @@ export function Collection({ tiles }: { tiles: Tile[] }) {
 /**
  * The specimen card (DESIGN.md §4): the photo or a tinted "No photo yet" tile,
  * 220 px; the name as a show label gives it (pieceName, #29), wrapping rather
- * than cut; "A kind of Quartz" under a hobby name, the line reserved when there
- * is none so cards in a row line up; "Where it lives · added Nov 1"; the kind
- * as a tag. The whole card is one link. No catalog dab (Phase 3) or Mohs tag
- * (Phase 2) yet.
+ * than cut; "A kind of Quartz" under a hobby name, no line at all when there
+ * is none (#35); "Where it lives · added Nov 1"; the kind as a tag. The whole
+ * card is one link. No catalog dab (Phase 3) or Mohs tag (Phase 2) yet.
  */
 export function StoneCard({ tile, tint }: { tile: Tile; tint: string }) {
+  const kind = kindOf(tile);
   return (
     <Link href={`/stones/${tile.id}`} className="card card-link flex h-full flex-col overflow-hidden text-ink hover:text-ink">
       {tile.thumbUrl ? (
@@ -142,7 +142,7 @@ export function StoneCard({ tile, tint }: { tile: Tile; tint: string }) {
       )}
       <div className="flex flex-1 flex-col gap-1 px-5 pb-5 pt-[18px]">
         <span className="font-display text-h3 font-semibold leading-tight">{pieceName(tile)}</span>
-        <span className="text-[17px] text-ink-2">{kindOf(tile) ??" "}</span>
+        {kind && <span className="text-[17px] text-ink-2">{kind}</span>}
         <span className="text-meta text-ink-3">{metaLine(tile)}</span>
         <span className="mt-2.5 flex flex-wrap gap-2">
           <span className="tag">{KIND_LABEL[tile.kind]}</span>

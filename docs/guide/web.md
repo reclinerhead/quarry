@@ -76,7 +76,7 @@ pnpm dev
 - **Specimen cards** (`StoneCard`, DESIGN.md §4), each one link to `/stones/[id]`:
   - the thumbnail, 220 px, or a tinted "No photo yet" tile, the tint varied between neighbours;
   - the piece's name (see "Naming a stone") in Zilla 24, wrapping rather than cut;
-  - "A kind of Quartz" under a hobby name (`kindOf`), the line reserved when there is none so cards in a row line up;
+  - "A kind of Quartz" under a hobby name (`kindOf`); a stone whose name already says the mineral has no line there, the meta line follows the name directly;
   - "Glass case · added Nov 1";
   - the kind as a tag.
 
