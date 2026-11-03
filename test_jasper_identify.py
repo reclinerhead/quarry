@@ -121,12 +121,53 @@ def test_at_most_three_candidates_and_three_tests_are_kept():
     assert [t.kind for t in a.tests] == ["glass", "steel", "copper"]
 
 
+def cand(**over):
+    c = {"name": "Pyrite", "variety": "", "kind": "mineral", "with": [], "on": "", "confidence": 0.7, "features": []}
+    c.update(over)
+    return c
+
+
+def parts(c):
+    return [(p.role, p.name) for p in c.parts]
+
+
+def test_with_and_on_describe_the_whole_piece_in_order():
+    a = identify.parse_answer(json.dumps(answer(candidates=[cand(**{"with": [" Sphalerite ", "Galena"], "on": "Quartz"})])))
+    c = a.candidates[0]
+    assert parts(c) == [("with", "Sphalerite"), ("with", "Galena"), ("on", "Quartz")]
+    assert c.label() == "Pyrite with Sphalerite, Galena on Quartz"
+    assert all(p.mindat_id is None for p in c.parts)
+
+
+def test_a_v1_answer_without_with_or_on_is_one_mineral():
+    a = identify.parse_answer(json.dumps(answer()))
+    assert [c.parts for c in a.candidates] == [[], []]
+
+
+def test_parts_that_repeat_are_dropped_matrix_is_spelled_and_with_is_capped():
+    c = cand(**{"with": ["pyrite", "Calcite", "", "calcite", "Matrix", "Galena", "Barite", "Fluorite"], "on": "MATRIX"})
+    assert parts(identify.parse_answer(json.dumps(answer(candidates=[c]))).candidates[0]) == [
+        ("with", "Calcite"), ("with", "Galena"), ("with", "Barite"), ("on", "matrix"),
+    ]
+    c = cand(**{"with": ["Quartz"], "on": "Quartz"})
+    assert parts(identify.parse_answer(json.dumps(answer(candidates=[c]))).candidates[0]) == [("on", "Quartz")]
+    c = cand(**{"on": " pyrite "})
+    assert parts(identify.parse_answer(json.dumps(answer(candidates=[c]))).candidates[0]) == []
+
+
+@pytest.mark.parametrize("over", [{"with": "Sphalerite"}, {"on": ["Quartz"]}], ids=["with not a list", "on not text"])
+def test_malformed_parts_are_an_invalid_answer(over):
+    with pytest.raises(identify.InvalidAnswer):
+        identify.parse_answer(json.dumps(answer(candidates=[cand(**over)])))
+
+
 # --- the prompt and the schema -------------------------------------------------
 
 
 def test_the_prompt_has_a_version_and_names_every_test_kind():
     version, body = identify.load_prompt()
-    assert version >= 1
+    assert version == 2
+    assert '"matrix"' in body and "- with:" in body and "- on:" in body
     assert not body.startswith("---")
     for kind in identify.TEST_KINDS:
         assert f"- {kind}:" in body
@@ -148,8 +189,10 @@ def test_the_schemas_test_kinds_are_the_tables(tmp_path):
         conn.execute("INSERT INTO suggested_tests (job_id, model, rank, kind, how, expected) VALUES (?, 'm', ?, ?, 'h', 'e')", (job, rank, kind))
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("INSERT INTO suggested_tests (job_id, model, rank, kind, how, expected) VALUES (?, 'm', 99, 'heft', 'h', 'e')", (job,))
-    cand = identify.SCHEMA["properties"]["candidates"]["items"]["properties"]["kind"]["enum"]
-    assert cand == list(identify.CANDIDATE_KINDS)
+    item = identify.SCHEMA["properties"]["candidates"]["items"]
+    assert item["properties"]["kind"]["enum"] == list(identify.CANDIDATE_KINDS)
+    # Strict structured output: every property is required, with and on included.
+    assert set(item["required"]) == set(item["properties"]) >= {"with", "on"}
 
 
 # --- the user message ----------------------------------------------------------
@@ -332,5 +375,7 @@ def test_answers_that_name_nothing_are_rejected():
 def test_describe_for_the_log_line():
     named = identify.opinion(HAIKU, ok(answer(candidates=[{"name": "Quartz", "variety": "Amethyst", "kind": "mineral", "confidence": 0.7, "features": []}])))
     assert named.describe() == "haiku Quartz (Amethyst) 0.70"
+    piece = identify.opinion(HAIKU, ok(answer(candidates=[cand(**{"with": ["Sphalerite"], "on": "Quartz"})])))
+    assert piece.describe() == "haiku Pyrite with Sphalerite on Quartz 0.70"
     assert identify.opinion(FLASH, ok(answer(candidates=[]))).describe() == "flash nothing named"
     assert identify.opinion(FLASH, err(429)).describe() == "flash the gateway rate-limited the request (429): nope"

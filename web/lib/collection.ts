@@ -6,7 +6,7 @@
 // phone. The Conservatory's lib/collection.ts, for stones.
 
 import { norm } from "./names";
-import type { StoneKind } from "./pills";
+import { pieceName, type PartRole, type StoneKind } from "./pills";
 
 export type Acquired = "found" | "bought" | "gifted" | "traded";
 
@@ -15,6 +15,7 @@ export type Tile = {
   name: string; // the mineral or rock
   kind: StoneKind;
   variety: string | null;
+  parts: Array<{ role: PartRole; name: string }>; // the other minerals on it (#29)
   foundAt: string | null; // where it was found or bought
   acquired: Acquired | null;
   location: string | null; // where it lives now
@@ -67,11 +68,11 @@ export function metaLine(t: Pick<Tile, "location" | "added">): string {
   return t.location ? `${t.location} · ${added}` : added;
 }
 
-/** The search box: any part of the name, the variety or where it was found, ignoring case and punctuation. */
-export function matchesQuery(t: Pick<Tile, "name" | "variety" | "foundAt">, q: string): boolean {
+/** The search box: any part of the name, the variety, the other minerals on it or where it was found, ignoring case and punctuation. */
+export function matchesQuery(t: Pick<Tile, "name" | "variety" | "parts" | "foundAt">, q: string): boolean {
   const needle = norm(q);
   if (!needle) return true;
-  return [t.name, t.variety ?? "", t.foundAt ?? ""].some((v) => norm(v).includes(needle));
+  return [t.name, t.variety ?? "", ...t.parts.map((p) => p.name), t.foundAt ?? ""].some((v) => norm(v).includes(needle));
 }
 
 function matchesKind(t: Tile, kind: KindFilter): boolean {
@@ -90,11 +91,14 @@ export function filterTiles(tiles: Tile[], f: Filters): Tile[] {
   return tiles.filter((t) => matchesQuery(t, f.q) && matchesKind(t, f.kind) && matchesFrom(t, f.from));
 }
 
-/** Name A to Z (then newest), or newest first (then id, so two in the same second keep their order). */
+/**
+ * Name A to Z by the name the card shows (pieceName: an amethyst under A), then
+ * newest; or newest first (then id, so two in the same second keep their order).
+ */
 export function sortTiles(tiles: Tile[], sort: Sort): Tile[] {
   const newest = (a: Tile, b: Tile) => (a.createdAt === b.createdAt ? b.id - a.id : a.createdAt < b.createdAt ? 1 : -1);
   if (sort === "new") return tiles.toSorted(newest);
-  return tiles.toSorted((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || newest(a, b));
+  return tiles.toSorted((a, b) => pieceName(a).localeCompare(pieceName(b), "en", { sensitivity: "base" }) || newest(a, b));
 }
 
 export type Chip = { key: string; label: string; n: number; on: boolean };

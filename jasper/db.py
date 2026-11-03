@@ -56,6 +56,38 @@ ALTER TABLE mindat_records ADD COLUMN detail TEXT;     -- the whole record as Mi
 ALTER TABLE mindat_records ADD COLUMN detail_at TEXT;  -- when it was fetched
 """,
     ),
+    # 4 (#29): a piece with several minerals, named as a show label does: Pyrite with Sphalerite on Quartz.
+    (
+        4,
+        """
+-- Each candidate's other minerals, as the model gave them: JSON, a list of
+-- {role: "with" | "on", name, mindat_id}; the base may be "matrix". NULL on an
+-- answer written before this step.
+ALTER TABLE candidates ADD COLUMN parts TEXT;
+
+-- A stone's other minerals. specimens.mineral_id stays the main one, which the
+-- property card follows; these are the minerals "with" it, in order, and the one
+-- it is "on". A base of plain matrix has no mineral.
+CREATE TABLE IF NOT EXISTS specimen_parts (
+  specimen_id INTEGER NOT NULL REFERENCES specimens(id) ON DELETE CASCADE,
+  position    INTEGER NOT NULL,
+  role        TEXT    NOT NULL CHECK (role IN ('with', 'on')),
+  mineral_id  INTEGER REFERENCES minerals(id),
+  PRIMARY KEY (specimen_id, position),
+  CHECK (mineral_id IS NOT NULL OR role = 'on')
+);
+
+CREATE INDEX IF NOT EXISTS specimen_parts_mineral ON specimen_parts (mineral_id);
+
+-- "Also on it" was free text that nothing read. It moves into the notes, and the
+-- column is no longer used.
+UPDATE specimens
+   SET notes = CASE WHEN notes IS NULL OR trim(notes) = '' THEN 'Also on it: ' || trim(associates)
+                    ELSE notes || char(10) || 'Also on it: ' || trim(associates) END,
+       associates = NULL
+ WHERE associates IS NOT NULL AND trim(associates) <> '';
+""",
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else BASELINE_VERSION

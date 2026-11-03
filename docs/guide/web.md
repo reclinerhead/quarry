@@ -28,7 +28,7 @@ pnpm dev
 | `GET /media/photos/[yyyy]/[mm]/[file]` | A photo, or the thumbnail Jasper writes beside it, from the data directory | #6 |
 | `/name` | Sends the person to the oldest stone waiting for a name, or says there is none | #8 |
 | `/name/[id]` | The confirm screen, one stone per screen; see below | #8 |
-| `POST /api/jobs/[id]/confirm` | Put a name on the stone: `{ pick: { model, rank } }`, `{ typedName }` or `{ sameAsSpecimenId }`, plus an optional `variety` | #8 |
+| `POST /api/jobs/[id]/confirm` | Put a name on the stone: `{ pick: { model, rank } }`, `{ typedName }` or `{ sameAsSpecimenId }`, plus an optional `variety`, and with a pick the one-opinion minerals the person ticked, `maybe: string[]` | #8, #29 |
 | `PATCH /api/jobs/[id]/confirm` | "How do you know?": `{ how }` | #8 |
 | `DELETE /api/jobs/[id]/confirm` | "Change": reverse a naming | #8 |
 | `POST /api/jobs/[id]/dismiss` | "Not a rock": delete the job, its photos, their files and thumbnails | #8 |
@@ -36,8 +36,8 @@ pnpm dev
 | `POST /api/jobs/[id]/tests` | "Ask Jasper again with these answers": `{ tests, notes }`, then back to the queue | #8 |
 | `GET /api/minerals?q=` | The minerals and rocks already in the collection, for the name field | #8 |
 | `/stones/[id]` | One stone: its photos, its specimen label, its tests, how it was named; see below | #9 |
-| `PATCH /api/stones/[id]` | Edit a stone's facts or test answers: any of `variety`, `associates`, `foundAt`, `acquired`, `acquiredOn`, `location`, `notes`, `tests`; an empty string clears | #9 |
-| `DELETE /api/stones/[id]` | Remove a stone: its photos (rows, files, thumbnails), the jobs that brought them, and the mineral when it was the last | #9 |
+| `PATCH /api/stones/[id]` | Edit a stone's facts or test answers: any of `variety`, `parts` (`{ with: string[], on: string \| null }`, `on` possibly `"matrix"`; replaces them all), `foundAt`, `acquired`, `acquiredOn`, `location`, `notes`, `tests`; an empty string clears | #9, #29 |
+| `DELETE /api/stones/[id]` | Remove a stone: its photos (rows, files, thumbnails), the jobs that brought them, and each of its minerals no stone uses any more | #9 |
 
 ## The home page
 
@@ -57,29 +57,29 @@ pnpm dev
 
 ### Your collection
 
-`components/collection.tsx` over the pure shape in `lib/collection.ts` (tested), the Conservatory's pattern. The server sends every stone as a `Tile` (`collectionTiles` in `lib/specimens.ts`): name, kind, variety, where it came from, how it came, where it lives, when it was added (the "Nov 1" label worked out on the server, in the station's time zone, so server and phone never disagree) and the newest photo's 320 px thumbnail, never an original. The phone filters and sorts, so a search makes no request.
+`components/collection.tsx` over the pure shape in `lib/collection.ts` (tested), the Conservatory's pattern. The server sends every stone as a `Tile` (`collectionTiles` in `lib/specimens.ts`): name, kind, variety, the other minerals on it, where it came from, how it came, where it lives, when it was added (the "Nov 1" label worked out on the server, in the station's time zone, so server and phone never disagree) and the newest photo's 320 px thumbnail, never an original. The phone filters and sorts, so a search makes no request.
 
 - **The count line:** "Showing 12 of 47 stones", or "Showing 3 stones that match" once anything filters (`countLine`).
-- **Sort by**, a native `<select>`: Name, A to Z (the default) or Newest first.
+- **Sort by**, a native `<select>`: Name, A to Z (the default, by the name the card shows, so an amethyst is under A) or Newest first.
 - **The filter chips Phase 1 has data for** (`filterChips`):
   - Everything;
   - Minerals, and Rocks and fossils (anything that isn't a mineral), one kind at a time;
   - Found it myself, and Bought or gifted (a gift or a trade counts), one source at a time.
 
   The two groups combine. Counts come from the whole collection, so the row never changes shape while a person types, and a chip with nobody in it is left out. "Clear filters" appears once anything filters.
-- **The top bar's search** matches any part of the name, the variety or where it came from, ignoring case and punctuation (`matchesQuery`, through `norm`).
+- **The top bar's search** matches any part of the name, the variety, the other minerals on it ("pyrite" finds Fluorite with Pyrite) or where it came from, ignoring case and punctuation (`matchesQuery`, through `norm`).
 - **All of it lives in the URL** (`?q=`, `?kind=`, `?from=`, `?sort=`), written with the native `history.replaceState`, which Next syncs with `useSearchParams`. The back button returns to the same view, and the top bar's box and the grid agree. The top bar reads the URL behind a `Suspense` boundary because `/add` is static.
 - **No match** draws a dashed card, "No stones match those choices.", with "Show everything".
 - **Specimen cards** (`StoneCard`, DESIGN.md §4), each one link to `/stones/[id]`:
   - the thumbnail, 220 px, or a tinted "No photo yet" tile, the tint varied between neighbours;
-  - the name in Zilla 24;
-  - the variety line, reserved when there is none so cards in a row line up;
+  - the piece's name (see "Naming a stone") in Zilla 24, wrapping rather than cut;
+  - "A kind of Quartz" under a hobby name (`kindOf`), the line reserved when there is none so cards in a row line up;
   - "Glass case · added Nov 1";
   - the kind as a tag.
 
 ### The side column
 
-- **Newest additions:** four rows, each a whole 64 px link (thumbnail, name, "added Nov 1"), then "See everything by date" (`/?sort=new`).
+- **Newest additions:** four rows, each a whole 64 px link (thumbnail, the piece's name on up to two lines, "added Nov 1" after any "A kind of …"), then "See everything by date" (`/?sort=new`).
 - **At a glance:** four stat tiles, stones, different minerals, kinds of rock and places they live (`glance`), each a number over a phrase.
 - **Where they live:** each place with its count, most stones first (`places`), or a line saying where to record one.
 
@@ -89,9 +89,9 @@ pnpm dev
 
 - **The breadcrumb** ("Collection › Galena").
 - **The title block:**
-  - the name at 60 px (40 on a phone);
-  - one line with the variety and the formula, in Courier Prime with real subscripts ("Selenite · CaSO₄·2H₂O");
-  - the tags: the mineral class ("Halide"), else the kind ("Rock", with the rock info mark); "Mohs 4"; "Can glow under UV" in DESIGN.md's `uv` violet when Mindat says it can; then the photo count, how many of that mineral the collection holds, and when it was added.
+  - the piece's name at 60 px (40 on a phone), as a show label gives it ("Amethyst on matrix", the "matrix" with its info mark: `components/piece-title.tsx`); the same name is the page's `<title>`;
+  - one line with "A kind of Quartz" under a hobby name (`kindOf`) and the formula, in Courier Prime with real subscripts ("A kind of Quartz · SiO₂"). This line is the only place the Mindat species shows;
+  - the tags: the mineral class ("Halide"), else the kind ("Rock", with the rock info mark); "Mohs 4"; "Can glow under UV" in DESIGN.md's `uv` violet when Mindat says it can; then the photo count, how many of that mineral the collection holds, and when it was added. The formula, the tags and the property card follow the main mineral (`specimens.mineral_id`), never the others on the piece.
   - A tag whose word is a mineralogical term carries its info mark beside the pill (`TagTerm`).
 - **The gallery** (`components/gallery.tsx`):
   - The hero is in the dark photo well, 640 px tall (360 on a phone), contained rather than cropped, with a caption, "Your photo · Oct 31, 2026".
@@ -99,10 +99,11 @@ pnpm dev
   - Photos are newest first, by `taken_at`, else upload time.
   - `components/photo-view.tsx`, shared with the confirm screen, falls back from a HEIC original a desktop browser cannot draw to Jasper's thumbnail.
 - **This specimen** (`components/stone-editor.tsx`) is the specimen label: paper, a double rule, the name over a 2 px ink rule, and Courier field names.
-  - The fields are variety, also on it (`associates`), where from, how it came, when, lives in, and notes.
+  - The title is the piece's name, and the fields are variety, With and On (the other minerals on it, `specimen_parts`, #29), where from, how it came, when, lives in, and notes. An On of plain matrix carries the matrix info mark.
   - An unknown reads "Not recorded yet" with an Add link.
   - An amber note counts the details a collector's label wants (`missingDetails`, tested: where from, how, when, where it lives; never the extras), with "Fill in details".
   - Any of those, or "Edit details", turns the label into one form with a single Save (`PATCH /api/stones/[id]`) and focuses the field that was asked for. How it came is chips, with a dashed "Not recorded"; where it lives offers every place already in use.
+  - **Other minerals on it** is its own group in the form. With is a list of chips, each ticked, untick to take one off (one tap to undo), and a field with Add (or Enter) for the next; a name typed but not added is added by Save. On is a field, or an "On matrix" chip with the matrix info mark. Both offer the minerals already in the collection as chips while typing, through the name field's autocomplete (`/api/minerals`, `rankMinerals`). The route writes them with `writeParts` (`lib/specimens.ts`): in label order, each mineral once, never the stone's own mineral, a new name made a `minerals` row as on the confirm screen, matrix with no mineral; then `pruneMinerals` deletes any mineral the edit left on no stone.
 - **Kitchen-table tests** (`components/tests-editor.tsx`):
   - The confirm screen's `TestRow`s, editable in place.
   - The tests already answered come first (with none, the four DESIGN.md names: glass, streak, vinegar, magnet), and the rest wait behind "Other tests".
@@ -126,13 +127,13 @@ pnpm dev
     - Before Jasper has linked or fetched it, the line says Jasper hasn't looked it up yet. On a station without a Mindat key it stays that way.
   - **The info marks** are new glossary entries (formula, crystal system, luster, cleavage, specific gravity, mineral class, rock) beside the tests' hardness, streak and fluorescence. They float, as every mark does. The canvas's note block under the grid, with examples from the household's own stones, waits for the glossary issue.
 - **How it was named**, from the job whose naming made the stone (`readJob`):
-  - Jasper's pills as they were: the chosen name solid azurite with a check, the others outlined with their word. A typed name no model offered leads, marked "typed by you".
+  - Jasper's pills as they were, each its whole reading: the chosen one solid azurite with a check, reading as the stone is named now, the others outlined with their word. A typed name no model offered leads, marked "typed by you". Their corners are 24 px, so a long name wraps into a rounded card rather than an oval.
   - The date, and how the person knew (`HOW_SUMMARY` in `lib/naming.ts`, beside the confirm screen's chip labels).
   - How many more photos were added as the same stone.
   - "Change the name", which goes to that job's confirm screen.
-- **Remove** (`RemoveStone`): two taps, "Remove this stone" then "Yes, remove it", with "Keep it" to back out. `DELETE /api/stones/[id]` removes the photo rows and the jobs that brought them, found through the photos and through the stone's confirmations; candidates, suggested tests and confirmations cascade. It then removes the stone, and the mineral if it was the last of its kind, and unlinks the files and their thumbnails. Then home.
+- **Remove** (`RemoveStone`): two taps, "Remove this stone" then "Yes, remove it", with "Keep it" to back out. `DELETE /api/stones/[id]` removes the photo rows and the jobs that brought them, found through the photos and through the stone's confirmations; candidates, suggested tests and confirmations cascade. It then removes the stone (its parts cascade), and each of its minerals, main or on it, that no stone uses any more (`pruneMinerals`), and unlinks the files and their thumbnails. Then home.
 
-Tests: `lib/collection.test.ts` (search, the kind and source filters, both sorts, the chips, the count line, the side column, date labels, what changed today, missing details), `lib/greeting.test.ts`, and `lib/mindat.test.ts` (formula runs, plain text, the luster, gravity and fluorescence rules on Mindat's own strings, inheritance up the chain, the card's four states, and `fold` on Jasper's cases).
+Tests: `lib/collection.test.ts` (search, by a part too, the kind and source filters, both sorts, by the shown name, the chips, the count line, the side column, date labels, what changed today, missing details), `lib/greeting.test.ts`, and `lib/mindat.test.ts` (formula runs, plain text, the luster, gravity and fluorescence rules on Mindat's own strings, inheritance up the chain, the card's four states, and `fold` on Jasper's cases).
 
 ## Adding a rock
 
@@ -177,18 +178,22 @@ Tests:
 
 **What it says** comes from Phase 0 (#1): two opinions, in words.
 - **The plan.** `readJob` builds it on the server with `planPills` (`lib/pills.ts`, pure, tested on the shapes of Mom's stones) from the candidates rows and the job's test answers. It is recomputed on every read, so the rule can change without rewriting rows.
-- **The Mindat chains.** `candidatesOf` (`lib/jobs.ts`, shared with the confirm route) loads each candidate with its chain: the record Jasper resolved it to (`candidates.mindat_id`), then each `varietyof` above it, read from Jasper's cache with one recursive query and put in order by `chainOf` (`lib/names.ts`, tested). Agate's chain is Agate, Chalcedony, Quartz. A candidate Jasper has not looked up, or that Mindat doesn't know, has an empty chain and is matched by name alone.
+- **The Mindat chains.** `candidatesOf` (`lib/jobs.ts`, shared with the confirm route) loads each candidate with its chain: the record Jasper resolved it to (`candidates.mindat_id`), then each `varietyof` above it, read from Jasper's cache with one recursive query and put in order by `chainOf` (`lib/names.ts`, tested). Agate's chain is Agate, Chalcedony, Quartz. A candidate Jasper has not looked up, or that Mindat doesn't know, has an empty chain and is matched by name alone. Each of a candidate's parts (`candidates.parts`, read by `parseParts`, which drops anything malformed) gets its chain the same way, in the same query.
+- **Readings** (#29). Each candidate is a reading of the whole piece: its main mineral, and its parts, the minerals `with` it and the base it is `on` (a mineral, a rock, or plain `matrix`). A reading's minerals are the main one and its parts, never matrix. A prompt v1 answer, or a stone that is one mineral, is a reading with no parts, and plans exactly as before.
 - **The identifier.** Its first choice leads when the models disagree. It is `QUARRY_IDENTIFIER` with Jasper's default, read at runtime.
-- **"Probably X"**: both models' first choices name the same stone. One lead pill, with a 2 px azurite border and an `azurite-soft` "probably" tag, then up to two "could also be" pills from the rest of both lists.
+- **"Probably X"**: both models' first readings name the same piece. That is their main minerals being the same stone, or each model having seen the other's main mineral among its own (Pyrite with Sphalerite on Quartz, and Quartz with Pyrite). One lead pill, with a 2 px azurite border and an `azurite-soft` "probably" tag, then up to two "could also be" pills from the rest of both lists.
+  - The lead pill is the identifier's reading: its main mineral, its base as it gave it, and the `with` minerals the other model saw too. Every other mineral only one of them saw is a `maybe`: "Probably Pyrite on Quartz", with Sphalerite offered.
+  - A pill with parts never gets a scratch-test misfit: the answer could be about any of its minerals, and the test's own wording says which part to scratch.
   - When one first choice is only finer than the other (Agate under Chalcedony), the lead pill takes the finer variety.
   - When Mindat puts the two first choices on different varieties of the stone (`varietySplit`: Amethyst and Citrine under Quartz, Agate and Carnelian under Chalcedony), the lead pill carries a `doubt` (the shared level and both guesses) and no variety, and nothing further down the lists fills it in. Only the first choices can make a doubt; a lower-ranked variety folded into the lead pill never does.
-- **"Could be X or Y"**: they differ. Each model's first choice becomes a pill, the identifier's first, then one more.
+- **"Could be X or Y"**: they differ. Each model's first choice becomes a pill, naming its whole reading, the identifier's first, then one more. After a reading with parts the "or" takes a comma ("Could be Pyrite on Quartz, or Calcite").
 - **One opinion** (the other model failed): its candidates as "could be", never "probably".
 - **No guess**: a rejected job, or one that failed for good. The name field leads.
 - **Matching.** "The same stone" is `sameStone` (`lib/names.ts`, tested on the spike's cases and Mindat's chains). Either of two rules is enough:
   - **By name**, the spike's whole-word matching made symmetric. Names match as whole words either way round (Specular hematite is Hematite; Chalcopyrite is not Pyrite). A variety matches only the other's whole name (Quartz, variety Amethyst is Amethyst). Varieties are never matched word by word, because models put colour words there, and "Purple" would make a fluorite and an amethyst agree.
   - **By Mindat** (#18): both chains end at the same species or rock, so Chalcedony, "Agate, banded" and Quartz, Agate agree, and so do Quartz, Amethyst and Quartz, Citrine. Agreement never climbs above a species, so "probably" still means the two first choices named one species or rock, as the prompt asks them to name it. Mindat never undoes a match by name: it files Tiger's Eye as an entry of its own, and Quartz, Tiger's Eye still agrees with Tiger's Eye. Jasper is a rock of its own in Mindat, so Jasper and Chalcedony differ.
-- **Duplicates.** A candidate naming a stone already on a pill adds its model to that pill.
+- **Duplicates.** A candidate naming a stone already on a pill adds its model to that pill. After a lead pill, so does one led by a mineral already on the piece, rather than a "could also be Quartz" under "Probably Pyrite on Quartz".
+- **The name** every screen shows is `pieceName` (`lib/pills.ts`, tested), built as a dealer's label at a rock show is: the main mineral's own name, then "with" the others in order ("with Sphalerite and Galena", a serial comma from three), then "on" the base, "matrix" kept lowercase. A mineral's own name (`ownName`) is its hobby or trade name when it has one (Amethyst, Blue Lace Agate), else the mineral or rock; a variety that is only a colour or a look (Milky, Purple, Specular) goes in front of the mineral instead (Milky Quartz). `kindOf` is the line under a hobby name, "A kind of Quartz", and nothing when the name already says the mineral (Rose Quartz). The data keeps the species in `name` and the hobby name in `variety`; only the display leads with the hobby name.
 - **No percentages, ever.** `verdictLine` puts the plan in one line for the strip and the add page's rows.
 - **The line under the heading** says why, with the "two opinions" info mark:
   - agreed: "Jasper's two opinions agree. Tap it if it looks right, or name it yourself.";
@@ -199,7 +204,8 @@ Tests:
 **What's on it:**
 - **The photo**, contained in the dark photo well, 280 px tall on a phone so the verdict is on the first screen, 520 px from `sm`. It carries a caption with the EXIF date (`takenLabel`, read from the text so server and phone agree) and thumbnails to switch between photos. A HEIC original a desktop browser cannot draw falls back to Jasper's 320 px thumbnail, and to "No preview on this device" before there is one. The fallback is checked on mount as well as on `error`, because the server-rendered image fails before React is listening.
 - **Any label the models read**, as a paper tag in Courier: "Jasper read a label in the photo".
-- **The pills.** One tap names the stone.
+- **The pills.** One tap names the stone. Each names its piece and wraps rather than being cut, with "A kind of Quartz" as its second line under a hobby name; its corners are 32 px, so one line is a pill and a long name a rounded card. A pill on plain matrix has "On matrix: rock nobody has named." under it, with the matrix info mark (a mark can't sit inside the pill's button).
+- **The maybes.** Under the lead pill: "Jasper also saw Sphalerite (one opinion). Add it?", and a chip per mineral ("With Sphalerite"), off by default. Ticking one adds it to the pill's name at once, so the pill always says what a tap saves (`savedParts`, tested: the pill's parts, then the ticked maybes; a label has one base, so a second one ticked reads as "with").
 - **"Variety or shop name"** (optional). It becomes `specimens.variety`; left empty, the tapped pill's own variety is used, which is none when the lead pill carries a doubt, so a variety the two opinions disagreed on is never saved as though it were known. With a doubt, "Jasper's two guesses" sit under the field as chips (`aria-pressed`, a check when chosen); a tap fills the field, a second tap clears it, and naming still takes a pill.
 - **The name field**, always on the screen, because "could be" never promises the answer is among the pills. Under it, chips for the minerals already in the collection (`rankMinerals` in `lib/minerals.ts`, tested): the household's own most-owned first, or matches of the typed text, names that start with it first.
 - **"Want to be sure? Try a test"** opens `components/tests-panel.tsx`. The household tests are in `lib/household-tests.ts`: their kinds, which are the schema's and Jasper's, and questions worded the way Jasper words the answers back.
@@ -208,14 +214,15 @@ Tests:
   - The stone's note is editable there too.
   - "Ask Jasper again with these answers" saves both on the job and sends it back to the queue (`POST .../tests`; `cleanAnswers` keeps only `yes`, `no` and a streak colour, and leaves a test not tried out of the JSON).
   - The old pills stay, dimmed, under "Jasper is asking again", until Jasper's new answer replaces them.
-- **"Same stone as the last one"** (`lastNamedStone`) merges this photo into the stone named most recently.
+- **"Same stone as the last one"** (`lastNamedStone`, with that stone's name as its label reads) merges this photo into the stone named most recently.
 - **"Not a rock"** is two taps, then deletes the job, its photos, and their files and thumbnails.
 - **"Add another photo of this stone"** stores a photo on the same job (at most five, Jasper's limit) and sends it back to the queue.
 - **"Skip for now"** goes to the next waiting job; **"Done for now"** goes home.
 
 **Naming saves at once.** `POST .../confirm` does it all in one `BEGIN IMMEDIATE`:
-- it finds or creates the mineral (`minerals.name` is `COLLATE NOCASE`, so "galena" finds "Galena");
+- it finds or creates the mineral (`mineralId` in `lib/specimens.ts`; `minerals.name` is `COLLATE NOCASE`, so "galena" finds "Galena");
 - it creates the specimen with the variety and the job's notes and test answers;
+- for a pill, it writes the other minerals on the piece (`writeParts`): the pill's parts and the maybes sent, each a `minerals` row made the same way, so Jasper links it to Mindat. A typed name saves none (the stone's page adds them), and another photo keeps the stone's;
 - it links the photos;
 - it writes the confirmation.
 
@@ -227,17 +234,17 @@ The confirmation records:
 
 A typed name that one of the models also gave takes that candidate's spelling and kind; any other is a mineral until Jasper links it to its Mindat record, when the kind follows Mindat's (a typed Granite becomes a rock; see `jasper.md`).
 
-**The named state** is a specimen label (paper, double rule, the name over a 2 px ink rule).
+**The named state** is a specimen label (paper, double rule, the piece's name over a 2 px ink rule).
 - **"How do you know?"** Five chips: I took Jasper's suggestion, From a label or tag, The tests settled it, Someone who knows told me, My best guess. A tap saves through `PATCH .../confirm`, with "Saved." in reserved space. Only a label, the tests and someone who knows count as known answers (README). "My best guess" is there so that a typed name is never counted as known by default.
 - **"Next stone"**: `nextWaitingJob` (`lib/jobs.ts`, tested): the next later job, wrapping to the first, or home when nothing else waits.
-- **"Change"**: `DELETE .../confirm` reverses a naming. The confirmation goes and the photos unlink. The specimen is deleted if nothing else is attached to it, and the mineral too if no specimen is left. The job is back in the strip with its pills, since naming never deletes candidates.
+- **"Change"**: `DELETE .../confirm` reverses a naming. The confirmation goes and the photos unlink. The specimen is deleted if nothing else is attached to it, and with it each of its minerals, main or on it, that no stone uses any more (`pruneMinerals`). The job is back in the strip with its pills, since naming never deletes candidates.
 
 **Waiting** is `waitingJobIds`: jobs Jasper is done with and nobody has named, oldest first. That includes a job that failed for good, so the person can still name it by hand.
 
-**The first info marks** are here (`components/term.tsx` over `lib/glossary.ts`): two opinions, variety, and the idea behind each test (hardness, streak, fizz, magnetic, glows under UV). A test checks that each entry runs two or three sentences and that every test kind has one. The mark is DESIGN.md's 28 px ring, with an invisible ±10 px hit area. Its note floats under the mark in sand rather than opening in place, so opening one moves nothing. That is the Conservatory's choice: the no-layout-shift rule outranks the canvas's inline block.
+**The first info marks** are here (`components/term.tsx` over `lib/glossary.ts`): two opinions, variety, matrix, and the idea behind each test (hardness, streak, fizz, magnetic, glows under UV). A test checks that each entry runs two or three sentences and that every test kind has one. The mark is DESIGN.md's 28 px ring, with an invisible ±10 px hit area. Its note floats under the mark in sand rather than opening in place, so opening one moves nothing. That is the Conservatory's choice: the no-layout-shift rule outranks the canvas's inline block.
 
 Tests:
-- `lib/names.test.ts` (the spike's cases, agreement through Mindat's chains, the shared level, where varieties part, `chainOf`), `lib/pills.test.ts` (with the agate, a variety doubt, a finer variety and a misfit), `lib/household-tests.test.ts` (with `misfit`), `lib/minerals.test.ts`;
+- `lib/names.test.ts` (the spike's cases, agreement through Mindat's chains, the shared level, where varieties part, `chainOf`), `lib/pills.test.ts` (with the agate, a variety doubt, a finer variety and a misfit; for #29 the screenshot's cluster agreeing mineral by mineral, a one-sided reading staying "could be", parts agreeing through chains, matrix, the base, no misfit on a piece, and `pieceName`, `kindOf`, `ownName`, `savedParts` and `parseParts`), `lib/household-tests.test.ts` (with `misfit`), `lib/minerals.test.ts`;
 - `lib/jobs.test.ts`: `nextWaitingJob` and `isSettled`;
 - `lib/glossary.test.ts`.
 

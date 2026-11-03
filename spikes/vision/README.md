@@ -72,9 +72,9 @@ To compare models, run each into its own folder and compare the folders. The rep
 .venv\Scripts\python compare_runs.py out-commons > out-commons\compare.md
 ```
 
-A name counts when the expected name appears in the answer as whole words, so "Andesite porphyry" scores for `Porphyry` and "Smoky quartz" for `Quartz`, but "Chalcopyrite" does not score for `Pyrite`.
+A name counts when the expected name appears in the answer as whole words, so "Andesite porphyry" scores for `Porphyry` and "Smoky quartz" for `Quartz`, but "Chalcopyrite" does not score for `Pyrite`. With prompt v2 it also counts when it is one of the reading's other minerals: "Pyrite on Quartz" scores for `Quartz`.
 
-Every successful response is cached in `out/responses/` (ignored by git), so re-running costs nothing. The cache keys on the model, the effort, and the photos and notes themselves, so moving a photo into a named folder keeps its answers, and replacing a photo (to crop out a label, say) asks again. Delete a cached file to re-query that one. Errors are not cached, so a re-run retries them. The run writes `out/results.md` and `out/results.csv` and prints a summary per model and pass.
+Every successful response is cached in `out/responses/` (ignored by git), so re-running costs nothing. The cache keys on the model, the effort, the prompt version, and the photos and notes themselves, so moving a photo into a named folder keeps its answers, and replacing a photo (to crop out a label, say) asks again. Delete a cached file to re-query that one. Errors are not cached, so a re-run retries them. The run writes `out/results.md` and `out/results.csv` and prints a summary per model and pass.
 
 ## Reading the numbers
 
@@ -83,3 +83,20 @@ Every successful response is cached in `out/responses/` (ignored by git), so re-
 - **Photo vs notes** is the case for the notes form. If notes barely move the numbers, the form can stay short.
 - **Cost per 1000** comes from the cost the gateway reports for each call, thinking included, and is the number to compare against the hope. A family collection's backlog is a few hundred specimens, so the cost of cataloguing all of it is about that figure.
 - **Label read** counts the identifications where a visible label may have done the work.
+- **Parts found** and **parts invented** (prompt v2, pieces with a `.parts` sidecar) are how many of a piece's other minerals the top reading named, and how many it named that aren't on the piece.
+
+## Prompt v2: the whole piece ([#29](https://github.com/reclinerhead/quarry/issues/29))
+
+`--prompt 2` asks for the whole piece the way a rock-show label names it, as Jasper's prompt version 2 does: each candidate gains `with` (the other minerals on it) and `on` (what it grew on, or `matrix`). The default, `--prompt 1`, is the Phase 0 prompt, and its answers keep their old cache files, so a v1 run over a folder that already has them costs nothing. v2 answers are cached beside them with a `__p2` suffix.
+
+The gate for shipping v2 compares the pair Jasper runs, Haiku at medium effort and Flash at low, on the 38 Commons photos. Run v2 into its own folders so the v1 results stay put:
+
+```powershell
+.venv\Scripts\python identify_spike.py photos-commons --prompt 2 --models anthropic/claude-haiku-5.5 --out out-commons-p2\haiku
+.venv\Scripts\python identify_spike.py photos-commons --prompt 2 --models google/gemini-3.8-flash --effort low --out out-commons-p2\flash-low
+.venv\Scripts\python compare_runs.py out-commons-p2 > out-commons-p2\compare.md
+```
+
+v2 passes if top-1 and "right when agreeing" are no lower than v1's, and the cost per photo for the two models together is no more than a quarter higher. `compare_runs.py` counts two readings as agreeing the way the confirm screen does: the same main mineral, or each saw the other's ("Pyrite on Quartz" and "Quartz with Pyrite").
+
+**The multi-mineral set.** `fetch_commons.py --pieces --download` saves ten iRocks photos named for every mineral on the piece ("Fluorite-Pyrite-Quartz-37754.jpg") to `photos-pieces/`, each under its first mineral with a `.parts` sidecar listing the others. Add the family's own pieces the same way, a `.parts` file per photo with one mineral a line (`with Sphalerite`, `on Quartz`). Run both prompts over it into `out-pieces\v1-…` and `out-pieces\v2-…` to see what the new fields find and what they invent.

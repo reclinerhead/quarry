@@ -34,6 +34,16 @@ def first_name(candidates: str) -> str:
     return norm(candidates.split(" | ")[0].rsplit(" ", 1)[0].split(" (")[0])
 
 
+def agree(ra: dict, rb: dict) -> bool:
+    """Whether two runs' top-1 readings agree, as the confirm screen decides since #29:
+    the same main mineral, or each saw the other's ("Pyrite on Quartz" and "Quartz with
+    Pyrite"). A results.csv from before #29 has no minerals column, so its first name stands."""
+    if not (ra.get("top1_minerals") and rb.get("top1_minerals")):
+        return first_name(ra["candidates"]) == first_name(rb["candidates"])
+    a, b = ra["top1_minerals"].split("; "), rb["top1_minerals"].split("; ")
+    return a[0] == b[0] or (a[0] in b and b[0] in a)
+
+
 def pct(hits: int, total: int) -> str:
     return f"{hits}/{total} ({100 * hits / total:.0f}%)" if total else "n/a"
 
@@ -72,20 +82,20 @@ def main() -> int:
     print("| pair | agree on top-1 | right when agreeing | disagreeing, either right at top-1 | either right in top-3 |")
     print("|---|---|---|---|---|")
     for a, b in itertools.combinations(runs, 2):
-        n = agree = agree_right = dis = dis_either = union3 = 0
+        n = agreed = agree_right = dis = dis_either = union3 = 0
         for _, p in specimens:
             ra, rb = by.get((a, p)), by.get((b, p))
             if not (ra and rb):
                 continue
             n += 1
             union3 += yes(ra["top3"]) or yes(rb["top3"])
-            if first_name(ra["candidates"]) == first_name(rb["candidates"]):
-                agree += 1
+            if agree(ra, rb):
+                agreed += 1
                 agree_right += yes(ra["top1"])
             else:
                 dis += 1
                 dis_either += yes(ra["top1"]) or yes(rb["top1"])
-        print(f"| {a} + {b} | {pct(agree, n)} | {pct(agree_right, agree)} | {pct(dis_either, dis)} | {pct(union3, n)} |")
+        print(f"| {a} + {b} | {pct(agreed, n)} | {pct(agree_right, agreed)} | {pct(dis_either, dis)} | {pct(union3, n)} |")
 
     print("\n## Every specimen (✓ right first, ³ right in top 3, ✗ missed)\n")
     print("| expected | " + " | ".join(runs) + " |")

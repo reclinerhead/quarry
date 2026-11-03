@@ -24,6 +24,7 @@ function tile(name: string, over: Partial<Tile> = {}): Tile {
     name,
     kind: "mineral",
     variety: null,
+    parts: [],
     foundAt: null,
     acquired: null,
     location: null,
@@ -50,6 +51,13 @@ describe("filterTiles", () => {
     expect(names(filterTiles(all, { ...none, q: "grandpas" }))).toEqual(["Galena"]);
   });
 
+  it("finds a stone by any of the other minerals on it (#29)", () => {
+    const cluster = tile("Pyrite", { parts: [{ role: "with", name: "Sphalerite" }, { role: "on", name: "Quartz" }] });
+    expect(names(filterTiles([...all, cluster], { ...none, q: "sphal" }))).toEqual(["Pyrite"]);
+    expect(names(filterTiles([...all, cluster], { ...none, q: "quartz" }))).toEqual(["Pyrite"]);
+    expect(names(filterTiles([...all, cluster], { ...none, q: "pyrite" }))).toEqual(["Pyrite"]);
+  });
+
   it("puts rocks and everything that isn't a mineral under Rocks and fossils", () => {
     expect(names(filterTiles(all, { ...none, kind: "minerals" }))).toEqual(["Galena", "Fluorite"]);
     expect(names(filterTiles(all, { ...none, kind: "rocks" }))).toEqual(["Slate", "Petoskey stone"]);
@@ -66,6 +74,11 @@ describe("filterTiles", () => {
 describe("sortTiles", () => {
   it("sorts by name A to Z, ignoring case", () => {
     expect(names(sortTiles([slate, tile("calcite"), galena], "name"))).toEqual(["calcite", "Galena", "Slate"]);
+  });
+
+  it("sorts by the name the card shows, so an amethyst goes under A", () => {
+    const amethyst = tile("Quartz", { variety: "Amethyst" });
+    expect(names(sortTiles([galena, amethyst, tile("Calcite")], "name"))).toEqual(["Quartz", "Calcite", "Galena"]);
   });
 
   it("sorts newest first, ties by id", () => {

@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { MindatRecord } from "./names";
-import { byModel, planPills, stoneName, stripLine, verdictLine, type Candidate } from "./pills";
+import {
+  byModel,
+  kindOf,
+  ownName,
+  parseParts,
+  pieceName,
+  planPills,
+  savedParts,
+  stoneName,
+  stripLine,
+  verdictLine,
+  type Candidate,
+  type Part,
+} from "./pills";
 
 const HAIKU = "anthropic/claude-haiku-5.5";
 const FLASH = "google/gemini-3.8-flash";
@@ -17,6 +30,11 @@ function cands(model: string, ...names: Array<string | [string, string]>): Candi
 }
 
 const names = (plan: ReturnType<typeof planPills>) => plan.pills.map((p) => p.name);
+
+// #29: each candidate reads the whole piece, as a show label names it.
+const piece = (c: Candidate, ...parts: Part[]): Candidate => ({ ...c, parts });
+const W = (name: string, chain?: MindatRecord[]): Part => ({ role: "with", name, chain });
+const ON = (name: string, chain?: MindatRecord[]): Part => ({ role: "on", name, chain });
 
 // Fixtures shaped on Mom's stones as the #7 run identified them (PR #12).
 describe("planPills", () => {
@@ -123,6 +141,142 @@ describe("planPills", () => {
 
   it("puts the identifier first even when it sorts later", () => {
     expect(byModel([...cands("z/first", "A"), ...cands("a/second", "B")], "z/first").map((l) => l[0].model)).toEqual(["z/first", "a/second"]);
+  });
+
+  it("agrees on the piece when each model saw the other's main mineral (the #29 photo)", () => {
+    const [haiku] = cands(HAIKU, "Pyrite");
+    const [flash, flash2] = cands(FLASH, "Quartz", "Pyrite");
+    const plan = planPills([piece(haiku, W("Sphalerite"), ON("Quartz")), piece(flash, W("Pyrite")), flash2], HAIKU);
+    expect(plan.verdict).toBe("probably");
+    expect(plan.pills).toHaveLength(1); // Flash's Pyrite further down is the same piece
+    expect(plan.pills[0]).toMatchObject({ name: "Pyrite", models: [HAIKU, FLASH], parts: [ON("Quartz")], maybe: [W("Sphalerite")] });
+    expect(verdictLine(plan)).toBe("Probably Pyrite on Quartz");
+  });
+
+  it("says could be when only one model saw the other's main mineral, each pill its whole reading", () => {
+    const [haiku] = cands(HAIKU, "Pyrite");
+    const plan = planPills([piece(haiku, ON("Quartz")), ...cands(FLASH, "Quartz")], HAIKU);
+    expect(plan.verdict).toBe("could_be");
+    expect(plan.pills.map((p) => p.parts)).toEqual([[ON("Quartz")], []]);
+    expect(plan.pills.every((p) => p.maybe.length === 0)).toBe(true);
+    expect(verdictLine(plan)).toBe("Could be Pyrite on Quartz, or Quartz");
+  });
+
+  it("agrees on a part through its Mindat chain", () => {
+    const [haiku] = cands(HAIKU, "Calcite");
+    const [flash] = cands(FLASH, "Calcite");
+    const plan = planPills([piece(haiku, ON("Chalcedony", [CHALCEDONY, QUARTZ])), piece(flash, ON("Agate", AGATE))], HAIKU);
+    expect(plan.pills[0].parts).toEqual([ON("Chalcedony", [CHALCEDONY, QUARTZ])]);
+    expect(plan.pills[0].maybe).toEqual([]);
+  });
+
+  it("agrees on Agate on matrix and Chalcedony on matrix through the chain", () => {
+    const [haiku] = withChain(cands(HAIKU, ["Chalcedony", "Agate"]), AGATE);
+    const [flash] = withChain(cands(FLASH, "Chalcedony"), [CHALCEDONY, QUARTZ]);
+    const plan = planPills([piece(haiku, ON("matrix")), piece(flash, ON("matrix"))], HAIKU);
+    expect(plan.verdict).toBe("probably");
+    expect(plan.pills[0]).toMatchObject({ parts: [ON("matrix")], maybe: [], models: [HAIKU, FLASH] });
+    expect(verdictLine(plan)).toBe("Probably Agate on matrix");
+  });
+
+  it("keeps the identifier's base as it gave it, and offers the other's as a maybe", () => {
+    const [haiku] = cands(HAIKU, "Fluorite");
+    const [flash] = cands(FLASH, "Fluorite");
+    const plan = planPills([piece(haiku, W("Pyrite"), ON("Quartz")), piece(flash, W("Pyrite"), ON("Calcite"))], HAIKU);
+    expect(plan.pills[0].parts).toEqual([W("Pyrite"), ON("Quartz")]);
+    expect(plan.pills[0].maybe).toEqual([ON("Calcite")]);
+  });
+
+  it("takes matrix from the lead reading, and offers each one-sided mineral once", () => {
+    const [haiku] = cands(HAIKU, ["Quartz", "Amethyst"]);
+    const [flash] = cands(FLASH, ["Quartz", "Amethyst"]);
+    const plan = planPills([piece(haiku, W("Calcite"), ON("matrix")), piece(flash, W("calcite"), W("Goethite"), W("Hematite"))], HAIKU);
+    expect(plan.pills[0].parts).toEqual([W("Calcite"), ON("matrix")]);
+    expect(plan.pills[0].maybe).toEqual([W("Goethite"), W("Hematite")]);
+    expect(verdictLine(plan)).toBe("Probably Amethyst with Calcite on matrix");
+  });
+
+  it("puts no scratch misfit on a piece with parts, since the answer could be about any of them", () => {
+    const [haiku] = cands(HAIKU, "Calcite");
+    const [flash] = cands(FLASH, "Calcite");
+    const calcite = [R(859, "Calcite", 3)];
+    const plan = planPills([{ ...piece(haiku, ON("Quartz")), chain: calcite }, { ...piece(flash, ON("Quartz")), chain: calcite }], HAIKU, { glass: "yes" });
+    expect(plan.pills[0].misfit).toBeNull();
+    const bare = planPills([{ ...haiku, chain: calcite }, { ...flash, chain: calcite }], HAIKU, { glass: "yes" });
+    expect(bare.pills[0].misfit?.test).toBe("glass");
+  });
+});
+
+describe("pieceName", () => {
+  it.each([
+    [{ name: "Galena" }, "Galena"],
+    [{ name: "galena", variety: "  " }, "Galena"],
+    [{ name: "Quartz", variety: "Amethyst" }, "Amethyst"],
+    [{ name: "Quartz", variety: "milky" }, "Milky Quartz"],
+    [{ name: "Quartz", variety: "Rose Quartz" }, "Rose Quartz"],
+    [{ name: "Fluorite", parts: [W("pyrite")] }, "Fluorite with Pyrite"],
+    [{ name: "Pyrite", parts: [W("Sphalerite"), W("Galena"), ON("Quartz")] }, "Pyrite with Sphalerite and Galena on Quartz"],
+    [{ name: "Fluorite", parts: [W("Pyrite"), W("Galena"), W("Sphalerite")] }, "Fluorite with Pyrite, Galena, and Sphalerite"],
+    [{ name: "Quartz", variety: "Amethyst", parts: [ON("Matrix")] }, "Amethyst on matrix"],
+  ])("names %o as %s", (p, expected) => {
+    expect(pieceName(p)).toBe(expected);
+  });
+});
+
+describe("kindOf", () => {
+  it("says what a hobby name is a kind of, and nothing when the name already says it", () => {
+    expect(kindOf({ name: "Quartz", variety: "Amethyst" })).toBe("A kind of Quartz");
+    expect(kindOf({ name: "chalcedony", variety: "Blue lace agate" })).toBe("A kind of Chalcedony");
+    expect(kindOf({ name: "Quartz", variety: "Milky" })).toBeNull();
+    expect(kindOf({ name: "Quartz", variety: "Rose quartz" })).toBeNull();
+    expect(kindOf({ name: "Galena", variety: null })).toBeNull();
+  });
+});
+
+describe("ownName", () => {
+  it("leads with the hobby name, and puts a colour or look in front of the mineral", () => {
+    expect(ownName("Quartz", "Tiger's eye")).toBe("Tiger's Eye");
+    expect(ownName("Quartz", "Smoky")).toBe("Smoky Quartz");
+    expect(ownName("hematite", "specular")).toBe("Specular Hematite");
+    expect(ownName("Quartz", null)).toBe("Quartz");
+  });
+});
+
+describe("savedParts", () => {
+  it("saves the pill's parts and the ticked maybes, withs first and one base", () => {
+    const pill = { parts: [ON("Quartz")], maybe: [W("Sphalerite"), W("Galena")] };
+    expect(savedParts(pill, [])).toEqual([{ role: "on", name: "Quartz" }]);
+    expect(savedParts(pill, ["galena"])).toEqual([
+      { role: "with", name: "Galena" },
+      { role: "on", name: "Quartz" },
+    ]);
+  });
+
+  it("keeps the pill's own base, so a second one ticked reads as with", () => {
+    const pill = { parts: [ON("matrix")], maybe: [ON("Calcite")] };
+    expect(savedParts(pill, ["Calcite"])).toEqual([
+      { role: "with", name: "Calcite" },
+      { role: "on", name: "matrix" },
+    ]);
+    expect(savedParts({ parts: [], maybe: [ON("Calcite"), ON("Dolomite")] }, ["Calcite", "Dolomite"])).toEqual([
+      { role: "with", name: "Dolomite" },
+      { role: "on", name: "Calcite" },
+    ]);
+  });
+});
+
+describe("parseParts", () => {
+  it("reads Jasper's parts JSON and leaves out anything malformed", () => {
+    expect(parseParts('[{"role":"with","name":" Sphalerite ","mindat_id":3727},{"role":"on","name":"matrix","mindat_id":null}]')).toEqual([
+      { role: "with", name: "Sphalerite", mindatId: 3727 },
+      { role: "on", name: "matrix", mindatId: null },
+    ]);
+    expect(parseParts('[{"role":"under","name":"Quartz"},{"role":"on","name":""},{"role":"with"},"Galena",null,{"role":"on","name":"Quartz","mindat_id":"3337"}]')).toEqual([
+      { role: "on", name: "Quartz", mindatId: null },
+    ]);
+    expect(parseParts(null)).toEqual([]);
+    expect(parseParts("not json")).toEqual([]);
+    expect(parseParts('{"role":"with","name":"Galena"}')).toEqual([]);
   });
 });
 

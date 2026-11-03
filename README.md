@@ -45,7 +45,7 @@ The Quarry is the fifth app in a family of home-scale projects, and it is being 
 
 **What a photo cannot show.** Lookalikes are the rule, not the exception: quartz, calcite, and fluorite; pyrite, marcasite, and chalcopyrite; red jasper and carnelian. Tumbled and polished stones have lost the crystal shape that would have told them apart. Much of a family collection is also not a mineral species. Granite, basalt, and obsidian are rocks, which are mixtures of minerals. Amethyst and agate are varieties of something else (quartz, chalcedony). Shop stones carry trade names like "Tiger's Eye", "Blue Lace Agate", and "Rainbow Moonstone", and are sometimes dyed, heat-treated, or lab-grown. Two design consequences:
 
-- A specimen's name has two parts: the mineral or rock, and an optional variety or trade name (Quartz, variety Amethyst; Chalcedony, "Blue Lace Agate"). The Mindat record attaches to the first part. This is the Conservatory's cultivar field, for stones.
+- A specimen is named the way a dealer's label at a rock show names it: the main mineral first, the others "with" it, and the base it grew "on" (Fluorite with Pyrite on Quartz; Amethyst on matrix, when the rock underneath has no name). Each mineral reads by its hobby or trade name when it has one (Amethyst, "Blue Lace Agate"), with the species it belongs to on the line under it ("A kind of Quartz"). Underneath, each mineral is still stored in two parts, the mineral or rock and an optional variety or trade name, and the Mindat record attaches to the first. This is the Conservatory's cultivar field, for stones.
 - A rock's property card is thinner than a mineral's: Mindat's record where it has one, and the specimen's own notes and tests.
 
 **Rejected:** hobbyist mineral classifiers on Hugging Face (too few classes, and overconfident about the ones they have), mineralML (it needs oxide chemistry as input, not photos), and the consumer "Rock Identifier" apps (no API).
@@ -102,7 +102,8 @@ On the same small boxes that run the Aviary and the Conservatory, one per househ
 - Copy or share. The Conservatory copies the Aviary's patterns rather than sharing code "until a second caller justifies a shared package". The Quarry is that second caller for the uploader, the queue, and the confirm strip. The lean is to copy for Phase 1, while the Conservatory's versions are days old and still moving, and extract a shared package once both apps have shipped and the seams are visible.
 - Whether the find site can be read from a photo's location data before the browser's resize strips it, or is always typed.
 - Whether stations share one gateway key or each carries its own (separate keys would show each household's spend apart).
-- How to name a specimen that is several minerals at once, such as calcite crystals on a bed of sphalerite. The models name whichever caught their eye, and the two-part name has room for only one. The choices are one name with the rest in the notes, or a list of minerals, each with its own Mindat record.
+
+Settled: a specimen that is several minerals at once, such as calcite crystals on a bed of sphalerite, is a list of minerals, each with its own Mindat record, named as a show label names it ([#29](https://github.com/reclinerhead/quarry/issues/29)).
 
 ## Credits
 

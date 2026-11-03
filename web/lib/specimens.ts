@@ -1,6 +1,7 @@
-// Reading stones for the dashboard and a stone's own page. Server only. Rows
-// from node:sqlite have a null prototype, so everything that crosses to a
-// client component is built here as a plain object.
+// Reading stones for the dashboard and a stone's own page, and writing the
+// minerals a stone is made of (#29). Server only. Rows from node:sqlite have a
+// null prototype, so everything that crosses to a client component is built
+// here as a plain object.
 
 import type { DatabaseSync } from "node:sqlite";
 import { shortDay, type Acquired, type Tile } from "./collection";
@@ -8,13 +9,30 @@ import { cleanAnswers, type Answers } from "./household-tests";
 import { fold, propertyCard, type ChainRecord, type PropertyCard } from "./mindat";
 import { chainOf, MAX_DEPTH } from "./names";
 import { thumbPathFor } from "./photos";
-import type { StoneKind } from "./pills";
+import { isMatrix, MATRIX, type PartRole, type StoneKind } from "./pills";
 
 /** The newest photo first: by when it was taken, else when it was uploaded, then id. */
 const NEWEST_PHOTO = "COALESCE(p.taken_at, p.uploaded_at) DESC, p.id DESC";
 
+/** A stone's other minerals as the screens show them: a base of plain matrix is named "matrix". */
+export type StonePart = { role: PartRole; name: string };
+
+const PARTS = `SELECT sp.specimen_id, sp.role, m.name FROM specimen_parts sp LEFT JOIN minerals m ON m.id = sp.mineral_id`;
+
+type PartRow = { specimen_id: number; role: PartRole; name: string | null };
+
+const partOf = (r: PartRow): StonePart => ({ role: r.role, name: r.name ?? MATRIX });
+
+/** One stone's other minerals, in order. */
+export function stoneParts(db: DatabaseSync, specimenId: number): StonePart[] {
+  return (db.prepare(`${PARTS} WHERE sp.specimen_id = ? ORDER BY sp.position`).all(specimenId) as PartRow[]).map(partOf);
+}
+
 /** Every stone as a dashboard tile, its date label worked out in the station's time zone. */
 export function collectionTiles(db: DatabaseSync): Tile[] {
+  const parts = new Map<number, StonePart[]>();
+  for (const r of db.prepare(`${PARTS} ORDER BY sp.specimen_id, sp.position`).all() as PartRow[])
+    parts.set(r.specimen_id, [...(parts.get(r.specimen_id) ?? []), partOf(r)]);
   const rows = db
     .prepare(
       `SELECT sp.id, m.name, m.kind, sp.variety, sp.found_at, sp.acquired, sp.location, sp.created_at,
@@ -37,6 +55,7 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
     name: r.name,
     kind: r.kind,
     variety: r.variety,
+    parts: parts.get(r.id) ?? [],
     foundAt: r.found_at,
     acquired: r.acquired,
     location: r.location,
@@ -51,7 +70,7 @@ export type StoneView = {
   name: string;
   kind: StoneKind;
   variety: string | null;
-  associates: string | null;
+  parts: StonePart[]; // the other minerals on it (#29), "with" in order, then "on"
   foundAt: string | null;
   acquired: Acquired | null;
   acquiredOn: string | null;
@@ -107,7 +126,7 @@ function parseDetail(json: string | null): Record<string, unknown> | null {
 export function readStone(db: DatabaseSync, id: number): StoneView | null {
   const s = db
     .prepare(
-      `SELECT sp.id, sp.mineral_id, m.name, m.kind, m.mindat_id, sp.variety, sp.associates, sp.found_at, sp.acquired, sp.acquired_on,
+      `SELECT sp.id, sp.mineral_id, m.name, m.kind, m.mindat_id, sp.variety, sp.found_at, sp.acquired, sp.acquired_on,
               sp.location, sp.notes, sp.tests, sp.created_at
          FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id WHERE sp.id = ?`,
     )
@@ -119,7 +138,6 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
         kind: StoneKind;
         mindat_id: number | null;
         variety: string | null;
-        associates: string | null;
         found_at: string | null;
         acquired: Acquired | null;
         acquired_on: string | null;
@@ -145,7 +163,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     name: s.name,
     kind: s.kind,
     variety: s.variety,
-    associates: s.associates,
+    parts: stoneParts(db, s.id),
     foundAt: s.found_at,
     acquired: s.acquired,
     acquiredOn: s.acquired_on,
@@ -161,4 +179,56 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     places: places.map((p) => p.location),
     properties: readProperties(db, s.name, s.mindat_id),
   };
+}
+
+// --- Writing a stone's minerals (#29) ------------------------------------------
+
+/**
+ * The mineral row for a name, made when the household has none yet:
+ * `minerals.name` is COLLATE NOCASE, so "galena" finds "Galena". A new one is a
+ * mineral unless told otherwise, until Jasper links it to Mindat (jasper.md).
+ */
+export function mineralId(db: DatabaseSync, name: string, kind: StoneKind = "mineral"): number {
+  db.prepare("INSERT INTO minerals (name, kind) VALUES (?, ?) ON CONFLICT(name) DO NOTHING").run(name, kind);
+  return (db.prepare("SELECT id FROM minerals WHERE name = ?").get(name) as { id: number }).id;
+}
+
+/**
+ * Replace a stone's other minerals with `parts`, in order: a part with no name
+ * or naming the stone's own mineral is skipped, each mineral is kept once, and
+ * plain matrix is stored with no mineral, as a base only. Returns the minerals the stone no
+ * longer uses, for `pruneMinerals`. Call inside the caller's transaction.
+ */
+export function writeParts(db: DatabaseSync, specimenId: number, parts: ReadonlyArray<{ role: PartRole; name: string }>): number[] {
+  const before = (db.prepare("SELECT mineral_id FROM specimen_parts WHERE specimen_id = ? AND mineral_id IS NOT NULL").all(specimenId) as Array<{
+    mineral_id: number;
+  }>).map((r) => r.mineral_id);
+  const own = (db.prepare("SELECT mineral_id FROM specimens WHERE id = ?").get(specimenId) as { mineral_id: number }).mineral_id;
+  db.prepare("DELETE FROM specimen_parts WHERE specimen_id = ?").run(specimenId);
+  const insert = db.prepare("INSERT INTO specimen_parts (specimen_id, position, role, mineral_id) VALUES (?, ?, ?, ?)");
+  const used = new Set<number | null>([own]);
+  let position = 0;
+  for (const p of parts) {
+    const name = p.name.trim().replace(/\s+/g, " ").slice(0, 120);
+    if (!name || (isMatrix(name) && p.role !== "on")) continue;
+    const id = isMatrix(name) ? null : mineralId(db, name.charAt(0).toUpperCase() + name.slice(1));
+    if (used.has(id)) continue;
+    used.add(id);
+    insert.run(specimenId, ++position, p.role, id);
+  }
+  return before.filter((id) => !used.has(id));
+}
+
+/**
+ * Delete each of these minerals that no stone uses any more, as its own mineral
+ * or on it: what a Change, a removed stone or an edited list leaves behind.
+ * Returns how many went.
+ */
+export function pruneMinerals(db: DatabaseSync, ids: number[]): number {
+  const del = db.prepare(
+    `DELETE FROM minerals WHERE id = ?
+        AND NOT EXISTS (SELECT 1 FROM specimens WHERE mineral_id = minerals.id)
+        AND NOT EXISTS (SELECT 1 FROM specimen_parts WHERE mineral_id = minerals.id)`,
+  );
+  return [...new Set(ids)].reduce((n, id) => n + Number(del.run(id).changes), 0);
 }

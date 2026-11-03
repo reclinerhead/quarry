@@ -5,10 +5,13 @@
 // plus an optional `variety` (the variety or shop name) for the first two,
 // which defaults to the pill's own: none when the two opinions agreed on the
 // stone but not its variety (#18), so a guess they disagreed on is never saved
-// as though it were known. Finds or creates the mineral, creates the
-// specimen with the job's notes and test answers, links the job's photos and
-// writes the confirmation, in one transaction. Saves at once: there is no
-// batch save.
+// as though it were known. A pill also saves the other minerals on the piece
+// (#29): its parts, and each of its one-opinion `maybe` minerals the person
+// ticked, sent by name as `maybe: string[]`. A typed name saves none (the
+// stone's page adds them), and another photo keeps the stone's. Finds or
+// creates the minerals, creates the specimen with the job's notes and test
+// answers, links the job's photos and writes the confirmation, in one
+// transaction. Saves at once: there is no batch save.
 //
 // The confirmation records how the stone was named (#4): `source` (pill,
 // typed, same_as_last), `how` (a pill is Jasper's suggestion, a typed name a
@@ -19,22 +22,30 @@
 // PATCH /api/jobs/:id/confirm { how }: "How do you know?" after the fact.
 //
 // DELETE /api/jobs/:id/confirm: "Change". Removes the confirmation, unlinks
-// the photos, deletes the specimen if nothing else is attached to it and the
-// mineral if no specimen is left. The job is back in the strip with its pills,
-// which were never deleted.
+// the photos, deletes the specimen if nothing else is attached to it and each
+// of its minerals no stone uses any more. The job is back in the strip with
+// its pills, which were never deleted.
 
 import type { DatabaseSync } from "node:sqlite";
 import { openReadWrite } from "@/lib/db";
 import { candidatesOf, identifierSlug, nextWaitingJob, waitingJobIds, type ConfirmHow } from "@/lib/jobs";
 import { norm } from "@/lib/names";
-import { planPills, type Candidate } from "@/lib/pills";
+import { planPills, savedParts, type Candidate, type PartRole } from "@/lib/pills";
+import { mineralId, pruneMinerals, stoneParts, writeParts } from "@/lib/specimens";
 
 export const dynamic = "force-dynamic";
 
 const HOWS: ConfirmHow[] = ["label", "tests", "expert", "suggestion", "guess"];
 const NAME_MAX = 120;
 
-type Body = { pick?: { model?: unknown; rank?: unknown }; typedName?: unknown; variety?: unknown; sameAsSpecimenId?: unknown; how?: unknown };
+type Body = {
+  pick?: { model?: unknown; rank?: unknown };
+  typedName?: unknown;
+  variety?: unknown;
+  maybe?: unknown;
+  sameAsSpecimenId?: unknown;
+  how?: unknown;
+};
 
 function clean(s: unknown, max = NAME_MAX): string | null {
   if (typeof s !== "string") return null;
@@ -74,6 +85,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const body = await bodyOf(req);
   if (!body) return Response.json({ error: "expected json" }, { status: 400 });
   const variety = clean(body.variety, 80);
+  const ticked = Array.isArray(body.maybe) ? body.maybe.flatMap((m) => clean(m) ?? []) : [];
 
   const db = open();
   if (db instanceof Response) return db;
@@ -116,6 +128,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     } else {
       let mineralName: string;
       let kind: Candidate["kind"] = "mineral";
+      let parts: Array<{ role: PartRole; name: string }> = [];
       if (body.pick) {
         const c = candidates.find((x) => x.model === body.pick?.model && x.rank === Number(body.pick?.rank));
         if (!c) {
@@ -126,6 +139,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         kind = c.kind;
         const pill = plan.pills.find((p) => p.pick.model === c.model && p.pick.rank === c.rank);
         stoneVariety = variety ?? (pill ? pill.variety : c.variety);
+        parts = pill ? savedParts(pill, ticked) : (c.parts ?? []);
         source = "pill";
         how = "suggestion";
       } else {
@@ -144,14 +158,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         source = "typed";
         how = "guess";
       }
-      // minerals.name is UNIQUE COLLATE NOCASE, so "galena" finds "Galena".
-      db.prepare("INSERT INTO minerals (name, kind) VALUES (?, ?) ON CONFLICT(name) DO NOTHING").run(mineralName, kind);
-      const mineral = db.prepare("SELECT id, name FROM minerals WHERE name = ?").get(mineralName) as { id: number; name: string };
+      const mineral = mineralId(db, mineralName, kind);
       const sp = db
         .prepare("INSERT INTO specimens (mineral_id, variety, notes, tests) VALUES (?, ?, ?, ?)")
-        .run(mineral.id, stoneVariety, job.notes, job.tests);
+        .run(mineral, stoneVariety, job.notes, job.tests);
       specimenId = Number(sp.lastInsertRowid);
-      name = mineral.name;
+      writeParts(db, specimenId, parts);
+      name = (db.prepare("SELECT name FROM minerals WHERE id = ?").get(mineral) as { name: string }).name;
     }
 
     db.prepare("UPDATE photos SET specimen_id = ? WHERE job_id = ?").run(specimenId, jobId);
@@ -166,7 +179,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     db.exec("COMMIT");
 
     const nextJobId = nextWaitingJob(waitingJobIds(db), jobId);
-    return Response.json({ specimenId, name, variety: stoneVariety, how, nextJobId }, { status: 201 });
+    return Response.json({ specimenId, name, variety: stoneVariety, parts: stoneParts(db, specimenId), how, nextJobId }, { status: 201 });
   } catch (err) {
     return fail(db, err);
   } finally {
@@ -207,13 +220,12 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     const left = (db.prepare("SELECT COUNT(*) AS n FROM photos WHERE specimen_id = ?").get(conf.specimen_id) as { n: number }).n;
     let removedStone = false;
     if (left === 0) {
-      const sp = db.prepare("SELECT mineral_id FROM specimens WHERE id = ?").get(conf.specimen_id) as { mineral_id: number } | undefined;
-      db.prepare("DELETE FROM specimens WHERE id = ?").run(conf.specimen_id);
+      const minerals = db
+        .prepare("SELECT mineral_id FROM specimens WHERE id = ? UNION SELECT mineral_id FROM specimen_parts WHERE specimen_id = ? AND mineral_id IS NOT NULL")
+        .all(conf.specimen_id, conf.specimen_id) as Array<{ mineral_id: number }>;
+      db.prepare("DELETE FROM specimens WHERE id = ?").run(conf.specimen_id); // its parts cascade
       removedStone = true;
-      if (sp) {
-        const others = (db.prepare("SELECT COUNT(*) AS n FROM specimens WHERE mineral_id = ?").get(sp.mineral_id) as { n: number }).n;
-        if (others === 0) db.prepare("DELETE FROM minerals WHERE id = ?").run(sp.mineral_id);
-      }
+      pruneMinerals(db, minerals.map((m) => m.mineral_id));
     }
     db.exec("COMMIT");
     return Response.json({ ok: true, removedStone });

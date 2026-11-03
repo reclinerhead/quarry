@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { CameraIcon, CheckIcon, TagIcon } from "@/components/icons";
 import { PhotoView } from "@/components/photo-view";
+import { PieceTitle } from "@/components/piece-title";
 import { Term } from "@/components/term";
 import { TestsPanel } from "@/components/tests-panel";
 import { exifTakenAt } from "@/lib/exif";
@@ -14,8 +15,9 @@ import type { JobView } from "@/lib/jobs";
 import type { MineralHit } from "@/lib/minerals";
 import { HOW_CHOICES, type ConfirmHow } from "@/lib/naming";
 import { takenLabel } from "@/lib/photos";
-import { stoneName, verdictLine, type Pill } from "@/lib/pills";
+import { isMatrix, kindOf, MATRIX, pieceName, savedParts, stoneName, verdictLine, type Pill } from "@/lib/pills";
 import { shrinkToJpeg } from "@/lib/shrink";
+import type { StonePart } from "@/lib/specimens";
 
 // One stone per screen (#8), on the Conservatory's namer: large targets, one
 // tap to name, every naming saved at once, and a Change that reverses it.
@@ -28,9 +30,11 @@ import { shrinkToJpeg } from "@/lib/shrink";
 // #18 it also says when the two agree on the stone but not its variety (and
 // offers both guesses for the variety field), names the test that would
 // settle a real disagreement, and notes a pill that can't fit a scratch test
-// the person answered.
+// the person answered. Since #29 each pill names the whole piece as a show
+// label does (pieceName), wrapping rather than cut, and a mineral only one
+// opinion saw is a chip under the lead pill, off until the person ticks it.
 
-type Stone = { id: number; name: string; variety: string | null };
+type Stone = { id: number; name: string; variety: string | null; parts: StonePart[] };
 
 type Props = {
   initialJob: JobView;
@@ -40,7 +44,7 @@ type Props = {
   lastStone: Stone | null;
 };
 
-type Named = { specimenId: number; name: string; variety: string | null; how: ConfirmHow; nextJobId: number | null };
+type Named = { specimenId: number; name: string; variety: string | null; parts: StonePart[]; how: ConfirmHow; nextJobId: number | null };
 
 const MAX_PHOTOS = 5;
 const POLL_MS = 1500;
@@ -53,6 +57,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
   const [error, setError] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
   const [variety, setVariety] = useState("");
+  const [ticked, setTicked] = useState<string[]>([]); // the lead pill's one-opinion minerals the person added
   const [hits, setHits] = useState<MineralHit[]>([]);
   const [showTests, setShowTests] = useState(false);
   const [armedDismiss, setArmedDismiss] = useState(false);
@@ -338,15 +343,25 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
           <div role="group" aria-label="Jasper’s suggestions" className="flex flex-col gap-3">
             {plan.pills.map((p) => {
               const key = `${p.pick.model}-${p.pick.rank}`.replace(/[^a-z0-9]+/gi, "-");
+              // What a tap saves, so the pill always says it: its parts and the maybes ticked.
+              const parts = savedParts(p, ticked);
+              const onMatrix = parts.some((x) => x.role === "on" && isMatrix(x.name));
               return (
                 <div key={key} className="flex flex-col gap-1.5">
                   <PillButton
                     pill={p}
+                    name={pieceName({ ...p, parts })}
                     describedBy={p.misfit ? `misfit-${key}` : undefined}
                     disabled={busy || asking}
-                    onPick={() => confirm({ pick: p.pick })}
+                    onPick={() => confirm({ pick: p.pick, maybe: ticked })}
                   />
                   {p.misfit ? misfitNote(p.misfit, `misfit-${key}`) : null}
+                  {onMatrix ? (
+                    <p className="pl-6 text-meta text-ink-2">
+                      On <Term k="matrix">{MATRIX}</Term>: rock nobody has named.
+                    </p>
+                  ) : null}
+                  {p.maybe.length > 0 ? maybeChips(p) : null}
                 </div>
               );
             })}
@@ -411,7 +426,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
         <div className="flex flex-wrap gap-3 border-t border-line pt-5">
           {lastStone ? (
             <button type="button" disabled={busy} onClick={() => confirm({ sameAsSpecimenId: lastStone.id })} className="btn btn-soft">
-              Same stone as the last one <span className="font-normal text-ink-2">({stoneName(lastStone.name)})</span>
+              Same stone as the last one <span className="font-normal text-ink-2">({pieceName(lastStone)})</span>
             </button>
           ) : null}
           <button type="button" disabled={busy} onClick={dismiss} onBlur={() => setArmedDismiss(false)} className="btn btn-soft">
@@ -450,6 +465,42 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
     if (plan.verdict === "could_be") return <>Only one of {opinions} came back, so Jasper isn&rsquo;t sure.</>;
     if (job.status === "failed") return "Something went wrong when Jasper tried. If you know the name, type it below.";
     return <>Neither of {opinions} could name it. If you know the name, type it below.</>;
+  }
+
+  // The minerals only one opinion saw, under the lead pill (#29): each a chip,
+  // off by default, that adds it to what the pill names and saves.
+  function maybeChips(p: Pill) {
+    const names = p.maybe.map((m) => stoneName(m.name));
+    const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    const id = `maybe-${p.pick.model}-${p.pick.rank}`.replace(/[^a-z0-9]+/gi, "-");
+    return (
+      <div className="flex flex-col gap-2 pl-6 pt-1">
+        <p id={id} className="text-ink-2">
+          {names.length === 1
+            ? `Jasper also saw ${list} (one opinion). Add it?`
+            : `Jasper also saw ${list} (one opinion each). Add them?`}
+        </p>
+        <ul aria-labelledby={id} className="flex flex-wrap gap-2">
+          {p.maybe.map((m) => {
+            const on = ticked.includes(m.name);
+            return (
+              <li key={m.name}>
+                <button
+                  type="button"
+                  disabled={busy || asking}
+                  aria-pressed={on}
+                  onClick={() => setTicked(on ? ticked.filter((t) => t !== m.name) : [...ticked, m.name])}
+                  className="chip"
+                >
+                  {on ? <CheckIcon className="size-4" /> : null}
+                  {`${m.role === "on" ? "On" : "With"} ${stoneName(m.name)}`}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
   }
 
   // DESIGN.md's warn note for answers that don't fit the Mindat record, with the reason.
@@ -521,7 +572,9 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
         <div className="rounded-[6px] border border-line-2 bg-label p-2.5">
           <div className="flex flex-col gap-2 border border-line px-5 py-4">
             <p className="font-label text-meta text-ink-2">Named</p>
-            <p className="border-b-2 border-ink pb-2 font-display text-h2 font-semibold leading-tight">{stoneName(n.name)}</p>
+            <p className="text-balance border-b-2 border-ink pb-2 font-display text-h2 font-semibold leading-tight">
+              <PieceTitle piece={n} />
+            </p>
             <p className="font-label text-meta text-ink-2">
               Variety: <span className={`font-sans text-body ${n.variety ? "text-ink" : "italic text-ink-3"}`}>{n.variety ?? "Not recorded"}</span>
             </p>
@@ -570,20 +623,27 @@ function countLine(named: boolean, waiting: number, position: number): string {
   return waiting === 1 ? "The only one waiting" : "Nothing else is waiting";
 }
 
-function PillButton({ pill, describedBy, disabled, onPick }: { pill: Pill; describedBy?: string; disabled: boolean; onPick: () => void }) {
+/**
+ * One of Jasper's suggestions (DESIGN.md §4): the piece's name as a show label
+ * gives it, wrapping onto a second line rather than cut, with "A kind of
+ * Quartz" under a hobby name, and its word.
+ */
+function PillButton({ pill, name, describedBy, disabled, onPick }: { pill: Pill; name: string; describedBy?: string; disabled: boolean; onPick: () => void }) {
   const lead = pill.word === "probably";
+  const kind = kindOf(pill);
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onPick}
-      aria-label={`${stoneName(pill.name)}${pill.variety ? `, ${pill.variety}` : ""}: ${pill.word}`}
+      aria-label={`${name}${kind ? `, ${kind.toLowerCase()}` : ""}: ${pill.word}`}
       aria-describedby={describedBy}
-      className={`flex min-h-16 w-full items-center justify-between gap-4 rounded-pill border bg-surface py-2.5 pl-6 pr-3 text-left transition-colors hover:border-line-strong hover:bg-sand disabled:cursor-progress disabled:opacity-60 ${lead ? "border-2 border-azurite" : "border-line-2"}`}
+      // 32 px corners: a pill on one line, and a rounded card, not an oval, when a long name wraps.
+      className={`flex min-h-16 w-full items-center justify-between gap-4 rounded-[32px] border bg-surface py-2.5 pl-6 pr-3 text-left transition-colors hover:border-line-strong hover:bg-sand disabled:cursor-progress disabled:opacity-60 ${lead ? "border-2 border-azurite" : "border-line-2"}`}
     >
       <span className="min-w-0">
-        <span className="block truncate font-display text-h3 font-semibold leading-tight">{stoneName(pill.name)}</span>
-        {pill.variety ? <span className="block truncate text-[17px] text-ink-2">{pill.variety}</span> : null}
+        <span className="block text-balance break-words font-display text-h3 font-semibold leading-tight">{name}</span>
+        {kind ? <span className="block text-[17px] text-ink-2">{kind}</span> : null}
       </span>
       <span className={`shrink-0 rounded-pill px-3 py-1 text-tag font-bold ${lead ? "bg-azurite-soft text-azurite-note" : "bg-sand text-tag-ink"}`}>{pill.word}</span>
     </button>
