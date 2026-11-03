@@ -8,10 +8,13 @@ slower of them. The thumbnail is written for every processed job, rejected
 ones included, because the confirm screen shows the photo either way.
 
 With a Mindat key (#18), an identified job's candidates are looked up in
-Mindat before the job is written. When the queue is idle (`mindat.idle`), the
+Mindat before the job is written, on a short leash (#40): a person may be
+waiting on the confirm screen. When the queue is idle (`mindat.idle`), the
 candidates a lookup missed are tried again, then each named mineral is linked
 to its record and that record is fetched whole (#21), once a minute, or ten
-minutes after Mindat failed. Mindat never decides a job's outcome.
+minutes after Mindat failed, and the pass stops as soon as a job arrives.
+Mindat never decides a job's outcome. The log line times each part, and the
+job's `finished_at` is when it finished, not when it was claimed.
 """
 
 from __future__ import annotations
@@ -57,6 +60,7 @@ def run_once(
     if job is None:
         return None
 
+    t_start = time.monotonic()
     images: list[bytes] = []
     for ph in queue.job_photos(conn, job["id"]):
         src = data_dir / ph["path"]
@@ -67,7 +71,6 @@ def run_once(
         except Exception as exc:  # noqa: BLE001  (one line per unreadable photo, whatever it was)
             log.warning("job %d: photo %s unreadable: %s", job["id"], ph["path"], exc)
 
-    t0 = time.monotonic()
     if not images:
         outcome = identify.Outcome("failed", error="no readable photos")
     else:
@@ -78,10 +81,12 @@ def run_once(
         outcome = identify.classify([identify.opinion(r, resp) for r, resp in zip(cfg.roles, responses)])
     looked_up = None
     if mindat_api is not None and outcome.status == "identified":
-        looked_up = mindat.resolve_outcome(conn, mindat_api, outcome)
-    seconds = time.monotonic() - t0
+        t_mindat = time.monotonic()
+        looked_up = f"{mindat.resolve_outcome(conn, mindat_api, outcome)} ({time.monotonic() - t_mindat:.1f} s)"
+    seconds = time.monotonic() - t_start
 
-    queue.record_outcome(conn, job["id"], outcome, now)
+    # `now` is the claim; the job finished this many seconds later.
+    queue.record_outcome(conn, job["id"], outcome, now + timedelta(seconds=seconds))
     row = conn.execute("SELECT attempts, next_attempt_at FROM jobs WHERE id = ?", (job["id"],)).fetchone()
     level, line = _log_line(job["id"], outcome, row, seconds, looked_up)
     log.log(level, "%s", line)
@@ -90,7 +95,8 @@ def run_once(
 
 def _log_line(job_id: int, outcome: identify.Outcome, row: sqlite3.Row, seconds: float,
               looked_up: str | None = None) -> tuple[int, str]:
-    """One line per job: `job 7 identified: haiku Galena 0.82 · flash Galena 0.90 · $0.0041 · mindat cached · 6.2 s`.
+    """One line per job, each part timed:
+    `job 7 identified: haiku Galena 0.82 (6.8 s) · flash Galena 0.90 (4.1 s) · $0.0041 · mindat cached (0.0 s) · 7.1 s`.
 
     INFO when both models answered; WARNING when one did not, or the job will be
     tried again; ERROR when it failed for good (a bad key says so here, once).
@@ -102,7 +108,7 @@ def _log_line(job_id: int, outcome: identify.Outcome, row: sqlite3.Row, seconds:
         verdict = "back in the queue"
     else:
         verdict = outcome.status
-    parts = [o.describe() for o in outcome.opinions] or [outcome.error or ""]
+    parts = [f"{o.describe()} ({o.seconds:.1f} s)" for o in outcome.opinions] or [outcome.error or ""]
     parts += [f"${outcome.cost_usd:.4f}", *([looked_up] if looked_up else []), f"{seconds:.1f} s"]
     if outcome.status == "failed" or (outcome.status == "retry" and not row["next_attempt_at"]):
         level = logging.ERROR
@@ -118,7 +124,8 @@ def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api, now: datetime) ->
     records. Returns when to try next. Running out of time is not a failure: the rest
     waits a minute, not ten."""
     try:
-        filled, linked, fetched = mindat.idle(conn, mindat_api)
+        # A job arriving mid-pass ends it at the next request; the rest waits a minute.
+        filled, linked, fetched = mindat.idle(conn, mindat_api, should_stop=lambda: queue.has_runnable(conn, datetime.now(timezone.utc)))
     except mindat.Unreachable as e:
         log.warning("mindat catch-up stopped: %s; next try in %d minutes", e, CATCH_UP_AFTER_FAILURE.seconds // 60)
         return now + CATCH_UP_AFTER_FAILURE

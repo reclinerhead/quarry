@@ -47,7 +47,9 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .identify import MATRIX
@@ -58,10 +60,26 @@ if TYPE_CHECKING:
 API_HOST = "api.mindat.org"
 API_URL = f"https://{API_HOST}/v1/geomaterials/"
 FIELDS = "id,name,entrytype_text,varietyof,synid,hmin,hmax,streak"
-TIMEOUT_S = 8
-# All of one job's lookups. Cached names cost nothing, so this binds only on
-# the first stones of a household, or when Mindat is slow.
-JOB_BUDGET_S = 20
+
+
+@dataclass(frozen=True)
+class Limits:
+    """How long one request may take, and how many times it is tried."""
+
+    timeout_s: float
+    tries: int
+
+
+# Two leashes, side by side so they can't drift apart (#40). The idle pass has
+# the time: 8 s a request, each tried twice, 20 s a pass. A job's lookups run
+# while a person may be waiting on the confirm screen, so they get 3 s a
+# request, one try, and 4 s for the whole job; whatever they miss, the idle
+# pass's catch-up fills in. urllib's timeout is per socket operation, so a job
+# can still run a few seconds past its budget, never the 20 to 58 s it did.
+IDLE = Limits(timeout_s=8, tries=2)
+IDLE_BUDGET_S = 20
+WAIT = Limits(timeout_s=3, tries=1)
+WAIT_BUDGET_S = 4
 # Records in a chain, the candidate's own included: Crazy Lace Agate, Agate,
 # Chalcedony, Quartz is four.
 MAX_DEPTH = 6
@@ -78,15 +96,25 @@ class OutOfTime(Unreachable):
 
 
 class Api:
-    """The OpenMindat geomaterials endpoint. Each request is tried twice; `requests` counts them for the log line."""
+    """The OpenMindat geomaterials endpoint. `limits` is the leash in force, IDLE unless
+    a job is being written (`within`); `requests` counts every try for the log line."""
 
-    def __init__(self, key: str, timeout: float = TIMEOUT_S):
+    def __init__(self, key: str, limits: Limits = IDLE):
         self._key = key
-        self.timeout = timeout
+        self.limits = limits
         self.requests = 0
 
     def __repr__(self) -> str:
         return "Api(key=…)"  # never logged
+
+    @contextmanager
+    def within(self, limits: Limits) -> Iterator[None]:
+        """Run the block under another leash, then put the old one back."""
+        before, self.limits = self.limits, limits
+        try:
+            yield
+        finally:
+            self.limits = before
 
     def search(self, term: str) -> list[dict]:
         """Mindat's entries named `term`. The search is exact, ignoring case and accents."""
@@ -106,10 +134,10 @@ class Api:
         """The JSON body, None for a 404, or Unreachable."""
         req = urllib.request.Request(url, headers={"Authorization": f"Token {self._key}", "Accept": "application/json"})
         last = ""
-        for _ in range(2):
+        for _ in range(self.limits.tries):
             self.requests += 1
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                with urllib.request.urlopen(req, timeout=self.limits.timeout_s) as resp:
                     out = json.load(resp)
                     return out if isinstance(out, dict) else {}
             except urllib.error.HTTPError as e:
@@ -263,20 +291,22 @@ def resolve(conn: sqlite3.Connection, api: Api, name: str, variety: str | None, 
     return None
 
 
-def resolve_outcome(conn: sqlite3.Connection, api: Api, outcome: Outcome, budget_s: float = JOB_BUDGET_S,
-                    clock: Clock = time.monotonic) -> str:
-    """Set `mindat_id` on each candidate of an identified job before it is written.
-    Returns the log line's part: "mindat 3 requests", "mindat cached", or why it stopped."""
+def resolve_outcome(conn: sqlite3.Connection, api: Api, outcome: Outcome, budget_s: float = WAIT_BUDGET_S,
+                    clock: Clock = time.monotonic, limits: Limits = WAIT) -> str:
+    """Set `mindat_id` on each candidate of an identified job before it is written,
+    on the short leash: a person may be waiting. Returns the log line's part:
+    "mindat 3 requests", "mindat cached", or why it stopped."""
     deadline = clock() + budget_s
     before = api.requests
     try:
-        for o in outcome.opinions:
-            for c in o.answer.candidates if o.answer else []:
-                c.mindat_id = resolve(conn, api, c.name, c.variety, deadline, clock)
-                # The other minerals on the piece (#29), by name alone; plain matrix is no mineral.
-                for p in c.parts:
-                    if p.name != MATRIX:
-                        p.mindat_id = resolve(conn, api, p.name, None, deadline, clock)
+        with api.within(limits):
+            for o in outcome.opinions:
+                for c in o.answer.candidates if o.answer else []:
+                    c.mindat_id = resolve(conn, api, c.name, c.variety, deadline, clock)
+                    # The other minerals on the piece (#29), by name alone; plain matrix is no mineral.
+                    for p in c.parts:
+                        if p.name != MATRIX:
+                            p.mindat_id = resolve(conn, api, p.name, None, deadline, clock)
     except Unreachable as e:
         return f"mindat stopped: {e}"
     n = api.requests - before
@@ -416,12 +446,20 @@ def fetch_details(conn: sqlite3.Connection, api: Api, deadline: float, clock: Cl
     return fetched
 
 
-def idle(conn: sqlite3.Connection, api: Api, budget_s: float = JOB_BUDGET_S,
-         clock: Clock = time.monotonic) -> tuple[int, int, int]:
+def idle(conn: sqlite3.Connection, api: Api, budget_s: float = IDLE_BUDGET_S,
+         clock: Clock = time.monotonic, should_stop: Callable[[], bool] | None = None) -> tuple[int, int, int]:
     """Jasper's Mindat work while the queue is empty, in one budget: the waiting
     candidates, then the minerals, then their records. Returns (candidates filled,
-    minerals linked, records fetched). Raises Unreachable; what was done before stays."""
+    minerals linked, records fetched). Raises Unreachable; what was done before stays.
+    `should_stop` (a job has arrived, #40) ends the pass at its next request the way
+    running out of time does: the steps keep what they did, and the rest waits a minute."""
     deadline = clock() + budget_s
+    if should_stop is not None:
+        wall = clock
+
+        def clock() -> float:  # a job waiting is "out of time" for the pass
+            return float("inf") if should_stop() else wall()
+
     filled = catch_up(conn, api, deadline, clock)
     linked = link_minerals(conn, api, deadline, clock)
     return filled, linked, fetch_details(conn, api, deadline, clock)
