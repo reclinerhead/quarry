@@ -126,8 +126,10 @@ color alone (`aria-pressed`). Chips wrap; never scroll a chip row
 sideways.
 
 **Selects**: same pill shape as chips, 50 px, a drawn chevron, a visible label
-above ("Hardness", "Sort by"). Native `<select>`, so older phones get their
-own big picker.
+to its left ("Hardness", "Sort by"). Native `<select>`, so older phones get their
+own big picker. On a mouse, where the browser lets a `<select>` style its
+list, the open list is a white card of 48 px pill rows: sand under the
+pointer, the chosen one azurite and bold with the chip's check.
 
 **Tags (status)**: 15 px / 700, 4 × 12 px padding, pill. Default = sand +
 tag-ink ("Mohs 4", "Crystal", "Tumbled"). `uv` variant only for "Glows under

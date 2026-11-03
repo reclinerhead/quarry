@@ -139,6 +139,63 @@
     font-weight: 700;
     cursor: pointer;
   }
+  /* On a mouse, a browser that can draw a native <select>'s list
+     (appearance: base-select) draws it in the house style: a white card of
+     48 px pill rows, sand under the pointer, the chosen one azurite with the
+     chip's check. Touch screens and other browsers keep their own picker. */
+  @supports (appearance: base-select) {
+    @media (hover: hover) and (pointer: fine) {
+      .select,
+      .select::picker(select) {
+        appearance: base-select;
+      }
+      .select {
+        display: inline-flex;
+        align-items: center;
+      }
+      .select::picker-icon {
+        display: none;
+      }
+      .select:open {
+        border-color: var(--color-line-strong);
+      }
+      .select::picker(select) {
+        margin-block: 6px;
+        padding: 6px;
+        border: 1px solid var(--color-line-2);
+        border-radius: var(--radius-tile);
+        background: var(--color-surface);
+        box-shadow: var(--shadow-hover);
+      }
+      .select option {
+        min-height: var(--size-target);
+        padding: 0 20px 0 14px;
+        gap: 10px;
+        border-radius: var(--radius-pill);
+        color: var(--color-ink);
+        font-weight: 400;
+        cursor: pointer;
+      }
+      .select option::checkmark {
+        content: "";
+        width: 18px;
+        height: 18px;
+        background: currentColor;
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E") center / contain no-repeat;
+      }
+      .select option:hover {
+        background: var(--color-sand);
+      }
+      .select option:focus-visible {
+        outline: 3px solid var(--color-azurite);
+        outline-offset: -3px;
+      }
+      .select option:checked {
+        color: var(--color-azurite);
+        font-weight: 700;
+      }
+    }
+  }
 
   /* The text-link style DESIGN.md §4 keeps for "Clear filters", "Change" and "Add". */
   .text-link {
