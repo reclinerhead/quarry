@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { Collection } from "@/components/collection";
 import { CameraIcon, CrystalIcon } from "@/components/icons";
+import { JasperAtWork } from "@/components/jasper-at-work";
+import { StripWatch } from "@/components/strip-watch";
 import { addedToday, glance, places, sortTiles, type Tile } from "@/lib/collection";
 import { dateLine, greeting } from "@/lib/greeting";
-import { waitingStrip, withReadDb } from "@/lib/jobs";
+import { waitingStrip, withReadDb, workingStrip } from "@/lib/jobs";
 import { kindOf, pieceName, stripLine } from "@/lib/pills";
 import { collectionTiles } from "@/lib/specimens";
 
@@ -27,10 +29,14 @@ const PLACEHOLDERS = [
 
 export default function Home() {
   const now = new Date();
-  const { tiles, strip } = withReadDb((db) => ({ tiles: collectionTiles(db), strip: waitingStrip(db) }), {
-    tiles: [] as Tile[],
-    strip: { count: 0, thumbs: [], first: null },
-  });
+  const { tiles, strip, working } = withReadDb(
+    (db) => ({ tiles: collectionTiles(db), strip: waitingStrip(db), working: workingStrip(db) }),
+    {
+      tiles: [] as Tile[],
+      strip: { count: 0, thumbs: [], first: null },
+      working: { ids: [], thumbs: [] },
+    },
+  );
   const today = addedToday(
     tiles.map((t) => t.createdAt),
     now,
@@ -46,8 +52,10 @@ export default function Home() {
         <p className="text-lead text-ink-2">Photograph a stone and Jasper will suggest what it is. You decide what it&rsquo;s called.</p>
       </section>
 
-      {/* The pending strip (DESIGN.md §4): amber means "needs you". Drawn only
-          when something waits, on the server, so it never pops in. */}
+      {/* The pending strip (DESIGN.md §4): amber means "needs you". Drawn on
+          the server, so it never pops in. While Jasper still has rocks and
+          none waits for a name, its place is held by the working strip (#31),
+          and StripWatch refreshes the page once one is done. */}
       {strip.count > 0 ? (
         <section aria-labelledby="waiting-h" className="flex flex-wrap items-center gap-x-7 gap-y-5 rounded-card border border-warn-line bg-warn px-5 py-5 sm:px-7 sm:py-[22px]">
           <div className="flex">
@@ -68,7 +76,36 @@ export default function Home() {
             {strip.count === 1 ? "Name it" : "Name them"}
           </Link>
         </section>
+      ) : working.ids.length > 0 ? (
+        // The amber strip's shape in plain card colours: nothing needs the person yet.
+        <section aria-labelledby="working-h" className="card flex flex-wrap items-center gap-x-7 gap-y-5 px-5 py-5 sm:px-7 sm:py-[22px]">
+          <div className="flex">
+            {working.thumbs.map((src, i) => {
+              const overlap = i > 0 ? "-ml-[18px]" : "";
+              return src ? (
+                // eslint-disable-next-line @next/next/no-img-element -- Jasper's 320 px thumbnail
+                <img key={working.ids[i]} src={src} alt="" className={`size-[72px] rounded-tile border-[3px] border-surface bg-tile-stone object-cover ${overlap}`} />
+              ) : (
+                <span key={working.ids[i]} className={`flex size-[72px] items-center justify-center rounded-tile border-[3px] border-surface bg-tile-stone ${overlap}`}>
+                  <CrystalIcon className="size-8 text-icon-muted" />
+                </span>
+              );
+            })}
+          </div>
+          <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-1">
+            <h2 id="working-h" className="text-[26px] leading-tight">
+              {working.ids.length} {working.ids.length === 1 ? "rock" : "rocks"} waiting for Jasper
+            </h2>
+            <JasperAtWork seed={working.ids[0]} className="text-ink-2" />
+          </div>
+          {/* The amber strip's button, invisible (so out of the tab order and
+              unread), keeping its room so turning amber moves nothing. */}
+          <span aria-hidden className="btn btn-primary btn-lg invisible">
+            {working.ids.length === 1 ? "Name it" : "Name them"}
+          </span>
+        </section>
       ) : null}
+      {working.ids.length > 0 ? <StripWatch ids={working.ids} /> : null}
 
       {tiles.length === 0 ? <EmptyCollection /> : (
         <div className="flex flex-wrap items-start gap-8">

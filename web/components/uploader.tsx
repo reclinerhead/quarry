@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { CameraIcon, CoinIcon, CrystalIcon, PhotosIcon, SunIcon, TagIcon } from "@/components/icons";
+import { JasperAtWork } from "@/components/jasper-at-work";
 import { exifTakenAt } from "@/lib/exif";
 import { isSettled } from "@/lib/job-state";
 import type { JobView } from "@/lib/jobs";
@@ -303,6 +304,27 @@ export function Uploader() {
         </div>
       </section>
 
+      {/* Under the tips, where it's in sight after a send (#31). It arrives with
+          the first press of "Send this rock", and each rock after grows it and
+          moves the rock card down: a shift the person's own press makes. */}
+      {rocks.length > 0 ? (
+        <section aria-labelledby="sent-h" className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h2 id="sent-h" className="text-section leading-tight">
+              Rocks you&rsquo;ve sent
+            </h2>
+            <p aria-live="polite" className="text-ink-2">
+              {sentLine}
+            </p>
+          </div>
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
+            {rocks.map((r) => (
+              <Row key={r.key} rock={r} onNoPreview={noPreview} onSendAgain={() => sendAgain(r)} onRemove={() => removeRock(r)} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section aria-labelledby="rock-h" className="card flex flex-col gap-5 p-5 sm:px-8 sm:py-7">
         <h2 id="rock-h" className="text-section leading-tight">
           {rocks.length === 0 ? "This rock" : "The next rock"}
@@ -361,24 +383,6 @@ export function Uploader() {
           </div>
         </div>
       </section>
-
-      {rocks.length > 0 ? (
-        <section aria-labelledby="sent-h" className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <h2 id="sent-h" className="text-section leading-tight">
-              Rocks you&rsquo;ve sent
-            </h2>
-            <p aria-live="polite" className="text-ink-2">
-              {sentLine}
-            </p>
-          </div>
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
-            {rocks.map((r) => (
-              <Row key={r.key} rock={r} onNoPreview={noPreview} onSendAgain={() => sendAgain(r)} onRemove={() => removeRock(r)} />
-            ))}
-          </ul>
-        </section>
-      ) : null}
     </div>
   );
 }
@@ -469,7 +473,12 @@ function Row({
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className={`font-bold leading-snug ${needsYou ? "text-warn-ink" : "text-ink"}`}>{status}</p>
         {detail ? <p className={`text-meta ${needsYou ? "text-warn-ink" : "text-ink-2"}`}>{detail}</p> : null}
-        <p className={`text-meta ${needsYou ? "text-warn-ink" : "text-ink-3"}`}>{count(n, "photo")}</p>
+        {/* While Jasper has it, Jasper at work stands in the photo count's line, one line tall like it. */}
+        {rock.state === "waiting" ? (
+          <JasperAtWork seed={rock.jobId ?? 0} className="text-meta text-ink-2" />
+        ) : (
+          <p className={`text-meta ${needsYou ? "text-warn-ink" : "text-ink-3"}`}>{count(n, "photo")}</p>
+        )}
         <div className="mt-auto flex min-h-12 flex-wrap items-end gap-2 pt-1.5">
           {rock.state === "error" ? (
             <>

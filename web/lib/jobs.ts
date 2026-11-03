@@ -1,8 +1,10 @@
 // Reading jobs for the confirm screen, the pending strip and the jobs API.
 // Server only, except nextWaitingJob, which is pure.
 
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { openReadOnly } from "./db";
+import { dataDir, openReadOnly } from "./db";
 import { cleanAnswers, suggestedOrder, type Answers, type TestKind } from "./household-tests";
 import type { JobStatus } from "./job-state";
 import { chainOf, MAX_DEPTH, type MindatRecord } from "./names";
@@ -145,17 +147,24 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
 
 /** Jobs waiting for a name, oldest first: Jasper is done with them (isSettled in job-state.ts) and nobody has named them. */
 const WAITING = `j.status IN ('identified', 'rejected') OR (j.status = 'failed' AND j.next_attempt_at IS NULL)`;
+/** Jobs Jasper still has: WAITING's complement, so the two never drift apart. */
+const WORKING = `j.status IN ('queued', 'identifying') OR (j.status = 'failed' AND j.next_attempt_at IS NOT NULL)`;
 
-export function waitingJobIds(db: DatabaseSync): number[] {
+/** The unnamed jobs a predicate picks, oldest first. */
+function unnamedJobIds(db: DatabaseSync, where: string): number[] {
   const rows = db
     .prepare(
       `SELECT j.id FROM jobs j
-        WHERE (${WAITING})
+        WHERE (${where})
           AND NOT EXISTS (SELECT 1 FROM confirmations c WHERE c.job_id = j.id)
         ORDER BY j.created_at, j.id`,
     )
     .all() as Array<{ id: number }>;
   return rows.map((r) => r.id);
+}
+
+export function waitingJobIds(db: DatabaseSync): number[] {
+  return unnamedJobIds(db, WAITING);
 }
 
 /** The next waiting job after `current`, wrapping to the first; null when nothing else waits. */
@@ -189,6 +198,22 @@ export function waitingStrip(db: DatabaseSync): { count: number; thumbs: string[
     return p ? [`/media/${thumbPathFor(p.path)}`] : [];
   });
   return { count: ids.length, thumbs, first: readJob(db, ids[0]) };
+}
+
+/**
+ * The pending strip's working state (#31): the jobs Jasper still has, oldest
+ * first, and up to three thumbnails. Jasper writes a job's thumbnails when he
+ * claims it, so a rock he hasn't started has none yet: null, which the strip
+ * draws as the crystal placeholder rather than a broken image or an original.
+ */
+export function workingStrip(db: DatabaseSync): { ids: number[]; thumbs: Array<string | null> } {
+  const ids = unnamedJobIds(db, WORKING);
+  const thumbs = ids.slice(0, 3).map((id) => {
+    const p = db.prepare("SELECT path FROM photos WHERE job_id = ? ORDER BY id LIMIT 1").get(id) as { path: string } | undefined;
+    const thumb = p ? thumbPathFor(p.path) : null;
+    return thumb && existsSync(path.join(dataDir(), thumb)) ? `/media/${thumb}` : null;
+  });
+  return { ids, thumbs };
 }
 
 export function withReadDb<T>(fn: (db: DatabaseSync) => T, fallback: T): T {
