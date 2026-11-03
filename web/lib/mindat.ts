@@ -217,19 +217,31 @@ export function glowOf(uv: string | null, luminescence: string | null): { glow: 
 }
 
 /** A field of a fetched record as text, or null for Mindat's none: missing, "", "0". */
-function field(r: ChainRecord, key: string): string | null {
+function field(r: Pick<ChainRecord, "detail">, key: string): string | null {
   const v = r.detail?.[key];
   const s = typeof v === "string" ? v.trim() : typeof v === "number" ? `${v}` : "";
   return s && s !== "0" ? s : null;
 }
 
 /** The first record in the chain with a value, the mineral's own first. */
-function inherit<T>(chain: ChainRecord[], pick: (r: ChainRecord) => T | null): T | null {
+function inherit<R, T>(chain: R[], pick: (r: R) => T | null): T | null {
   for (const r of chain) {
     const v = pick(r);
     if (v !== null) return v;
   }
   return null;
+}
+
+/**
+ * Strunz's class for a tag, singular ("Halide"), from the first record in the
+ * chain that has one; none until the mineral's own record is fetched, and none
+ * for a rock. The specimen page's tag and the dashboard's tiles (#38) both use
+ * it, so the tiles can hand over only `detail`.
+ */
+export function mineralClassOf(chain: Array<Pick<ChainRecord, "detail">>): string | null {
+  if (!chain[0]?.detail) return null;
+  const strunz = inherit(chain, (r) => field(r, "strunz10ed1"));
+  return strunz ? (CLASSES[strunz] ?? null) : null;
 }
 
 /**
@@ -260,7 +272,6 @@ export function propertyCard(chain: ChainRecord[], miss: boolean): PropertyCard 
   const cleavage = inherit(chain, (r) => field(r, "cleavagetype"));
   const gravity = inherit(chain, (r) => gravityLabel(field(r, "dmeas"), field(r, "dmeas2"), field(r, "dcalc")));
   const glow = inherit(chain, (r) => glowOf(field(r, "uv"), field(r, "luminescence")));
-  const strunz = inherit(chain, (r) => field(r, "strunz10ed1"));
 
   const cells: Cell[] = [];
   if (formula?.length) cells.push({ key: "formula", label: "Formula", value: formula.map((s) => s.text).join(""), segments: formula });
@@ -277,7 +288,7 @@ export function propertyCard(chain: ChainRecord[], miss: boolean): PropertyCard 
     mindatId: own.id,
     cells,
     formula: formula?.length ? formula : null,
-    mineralClass: strunz ? (CLASSES[strunz] ?? null) : null,
+    mineralClass: mineralClassOf(chain),
     mohs: hard,
     glow: glow?.glow ?? null,
   };

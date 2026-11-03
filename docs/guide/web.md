@@ -60,7 +60,7 @@ pnpm dev
 
 ### Your collection
 
-`components/collection.tsx` over the pure shape in `lib/collection.ts` (tested), the Conservatory's pattern. The server sends every stone as a `Tile` (`collectionTiles` in `lib/specimens.ts`): name, kind, variety, the other minerals on it, where it came from, how it came, where it lives, when it was added (the "Nov 1" label worked out on the server, in the station's time zone, so server and phone never disagree) and the newest photo's 320 px thumbnail, never an original. The phone filters and sorts, so a search makes no request.
+`components/collection.tsx` over the pure shape in `lib/collection.ts` (tested), the Conservatory's pattern. The server sends every stone as a `Tile` (`collectionTiles` in `lib/specimens.ts`): name, kind, the mineral's class, variety, the other minerals on it, where it came from, how it came, where it lives, when it was added (the "Nov 1" label worked out on the server, in the station's time zone, so server and phone never disagree) and the newest photo's 320 px thumbnail, never an original. The phone filters and sorts, so a search makes no request.
 
 - **The count line:** "Showing 12 of 47 stones", or "Showing 3 stones that match" once anything filters (`countLine`).
 - **Sort by**, a native `<select>`: Name, A to Z (the default, by the name the card shows, so an amethyst is under A) or Newest first.
@@ -78,7 +78,7 @@ pnpm dev
   - the piece's name (see "Naming a stone") in Zilla 24, wrapping rather than cut;
   - "A kind of Quartz" under a hobby name (`kindOf`); a stone whose name already says the mineral has no line there, the meta line follows the name directly;
   - "Glass case · added Nov 1";
-  - the kind as a tag.
+  - the kind as a tag, then the mineral's class ("Sulfide", #38) by the specimen page's rule (`mineralClassOf` in `lib/mindat.ts`). A rock has none, since Mindat records no class for one, and neither does a stone Jasper hasn't looked up yet. `collectionTiles` reads every chain in one query and takes only `strunz10ed1` out of `detail` (`json_extract`, guarded by `json_valid`), so the dashboard parses no whole records. The class carries no info mark here, as the kind doesn't: the card is one link and a mark is a button. The stone's page has the mark.
 
 ### The side column
 
@@ -122,7 +122,7 @@ pnpm dev
     - Crystal system and luster are put in plain words ("Cubic (isometric)", "Glassy (vitreous)"), luster taking the first value listed. Cleavage drops Mindat's slashes ("Poor/Indistinct" is "Poor").
     - Specific gravity is the measured value, or a range when `dmeas2` is larger, else the calculated one, at two decimals rounded half up on the written digits.
     - Fluorescence reads `uv`, else `luminescence`: "Doesn’t glow" when the text is only a negative, "Rarely glows" when it opens with "not usually" or "rarely", "Can glow" when either field speaks of fluorescence or UV, and no cell otherwise. Under the last two, Mindat's words in whole sentences, with LW and SW spelled out: the first sentence always, however long, then the next ones while the note stays within 160 characters. A sentence ends at `.`, `!` or `?` before a capital letter, so "et al. 2003" runs on. Nothing is cut inside a sentence; the rest is on Mindat.
-    - The class is Strunz's (`strunz10ed1`), singular.
+    - The class is Strunz's (`strunz10ed1`), singular (`mineralClassOf`, shared with the tiles).
   - **The heading's source line** is "From Mindat · tap i to learn what a word means". "Mindat" links to the mineral's page on mindat.org, the attribution the README's Credits promise.
   - **With no cells**, one line takes the grid's place:
     - a rock (every rock: Mindat records none of these for one) says Mindat lists no single formula or hardness, with the rock info mark;
@@ -136,7 +136,7 @@ pnpm dev
   - "Change the name", which goes to that job's confirm screen.
 - **Remove** (`RemoveStone`): two taps, "Remove this stone" then "Yes, remove it", with "Keep it" to back out. `DELETE /api/stones/[id]` removes the photo rows and the jobs that brought them, found through the photos and through the stone's confirmations; candidates, suggested tests and confirmations cascade. It then removes the stone (its parts cascade), and each of its minerals, main or on it, that no stone uses any more (`pruneMinerals`), and unlinks the files and their thumbnails. Then home.
 
-Tests: `lib/collection.test.ts` (search, by a part too, the kind and source filters, both sorts, by the shown name, the chips, the count line, the side column, date labels, what changed today, missing details), `lib/greeting.test.ts`, and `lib/mindat.test.ts` (formula runs, plain text, the luster, gravity and fluorescence rules on Mindat's own strings, inheritance up the chain, the card's four states, and `fold` on Jasper's cases).
+Tests: `lib/collection.test.ts` (search, by a part too, the kind and source filters, both sorts, by the shown name, the chips, the count line, the side column, date labels, what changed today, missing details), `lib/greeting.test.ts`, and `lib/mindat.test.ts` (formula runs, plain text, the luster, gravity and fluorescence rules on Mindat's own strings, inheritance up the chain, the card's four states, the class on the tiles' shape (`mineralClassOf`), and `fold` on Jasper's cases).
 
 ## Adding a rock
 
