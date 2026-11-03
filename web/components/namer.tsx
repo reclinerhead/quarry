@@ -38,14 +38,11 @@ import type { StonePart } from "@/lib/specimens";
 // label does (pieceName), wrapping rather than cut, and a mineral only one
 // opinion saw is a chip under the lead pill, off until the person ticks it.
 
-type Stone = { id: number; name: string; variety: string | null; parts: StonePart[] };
-
 type Props = {
   initialJob: JobView;
   waiting: number;
   position: number;
   nextJobId: number | null;
-  lastStone: Stone | null;
 };
 
 type Named = { specimenId: number; name: string; variety: string | null; parts: StonePart[]; how: ConfirmHow; nextJobId: number | null };
@@ -53,7 +50,7 @@ type Named = { specimenId: number; name: string; variety: string | null; parts: 
 const MAX_PHOTOS = 5;
 const POLL_MS = 1500;
 
-export function Namer({ initialJob, waiting, position, nextJobId: initialNext, lastStone }: Props) {
+export function Namer({ initialJob, waiting, position, nextJobId: initialNext }: Props) {
   const router = useRouter();
   const [job, setJob] = useState<JobView>(initialJob);
   const [named, setNamed] = useState<Named | null>(initialJob.confirmation ? { ...initialJob.confirmation, nextJobId: initialNext } : null);
@@ -446,11 +443,6 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
         </div>
 
         <div className="flex flex-wrap gap-3 border-t border-line pt-5">
-          {lastStone ? (
-            <button type="button" disabled={busy} onClick={() => confirm({ sameAsSpecimenId: lastStone.id })} className="btn btn-soft">
-              Same stone as the last one <span className="font-normal text-ink-2">({pieceName(lastStone)})</span>
-            </button>
-          ) : null}
           <button type="button" disabled={busy} onClick={dismiss} onBlur={() => setArmedDismiss(false)} className="btn btn-soft">
             {armedDismiss ? "Tap again to remove this photo" : "Not a rock"}
           </button>
