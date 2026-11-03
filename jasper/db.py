@@ -113,6 +113,17 @@ ALTER TABLE specimens ADD COLUMN form TEXT
   CHECK (form IN ('crystal', 'cluster', 'geode', 'druzy', 'rough', 'tumbled', 'slab', 'carved'));  -- NULL until someone says
 """,
     ),
+    # 7 (#65): where Mindat reports each record, counted in the USA, its states and Michigan's counties.
+    (
+        7,
+        """
+-- JSON: {usa, states: [{id, name, n}], michigan: [{id, name, n}]}, most first,
+-- only those with any; {"usa": 0} when Mindat reports none in the USA. NULL
+-- until Jasper counted them.
+ALTER TABLE mindat_records ADD COLUMN places TEXT;
+ALTER TABLE mindat_records ADD COLUMN places_at TEXT;  -- when they were counted; counted again after 30 days
+""",
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else BASELINE_VERSION

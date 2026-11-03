@@ -300,8 +300,11 @@ primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
      the card check) · **About [mineral]** (Wikipedia summary, source line with
      fetch date, article link) · **Mineral properties** (Mindat cells: Formula,
      Mohs hardness, Crystal system, Luster, Streak, Cleavage, Specific gravity,
-     Fluorescence, each with an info mark, then the note block) · **Taking care
-     of it** (handling notes) · **Related stones you already have** (same class,
+     Fluorescence, each with an info mark, then the note block) · **Where it's
+     found** (Mindat's places in the USA, with its locality info mark: one line
+     with Michigan's rank among the states, then "In Michigan" and "Across the
+     USA" as hairline rows linking to Mindat, eight and "and N more", then "See
+     every place on Mindat") · **Taking care of it** (handling notes) · **Related stones you already have** (same class,
      same habit, same trait).
    - Side: How it was named (candidate pills + "Change the name") · What it's
      made of (element tiles + link to the periodic table) · On your Mohs scale

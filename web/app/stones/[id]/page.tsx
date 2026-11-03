@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AreaList } from "@/components/area-list";
 import { Formula } from "@/components/formula";
 import { Gallery } from "@/components/gallery";
 import { CheckIcon } from "@/components/icons";
@@ -17,12 +18,14 @@ import { HOW_SUMMARY } from "@/lib/naming";
 import { sameStone } from "@/lib/names";
 import { PieceTitle } from "@/components/piece-title";
 import { FORM_LABEL, kindOf, madeOfLine, pieceName, stoneName } from "@/lib/pills";
+import { HOME_STATE } from "@/lib/places";
 import { readStone, type StoneView } from "@/lib/specimens";
 
 // /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 2
 // has data: the breadcrumb, the title block (with the formula and Mindat's
 // tags, #23), the photo gallery, then two columns. Main: "This specimen" (the
-// editable specimen label), "Kitchen-table tests" and "Mineral properties".
+// editable specimen label), "Kitchen-table tests", "Mineral properties" and
+// "Where it's found" (#65).
 // Side: "How it was named", "What it's made of", "On your Mohs scale" (#42)
 // and Remove. About, handling notes, relatives, the story log and the box
 // label arrive later in Phases 2 and 3.
@@ -135,6 +138,7 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
             <TestsEditor id={stone.id} initial={stone.tests} />
           </section>
           <MineralProperties stone={stone} name={mineral} />
+          <WhereFound stone={stone} name={mineral} />
         </div>
 
         <aside aria-label="About its naming" className="flex w-full min-w-0 flex-[1_1_320px] flex-col gap-6 lg:max-w-sidebar">
@@ -293,6 +297,64 @@ function MineralProperties({ stone, name }: { stone: StoneView; name: string }) 
       ) : (
         <NoRecord stone={stone} name={name} missing="single formula or hardness" none="properties" />
       )}
+    </section>
+  );
+}
+
+/**
+ * "Where it's found" (#65), last in the main column: Mindat's count of places
+ * reporting the mineral in the USA, with the home state's rank among the
+ * states, then its counties and the states, most first, each linking to its
+ * page on Mindat. Places reported, not places to go. Before Jasper has counted
+ * them, one line holds the card's place.
+ */
+function WhereFound({ stone, name }: { stone: StoneView; name: string }) {
+  const card = stone.whereFound;
+  const mindat = card.state === "found" || card.state === "none" ? `https://www.mindat.org/min-${card.mindatId}.html` : null;
+  return (
+    <section aria-labelledby="found-h" className="card flex flex-col gap-5 px-5 py-6 sm:px-8 sm:py-7">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+        <h2 id="found-h" className="text-section leading-tight">
+          Where it&rsquo;s found
+          <Term k="locality" bare />
+        </h2>
+        {mindat ? (
+          <p className="flex flex-wrap items-center text-meta text-ink-2">
+            From
+            <a href={mindat} target="_blank" rel="noreferrer" className="text-link">
+              Mindat
+            </a>
+          </p>
+        ) : null}
+      </div>
+      {card.state === "found" ? (
+        <>
+          <p className="text-lead">{card.line}</p>
+          {card.counties.length || card.states.length ? (
+            // Side by side on a laptop, one under the other on a phone.
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-x-10 gap-y-6">
+              {card.counties.length ? <AreaList title={`In ${HOME_STATE}`} areas={card.counties} noun="counties" /> : null}
+              {card.states.length ? <AreaList title="Across the USA" areas={card.states} noun="states" /> : null}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <p className="text-ink-2">
+          {card.state === "none"
+            ? `Mindat lists no places in the USA for ${card.name}.`
+            : card.state === "unknown"
+              ? `Mindat has no entry called ${name}, so it lists no places for it.`
+              : "Jasper will look up where it’s found."}
+        </p>
+      )}
+      {mindat ? (
+        <div className="flex flex-col items-start gap-1">
+          <a href={mindat} target="_blank" rel="noreferrer" className="text-link -ml-1.5">
+            See every place on Mindat
+          </a>
+          {card.state === "found" ? <p className="text-meta text-ink-2">Places it has been reported, most of them mines and quarries on private land.</p> : null}
+        </div>
+      ) : null}
     </section>
   );
 }

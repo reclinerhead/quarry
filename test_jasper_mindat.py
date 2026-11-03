@@ -1,7 +1,9 @@
 """Mindat lookups (#18): which term is asked, which answer is taken, the chain and
 the cache, what a failure leaves, and the worker's part. Enrichment (#21): each
 named mineral linked to its record, and the records it needs fetched whole, once.
-A fake API stands in for Mindat; the HTTP itself stays untested."""
+Where it's found (#65): the states and counties kept, the counts shaped, and
+which records are counted when. A fake API stands in for Mindat; the HTTP itself
+stays untested."""
 
 import json
 
@@ -38,7 +40,39 @@ RECORDS = [
     rec(1856, "Hematite", hmin=5, hmax=6),
     rec(36610, "Hématite", "synonym", synid=1856),
     rec(2082, "Jasper", "rock"),
+    rec(198, "Amethyst", "variety", varietyof=3337),
 ]
+
+# Mindat's localities, shaped on what it sent on 2026-11-03. The USA's and
+# Michigan's ids are Mindat's; the others are made up.
+USA, MICHIGAN, TRI_STATE, YELLOWSTONE = 3366, 208081, 9001, 9002
+STATE_IDS = {name: 4000 + i for i, name in enumerate(sorted(mindat.STATES - {"Michigan"}))} | {"Michigan": MICHIGAN}
+NEBRASKA, UTAH = STATE_IDS["Nebraska"], STATE_IDS["Utah"]
+US_ROWS = [
+    {"id": USA, "txt": "USA", "level": 0},
+    *({"id": i, "txt": f"{name}, USA", "level": 1} for name, i in STATE_IDS.items()),
+    {"id": TRI_STATE, "txt": "Tri-State Mining District, USA", "level": 1},
+    {"id": YELLOWSTONE, "txt": "Yellowstone National Park, USA", "level": 1},
+]
+KEWEENAW, HOUGHTON, MARQUETTE, ONTONAGON, PENINSULA = 9101, 9102, 9103, 9104, 9105
+HOME_ROWS = [
+    {"id": KEWEENAW, "txt": "Keweenaw County, Michigan, USA", "level": 2},
+    {"id": HOUGHTON, "txt": "Houghton County, Michigan, USA", "level": 2},
+    {"id": MARQUETTE, "txt": "Marquette County, Michigan, USA", "level": 2},
+    {"id": ONTONAGON, "txt": "Ontonagon County, Michigan, USA", "level": 2},
+    # The regions that overlap the counties.
+    {"id": PENINSULA, "txt": "Keweenaw Peninsula, Michigan, USA", "level": 2},
+    {"id": 9106, "txt": "Keweenaw Copper Mining District, Michigan, USA", "level": 2},
+    {"id": 9107, "txt": "Marquette Iron Range, Michigan, USA", "level": 2},
+    {"id": 9108, "txt": "Menominee Iron Range, Michigan, USA", "level": 2},
+]
+# How many places under each locality report each record; Jasper, a rock, has none in the USA.
+COUNTS = {
+    51: {USA: 879, NEBRASKA: 140, MICHIGAN: 51, UTAH: 51, TRI_STATE: 4, KEWEENAW: 31, HOUGHTON: 8, ONTONAGON: 0, PENINSULA: 39},
+    960: {USA: 2210, MICHIGAN: 60, KEWEENAW: 22},
+    3337: {USA: 32540, MICHIGAN: 501, NEBRASKA: 30, MARQUETTE: 168, KEWEENAW: 82},
+    198: {USA: 820, MICHIGAN: 19, KEWEENAW: 8},
+}
 
 
 class Clock:
@@ -53,17 +87,21 @@ class Clock:
 
 class FakeApi:
     """Mindat as the tests need it: an exact search ignoring case and accents, records by
-    id, and whole records, which carry more than the lean ones."""
+    id, whole records, which carry more than the lean ones, the two locality lists, and
+    the counts. `fail_counts` fails a record's third request, its counties."""
 
-    def __init__(self, records=RECORDS, fail=False, fail_full=(), clock=None):
+    def __init__(self, records=RECORDS, fail=False, fail_full=(), fail_counts=(), clock=None):
         self.records = {r["id"]: r for r in records}
         self.fail = fail
         self.fail_full = set(fail_full)
+        self.fail_counts = set(fail_counts)
         self.clock = clock
         self.limits = mindat.IDLE
+        self.geography = None
         self.requests = 0
         self.asked = []
         self.fetched = []
+        self.counted = []
         self.leashes = []  # the limits in force at each request
 
     @contextmanager
@@ -98,6 +136,18 @@ class FakeApi:
             raise mindat.Unreachable("api.mindat.org answered 504")
         r = self.records.get(mindat_id)
         return {**r, "description_short": f"About {r['name']}."} if r else None
+
+    def localities(self, query):
+        self._request()
+        return US_ROWS if query == mindat.US_LOCALITIES else HOME_ROWS if query == mindat.HOME_LOCALITIES else []
+
+    def counts(self, mindat_id, localities):
+        self._request()
+        self.counted.append(mindat_id)
+        asked = set(localities)
+        if mindat_id in self.fail_counts and KEWEENAW in asked:
+            raise mindat.Unreachable("api.mindat.org answered 504")
+        return [{"lstm_loc": loc, "lstm_numlocs": n} for loc, n in COUNTS.get(mindat_id, {}).items() if loc in asked]
 
 
 def _db(tmp_path):
@@ -526,9 +576,9 @@ def test_running_out_of_time_stops_quietly_and_the_next_pass_goes_on(tmp_path):
     _mineral(conn, "Agate")
     _link(conn, api)
     clock.t = 0.0
-    assert mindat.idle(conn, api, budget_s=1.5, clock=clock) == (0, 0, 2)  # requests at 0 and 1; at 2 the time is up
+    assert mindat.idle(conn, api, budget_s=1.5, clock=clock) == (0, 0, 2, 0)  # requests at 0 and 1; at 2 the time is up
     assert _detailed(conn) == {51, 960}
-    assert mindat.idle(conn, api, budget_s=1.5, clock=clock) == (0, 0, 1)
+    assert mindat.idle(conn, api, budget_s=1.5, clock=clock) == (0, 0, 1, 0)  # and the time is up during the localities
     assert _detailed(conn) == {51, 960, 3337}
 
 
@@ -537,9 +587,9 @@ def test_the_idle_pass_stops_for_a_job_and_keeps_what_it_did(tmp_path):
     api = FakeApi(clock=clock)
     _mineral(conn, "Agate")
     # Linking Agate takes three requests (Agate, Chalcedony, Quartz); a job arrives after two.
-    assert mindat.idle(conn, api, clock=clock, should_stop=lambda: api.requests >= 2) == (0, 0, 0)
+    assert mindat.idle(conn, api, clock=clock, should_stop=lambda: api.requests >= 2) == (0, 0, 0, 0)
     assert api.requests == 2 and _mineral_row(conn, 1)[2] is None
-    assert mindat.idle(conn, api, clock=clock) == (0, 1, 3)  # the chain, then its three records
+    assert mindat.idle(conn, api, clock=clock) == (0, 1, 3, 3)  # the chain, its three records, then where each is found
     assert _mineral_row(conn, 1)[2] == 51
 
 
@@ -571,7 +621,7 @@ def test_the_idle_pass_links_fetches_and_says_so(tmp_path, caplog):
     _mineral(conn, "Quartz")
     with caplog.at_level(logging.INFO, logger="jasper"):
         assert worker.catch_up(conn, FakeApi(), NOW) == NOW + worker.CATCH_UP_EVERY
-    assert "mindat linked 1 mineral(s), fetched 1 record(s)" in [r.getMessage() for r in caplog.records]
+    assert [r.getMessage() for r in caplog.records] == ["mindat linked 1 mineral(s), fetched 1 record(s)", "mindat counted where 1 record(s) are found"]
     caplog.clear()
     with caplog.at_level(logging.INFO, logger="jasper"):
         assert worker.catch_up(conn, FakeApi(), NOW) == NOW + worker.CATCH_UP_EVERY
@@ -584,9 +634,128 @@ def test_without_a_key_the_idle_pass_never_runs(tmp_path, monkeypatch):
     conn = _db(tmp_path)
     calls = []
     monkeypatch.setattr(worker.time, "sleep", lambda s: None)
-    monkeypatch.setattr(worker.mindat, "idle", lambda conn, api, should_stop=None: calls.append(api) or (0, 0, 0))
+    monkeypatch.setattr(worker.mindat, "idle", lambda conn, api, should_stop=None: calls.append(api) or (0, 0, 0, 0))
     worker.run_forever(conn, tmp_path, CFG, iter([True, False]).__next__, None)
     assert calls == []
     api = FakeApi()
     worker.run_forever(conn, tmp_path, CFG, iter([True, False]).__next__, api)
     assert calls == [api]
+
+
+# --- where it's found (#65) ---------------------------------------------------------
+
+
+def _places(conn, rid):
+    row = conn.execute("SELECT places FROM mindat_records WHERE id = ?", (rid,)).fetchone()
+    return json.loads(row[0]) if row and row[0] is not None else None
+
+
+def _count_places(conn, api):
+    return mindat.fetch_places(conn, api, float("inf"))
+
+
+def test_the_50_states_and_the_home_counties_are_kept_and_the_rest_dropped():
+    geo = mindat.geography(US_ROWS, HOME_ROWS)
+    assert geo.usa == USA
+    assert len(mindat.STATES) == 50 and sorted(geo.states.values()) == sorted(mindat.STATES)
+    assert geo.states[MICHIGAN] == "Michigan"
+    assert TRI_STATE not in geo.states and YELLOWSTONE not in geo.states  # a mining district, a national park
+    assert sorted(geo.counties.values()) == ["Houghton County", "Keweenaw County", "Marquette County", "Ontonagon County"]
+
+
+def test_localities_with_no_usa_states_or_counties_are_a_failure():
+    with pytest.raises(mindat.Unreachable):
+        mindat.geography(US_ROWS[1:], HOME_ROWS)
+    with pytest.raises(mindat.Unreachable):
+        mindat.geography(US_ROWS[:1], HOME_ROWS)
+    with pytest.raises(mindat.Unreachable):
+        mindat.geography(US_ROWS, HOME_ROWS[4:])  # the regions alone
+
+
+def test_three_counts_are_shaped_most_first_with_the_zeros_dropped():
+    geo, api = mindat.geography(US_ROWS, HOME_ROWS), FakeApi()
+    places = mindat.places_of(geo, api.counts(51, [geo.usa]), api.counts(51, geo.states), api.counts(51, geo.counties))
+    assert places == {
+        "usa": 879,
+        # Michigan and Utah tie, so by name; the district is never asked.
+        "states": [{"id": NEBRASKA, "name": "Nebraska", "n": 140}, {"id": MICHIGAN, "name": "Michigan", "n": 51}, {"id": UTAH, "name": "Utah", "n": 51}],
+        # Ontonagon's 0 is dropped; the peninsula is never asked.
+        "michigan": [{"id": KEWEENAW, "name": "Keweenaw County", "n": 31}, {"id": HOUGHTON, "name": "Houghton County", "n": 8}],
+    }
+    assert mindat.places_of(geo, [], [], []) == {"usa": 0}
+
+
+def test_each_record_a_mineral_needs_is_counted_once_three_requests_each(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    _mineral(conn, "Agate")
+    _mineral(conn, "Jasper")
+    _link(conn, api)
+    asked = api.requests
+    assert _count_places(conn, api) == 4  # Agate, Chalcedony and Quartz above it, and Jasper
+    # The localities once, then three a record, and one for Jasper, which has no US row.
+    assert api.requests - asked == 2 + 3 + 3 + 1 + 3
+    assert api.counted == [51, 51, 51, 960, 960, 960, 2082, 3337, 3337, 3337]
+    assert _places(conn, 51)["usa"] == 879 and _places(conn, 3337)["michigan"][0] == {"id": MARQUETTE, "name": "Marquette County", "n": 168}
+    assert _places(conn, 2082) == {"usa": 0}
+    assert conn.execute("SELECT places_at FROM mindat_records WHERE id = 2082").fetchone()[0]
+    asked = api.requests
+    assert _count_places(conn, api) == 0
+    assert api.requests == asked
+
+
+def test_counts_older_than_30_days_are_counted_again(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    _mineral(conn, "Quartz")
+    _link(conn, api)
+    _count_places(conn, api)
+    conn.execute("UPDATE mindat_records SET places_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-29 days')")
+    conn.commit()
+    assert _count_places(conn, api) == 0
+    conn.execute("UPDATE mindat_records SET places_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-31 days')")
+    conn.commit()
+    asked = api.requests
+    assert _count_places(conn, api) == 1
+    assert api.requests - asked == 3  # the localities are asked once a run
+
+
+def test_a_stones_variety_is_looked_up_and_its_record_counted(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    quartz = _mineral(conn, "Quartz")
+    conn.execute("INSERT INTO specimens (mineral_id, variety) VALUES (?, 'Amethyst')", (quartz,))
+    conn.execute("INSERT INTO specimens (mineral_id, variety) VALUES (?, 'Purple')", (quartz,))
+    conn.commit()
+    _link(conn, api)
+    assert _count_places(conn, api) == 2  # Amethyst, and Quartz above it
+    assert api.asked == ["Quartz", "Amethyst", "Purple"]  # each variety as its own name, never the mineral's
+    assert _places(conn, 198)["usa"] == 820
+    asked = api.requests
+    assert _count_places(conn, api) == 0
+    assert api.requests == asked  # the varieties' terms are cached, a miss too
+
+
+def test_a_failure_stores_nothing_for_its_record_and_keeps_the_ones_before(tmp_path):
+    conn = _db(tmp_path)
+    _mineral(conn, "Agate")
+    _link(conn, FakeApi())
+    with pytest.raises(mindat.Unreachable):
+        _count_places(conn, FakeApi(fail_counts={960}))  # Chalcedony's counties fail, after its USA and states
+    assert _places(conn, 51)["usa"] == 879
+    assert _places(conn, 960) is None and _places(conn, 3337) is None
+
+
+def test_counting_stops_quietly_for_the_budget_or_a_job_and_the_next_pass_goes_on(tmp_path):
+    conn, clock = _db(tmp_path), Clock()
+    api = FakeApi(clock=clock)
+    _mineral(conn, "Quartz")
+    _link(conn, api)
+    _fetch(conn, api)
+    clock.t = 0.0
+    # The localities at 0 and 1, the USA at 2, the states at 3; at 4 the time is up before the counties.
+    assert mindat.idle(conn, api, budget_s=3.5, clock=clock) == (0, 0, 0, 0)
+    assert _places(conn, 3337) is None
+    asked = api.requests
+    assert mindat.idle(conn, api, clock=clock, should_stop=lambda: api.requests >= asked + 2) == (0, 0, 0, 0)  # a job arrives
+    assert _places(conn, 3337) is None
+    assert mindat.idle(conn, api, clock=clock) == (0, 0, 0, 1)
+    assert api.requests - asked == 2 + 3  # the localities were kept for the run
+    assert _places(conn, 3337)["usa"] == 32540

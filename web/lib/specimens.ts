@@ -12,6 +12,7 @@ import { mohsCard, type MohsCard } from "./mohs";
 import { chainOf, MAX_DEPTH } from "./names";
 import { thumbPathFor } from "./photos";
 import { isForm, isMatrix, MATRIX, type Form, type PartRole, type StoneKind } from "./pills";
+import { foundCard, parsePlaces, type FoundCard } from "./places";
 
 /** The newest photo first: by when it was taken, else when it was uploaded, then id. */
 const NEWEST_PHOTO = "COALESCE(p.taken_at, p.uploaded_at) DESC, p.id DESC";
@@ -203,6 +204,7 @@ export type StoneView = {
   morePhotosNamed: number; // later photos named "same stone as the last one"
   places: string[]; // every place a stone lives, most stones first, for the location field
   properties: PropertyCard; // the Mineral properties card, from the mineral's Mindat record (#23)
+  whereFound: FoundCard; // "Where it's found", from Mindat's counts on the variety's record or the mineral's (#65)
   elements: ElementsCard; // "What it's made of" (#42)
   mohsSet: MohsCard; // "On your Mohs scale" (#42)
 };
@@ -231,6 +233,45 @@ function readProperties(db: DatabaseSync, name: string, mindatId: number | null)
     rows.map((r) => [r.id, { id: r.id, name: r.name, entrytype: r.entrytype, varietyof: r.varietyof, hmin: r.hmin, hmax: r.hmax, streak: r.streak, detail: parseDetail(r.detail) }]),
   );
   return propertyCard(chainOf(mindatId, byId).map((r) => byId.get(r.id)!), false);
+}
+
+/**
+ * "Where it's found" (#65): the records the stone could show, most specific
+ * first, for `foundCard`. The variety's record is found as Jasper finds it
+ * (`_varieties` in jasper/mindat.py): in `mindat_terms`, its name as written,
+ * then before its first comma; a term not there yet is one Jasper hasn't asked.
+ * Then that record's chain, then the mineral's own.
+ */
+function readWhereFound(db: DatabaseSync, name: string, mindatId: number | null, variety: string | null): FoundCard {
+  const term = db.prepare("SELECT mindat_id FROM mindat_terms WHERE term = ?");
+  let varietyId: number | null = null;
+  let waiting = false;
+  for (const t of variety ? [...new Set([fold(variety), fold(variety.split(",")[0])])].filter(Boolean) : []) {
+    const row = term.get(t) as { mindat_id: number | null } | undefined;
+    if (row === undefined) waiting = true;
+    else if (row.mindat_id !== null) varietyId = row.mindat_id;
+    if (row === undefined || row.mindat_id !== null) break;
+  }
+  const seeds = [varietyId, mindatId].filter((id): id is number => id !== null);
+  const rows = db
+    .prepare(
+      `WITH RECURSIVE up(id, depth) AS (
+         SELECT value, 1 FROM json_each(?)
+         UNION
+         SELECT r.varietyof, up.depth + 1 FROM up JOIN mindat_records r ON r.id = up.id
+          WHERE r.varietyof IS NOT NULL AND up.depth < ?)
+       SELECT id, name, varietyof, hmin, hmax, places FROM mindat_records WHERE id IN (SELECT id FROM up)`,
+    )
+    .all(JSON.stringify(seeds), MAX_DEPTH) as Array<{ id: number; name: string; varietyof: number | null; hmin: number | null; hmax: number | null; places: string | null }>;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const ids = [...new Set(seeds.flatMap((id) => chainOf(id, byId).map((r) => r.id)))];
+  const miss = mindatId === null && (term.get(fold(name)) as { mindat_id: number | null } | undefined)?.mindat_id === null;
+  return foundCard(
+    ids.map((id) => ({ id, name: byId.get(id)!.name, places: parsePlaces(byId.get(id)!.places) })),
+    // A mineral not linked yet waits too: its chain may be the one with places.
+    waiting || (mindatId === null && !miss),
+    miss,
+  );
 }
 
 function parseDetail(json: string | null): Record<string, unknown> | null {
@@ -308,6 +349,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     morePhotosNamed: Math.max(0, confirmations.length - 1),
     places: places.map((p) => p.location),
     properties,
+    whereFound: readWhereFound(db, s.name, s.mindat_id, s.variety),
     elements: elementsCard(s.id, stones),
     mohsSet: mohsCard(s.id, names, properties.mohsRange),
   };

@@ -97,6 +97,10 @@ export const GLOSSARY = {
     term: "matrix",
     text: "The ordinary rock a crystal grew on or in. When nobody can name that rock, a show label calls it matrix: “Amethyst on matrix”. Collectors often leave it on, because it shows how the crystal was found.",
   },
+  locality: {
+    term: "locality",
+    text: "A named place where a mineral has been found: a mine, a quarry, a road cut, a stretch of beach. Mindat keeps a page for each one with the minerals reported there. Many are on private land or long closed, so a locality is not always a place you can visit.",
+  },
 } satisfies Record<string, GlossaryEntry>;
 
 export type GlossaryKey = keyof typeof GLOSSARY;

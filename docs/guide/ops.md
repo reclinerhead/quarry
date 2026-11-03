@@ -106,6 +106,7 @@ job 7 identified: haiku Galena 0.82 (5.8 s) · flash Galena 0.90 (4.1 s) · $0.0
 ```
 
 - The models alone take 6 to 11 s. A job's Mindat lookups are held to about 4 s (#40); `mindat stopped: …` means Mindat was slow or down and the idle pass will fill the ids in.
+- Between jobs, `mindat counted where 5 record(s) are found` is the idle pass counting places for the stone pages' "Where it's found" (#65), three requests a record, again each month. A household's first counts take a few minutes of passes; `mindat catch-up stopped: … 504` means Mindat is overloaded, and the pass tries again in ten minutes.
 
 - A model that did not answer makes it a WARNING.
 - A job that failed for good, such as a bad key, is an ERROR.
