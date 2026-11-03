@@ -17,7 +17,7 @@ import type { JobView } from "@/lib/jobs";
 import type { MineralHit } from "@/lib/minerals";
 import { HOW_CHOICES, type ConfirmHow } from "@/lib/naming";
 import { takenLabel } from "@/lib/photos";
-import { isMatrix, kindOf, madeOfLine, MATRIX, pieceName, savedParts, stoneName, verdictLine, type Pill } from "@/lib/pills";
+import { FORM_LABEL, FORMS, isMatrix, kindOf, madeOfLine, MATRIX, pieceName, savedParts, stoneName, verdictLine, type Form, type Pill } from "@/lib/pills";
 import { shrinkToJpeg } from "@/lib/shrink";
 import type { StonePart } from "@/lib/specimens";
 
@@ -41,7 +41,9 @@ import type { StonePart } from "@/lib/specimens";
 // Since #62 an object that is not a mineral says what it is made of under its
 // pill ("Made of Calcite"), with a "Made of" field and, when the two opinions
 // differ on it, both guesses as chips, as the variety has. Since #71 each pill
-// has "Why?" under it, which opens what the models saw.
+// has "Why?" under it, which opens what the models saw. Since #73 a pill
+// carries the piece's form as a tag ("geode", "tumbled"), and a Form chip row
+// under the fields, prefilled from the lead pill, is what a tap saves.
 
 type Props = {
   initialJob: JobView;
@@ -50,7 +52,7 @@ type Props = {
   nextJobId: number | null;
 };
 
-type Named = { specimenId: number; name: string; variety: string | null; parts: StonePart[]; madeOf: string | null; how: ConfirmHow; nextJobId: number | null };
+type Named = { specimenId: number; name: string; variety: string | null; parts: StonePart[]; madeOf: string | null; form: Form | null; how: ConfirmHow; nextJobId: number | null };
 
 const MAX_PHOTOS = 5;
 const POLL_MS = 1500;
@@ -64,6 +66,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
   const [typed, setTyped] = useState("");
   const [variety, setVariety] = useState("");
   const [madeOf, setMadeOf] = useState(""); // what an object that is not a mineral is made of (#62)
+  const [form, setForm] = useState<Form | null | undefined>(undefined); // the Form chips (#73): undefined until touched, then the choice or none
   const [ticked, setTicked] = useState<string[]>([]); // the lead pill's one-opinion minerals the person added
   const [hits, setHits] = useState<MineralHit[]>([]);
   const [showTests, setShowTests] = useState(false);
@@ -82,6 +85,8 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
   // The "Made of" field is for a fossil, a shell, sea glass: shown when any pill is one, or says what it is made of.
   const asksMadeOf = plan.pills.some((p) => p.kind === "other" || p.madeOf !== null || p.madeOfDoubt !== undefined);
   const nextJobId = named?.nextJobId ?? initialNext;
+  // The Form chips follow the lead pill until the person touches them; a tap on any pill then saves the chips' choice.
+  const formShown: Form | null = form === undefined ? (plan.pills[0]?.form ?? null) : form;
 
   // Poll until Jasper has answered (the on-the-spot flow, and asking again).
   useEffect(() => {
@@ -147,7 +152,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...body, variety: variety.trim() || undefined, madeOf: madeOf.trim() || undefined }),
+        body: JSON.stringify({ ...body, variety: variety.trim() || undefined, madeOf: madeOf.trim() || undefined, form: form === undefined ? undefined : (form ?? "") }),
       },
       "That name wasn’t saved",
     );
@@ -499,6 +504,8 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
           </div>
         ) : null}
 
+        {plan.pills.length > 0 ? formChips() : null}
+
         {!none ? nameField(false) : null}
 
         <div className="flex flex-col gap-4 border-t border-line pt-5">
@@ -559,6 +566,30 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
     if (plan.verdict === "could_be") return <>Only one of {opinions} came back, so Jasper isn&rsquo;t sure.</>;
     if (job.status === "failed") return "Something went wrong when Jasper tried. If you know the name, type it below.";
     return <>Neither of {opinions} could name it. If you know the name, type it below.</>;
+  }
+
+  // The shape of the piece (#73), as a rock hound bins it: chips, one on at
+  // most, following the lead pill until touched; a dashed "Not sure" for none.
+  function formChips() {
+    return (
+      <fieldset className="flex flex-col gap-2">
+        <legend className="float-left mb-2 flex w-full items-center font-bold">
+          Form <Term k="form" bare />
+        </legend>
+        <div className="flex flex-wrap gap-2">
+          {FORMS.map((f) => (
+            <button key={f} type="button" disabled={busy || asking} aria-pressed={formShown === f} onClick={() => setForm(formShown === f ? null : f)} className="chip">
+              {formShown === f ? <CheckIcon className="size-4" /> : null}
+              {FORM_LABEL[f]}
+            </button>
+          ))}
+          <button type="button" disabled={busy || asking} aria-pressed={formShown === null} onClick={() => setForm(null)} className="chip chip-dashed">
+            {formShown === null ? <CheckIcon className="size-4" /> : null}
+            Not sure
+          </button>
+        </div>
+      </fieldset>
+    );
   }
 
   // The minerals only one opinion saw, under the lead pill (#29): each a chip,
@@ -677,6 +708,11 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
                 Made of: <span className="font-sans text-body text-ink">{stoneName(n.madeOf)}</span>
               </p>
             ) : null}
+            {n.form ? (
+              <p className="font-label text-meta text-ink-2">
+                Form: <span className="font-sans text-body text-ink">{FORM_LABEL[n.form]}</span>
+              </p>
+            ) : null}
           </div>
         </div>
         <p className="text-lead text-ink-2">It&rsquo;s in your collection now.</p>
@@ -736,7 +772,7 @@ function PillButton({ pill, name, describedBy, disabled, onPick }: { pill: Pill;
       type="button"
       disabled={disabled}
       onClick={onPick}
-      aria-label={`${name}${kind ? `, ${kind.toLowerCase()}` : ""}${made ? `, ${made.toLowerCase()}` : ""}: ${pill.word}`}
+      aria-label={`${name}${kind ? `, ${kind.toLowerCase()}` : ""}${made ? `, ${made.toLowerCase()}` : ""}${pill.form ? `, ${FORM_LABEL[pill.form].toLowerCase()}` : ""}: ${pill.word}`}
       aria-describedby={describedBy}
       // 32 px corners: a pill on one line, and a rounded card, not an oval, when a long name wraps.
       className={`flex min-h-16 w-full items-center justify-between gap-4 rounded-[32px] border bg-surface py-2.5 pl-6 pr-3 text-left transition-colors hover:border-line-strong hover:bg-sand disabled:opacity-60 ${lead ? "border-2 border-azurite" : "border-line-2"}`}
@@ -746,7 +782,10 @@ function PillButton({ pill, name, describedBy, disabled, onPick }: { pill: Pill;
         {kind ? <span className="block text-[17px] text-ink-2">{kind}</span> : null}
         {made ? <span className="block text-[17px] text-ink-2">{made}</span> : null}
       </span>
-      <span className={`shrink-0 rounded-pill px-3 py-1 text-tag font-bold ${lead ? "bg-azurite-soft text-azurite-note" : "bg-sand text-tag-ink"}`}>{pill.word}</span>
+      <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+        {pill.form ? <span className="rounded-pill bg-sand px-3 py-1 text-tag font-bold text-tag-ink">{FORM_LABEL[pill.form].toLowerCase()}</span> : null}
+        <span className={`rounded-pill px-3 py-1 text-tag font-bold ${lead ? "bg-azurite-soft text-azurite-note" : "bg-sand text-tag-ink"}`}>{pill.word}</span>
+      </span>
     </button>
   );
 }

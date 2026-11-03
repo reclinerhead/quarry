@@ -10,7 +10,7 @@ import type { JobStatus } from "./job-state";
 import { chainOf, MAX_DEPTH, type MindatRecord } from "./names";
 import type { ConfirmHow } from "./naming";
 import { thumbPathFor } from "./photos";
-import { parseParts, planPills, type Candidate, type Plan } from "./pills";
+import { isForm, parseParts, planPills, type Candidate, type Form, type Plan } from "./pills";
 import { stoneParts, type StonePart } from "./specimens";
 
 export type { ConfirmHow };
@@ -32,6 +32,7 @@ export type JobView = {
     variety: string | null;
     parts: StonePart[];
     madeOf: string | null; // what the stone is made of (#62), a minerals row's name
+    form: Form | null; // the shape of the piece (#73)
     how: ConfirmHow;
     source: "pill" | "typed" | "same_as_last";
     confirmedAt: string;
@@ -59,15 +60,16 @@ export function candidatesOf(db: DatabaseSync, jobId: number): Candidate[] {
   const rows = (
     db
       .prepare(
-        "SELECT model, rank, name, variety, kind, confidence, mindat_id, parts, made_of, made_of_mindat_id, features FROM candidates WHERE job_id = ? ORDER BY model, rank",
+        "SELECT model, rank, name, variety, kind, confidence, mindat_id, parts, made_of, made_of_mindat_id, features, form FROM candidates WHERE job_id = ? ORDER BY model, rank",
       )
       .all(jobId) as Array<
-      Omit<Candidate, "chain" | "parts" | "madeOf" | "features"> & {
+      Omit<Candidate, "chain" | "parts" | "madeOf" | "features" | "form"> & {
         mindat_id: number | null;
         parts: string | null;
         made_of: string | null;
         made_of_mindat_id: number | null;
         features: string | null;
+        form: string | null;
       }
     >
   ).map((r) => ({ ...r, parts: parseParts(r.parts) }));
@@ -95,6 +97,7 @@ export function candidatesOf(db: DatabaseSync, jobId: number): Candidate[] {
     parts: r.parts.map((p) => ({ role: p.role, name: p.name, chain: chainOf(p.mindatId, byId) })),
     madeOf: r.made_of ? { name: r.made_of, chain: chainOf(r.made_of_mindat_id, byId) } : null,
     features: parseFeatures(r.features),
+    form: isForm(r.form) ? r.form : null,
   }));
 }
 
@@ -127,7 +130,7 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
     .all(jobId) as Array<{ model: string; rank: number; kind: TestKind; how: string; expected: string }>;
   const conf = db
     .prepare(
-      `SELECT c.specimen_id, c.how, c.source, c.confirmed_at, m.name, sp.variety, mo.name AS made_of
+      `SELECT c.specimen_id, c.how, c.source, c.confirmed_at, m.name, sp.variety, mo.name AS made_of, sp.form
          FROM confirmations c
          JOIN specimens sp ON sp.id = c.specimen_id
          JOIN minerals m ON m.id = sp.mineral_id
@@ -143,6 +146,7 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
         name: string;
         variety: string | null;
         made_of: string | null;
+        form: string | null;
       }
     | undefined;
   const identifier = identifierSlug();
@@ -164,6 +168,7 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
           variety: conf.variety,
           parts: stoneParts(db, conf.specimen_id),
           madeOf: conf.made_of,
+          form: isForm(conf.form) ? conf.form : null,
           how: conf.how,
           source: conf.source,
           confirmedAt: conf.confirmed_at,

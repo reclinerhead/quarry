@@ -264,6 +264,20 @@ describe("planPills", () => {
     expect(plan.pills[0].reasons).toEqual(["brassy cubes", "clear points"]);
   });
 
+  // #73: the form rides on the pill, the identifier's first, and never decides agreement.
+  it("gives the lead pill the identifier's form, else the other's, and a could-be pill its own", () => {
+    const [haiku] = cands(HAIKU, "Quartz");
+    const [flash] = cands(FLASH, "Quartz");
+    expect(planPills([{ ...haiku, form: "geode" }, { ...flash, form: "cluster" }], HAIKU).pills[0].form).toBe("geode");
+    expect(planPills([{ ...haiku, form: null }, { ...flash, form: "cluster" }], HAIKU).pills[0].form).toBe("cluster");
+    expect(planPills([haiku, flash], HAIKU).pills[0].form).toBeNull();
+    const torn = planPills([{ ...cands(HAIKU, "Quartz")[0], form: "tumbled" }, { ...cands(FLASH, "Calcite")[0], form: "rough" }], HAIKU);
+    expect(torn.verdict).toBe("could_be");
+    expect(torn.pills.map((p) => p.form)).toEqual(["tumbled", "rough"]);
+    const sameStoneDifferentForm = planPills([{ ...haiku, form: "tumbled" }, { ...flash, form: "rough" }], HAIKU);
+    expect(sameStoneDifferentForm.verdict).toBe("probably");
+  });
+
   it("puts no scratch misfit on a piece with parts, since the answer could be about any of them", () => {
     const [haiku] = cands(HAIKU, "Calcite");
     const [flash] = cands(FLASH, "Calcite");

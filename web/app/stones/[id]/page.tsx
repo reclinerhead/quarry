@@ -16,7 +16,7 @@ import { mohsRowLabel } from "@/lib/mohs";
 import { HOW_SUMMARY } from "@/lib/naming";
 import { sameStone } from "@/lib/names";
 import { PieceTitle } from "@/components/piece-title";
-import { kindOf, madeOfLine, pieceName, stoneName } from "@/lib/pills";
+import { FORM_LABEL, kindOf, madeOfLine, pieceName, stoneName } from "@/lib/pills";
 import { readStone, type StoneView } from "@/lib/specimens";
 
 // /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 2
@@ -105,6 +105,7 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
           ) : (
             <span className="tag">{KIND_LABEL[stone.kind]}</span>
           )}
+          {stone.form ? <TagTerm k="form">{FORM_LABEL[stone.form]}</TagTerm> : null}
           {props.mohs ? <TagTerm k="hardness">{`Mohs ${props.mohs}`}</TagTerm> : null}
           {props.glow === "can" ? (
             <TagTerm k="fluorescence" uv>

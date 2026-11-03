@@ -11,7 +11,7 @@ import { fold, formulaSegments, mineralClassOf, propertyCard, type ChainRecord, 
 import { mohsCard, type MohsCard } from "./mohs";
 import { chainOf, MAX_DEPTH } from "./names";
 import { thumbPathFor } from "./photos";
-import { isMatrix, MATRIX, type PartRole, type StoneKind } from "./pills";
+import { isForm, isMatrix, MATRIX, type Form, type PartRole, type StoneKind } from "./pills";
 
 /** The newest photo first: by when it was taken, else when it was uploaded, then id. */
 const NEWEST_PHOTO = "COALESCE(p.taken_at, p.uploaded_at) DESC, p.id DESC";
@@ -145,7 +145,7 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
   const classes = mineralClasses(db);
   const rows = db
     .prepare(
-      `SELECT sp.id, sp.mineral_id, m.name, m.kind, sp.variety, mo.name AS made_of, sp.found_at, sp.acquired, sp.location, sp.created_at,
+      `SELECT sp.id, sp.mineral_id, m.name, m.kind, sp.variety, mo.name AS made_of, sp.form, sp.found_at, sp.acquired, sp.location, sp.created_at,
               (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${NEWEST_PHOTO} LIMIT 1) AS path
          FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id LEFT JOIN minerals mo ON mo.id = sp.made_of_id`,
     )
@@ -156,6 +156,7 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
     kind: StoneKind;
     variety: string | null;
     made_of: string | null;
+    form: string | null;
     found_at: string | null;
     acquired: Acquired | null;
     location: string | null;
@@ -169,6 +170,7 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
     mineralClass: classes.get(r.mineral_id) ?? null,
     variety: r.variety,
     madeOf: r.made_of,
+    form: isForm(r.form) ? r.form : null,
     parts: (parts.get(r.id) ?? []).map(partOf),
     foundAt: r.found_at,
     acquired: r.acquired,
@@ -186,6 +188,7 @@ export type StoneView = {
   variety: string | null;
   parts: StonePart[]; // the other minerals on it (#29), "with" in order, then "on"
   madeOf: string | null; // what an object that is not a mineral is made of (#62): a minerals row's name
+  form: Form | null; // the shape of the piece (#73)
   foundAt: string | null;
   acquired: Acquired | null;
   acquiredOn: string | null;
@@ -243,7 +246,7 @@ function parseDetail(json: string | null): Record<string, unknown> | null {
 export function readStone(db: DatabaseSync, id: number): StoneView | null {
   const s = db
     .prepare(
-      `SELECT sp.id, sp.mineral_id, m.name, m.kind, m.mindat_id, sp.variety, mo.name AS made_of, sp.found_at, sp.acquired, sp.acquired_on,
+      `SELECT sp.id, sp.mineral_id, m.name, m.kind, m.mindat_id, sp.variety, mo.name AS made_of, sp.form, sp.found_at, sp.acquired, sp.acquired_on,
               sp.location, sp.notes, sp.tests, sp.created_at
          FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id LEFT JOIN minerals mo ON mo.id = sp.made_of_id WHERE sp.id = ?`,
     )
@@ -256,6 +259,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
         mindat_id: number | null;
         variety: string | null;
         made_of: string | null;
+        form: string | null;
         found_at: string | null;
         acquired: Acquired | null;
         acquired_on: string | null;
@@ -289,6 +293,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     variety: s.variety,
     parts: stoneParts(db, s.id),
     madeOf: s.made_of,
+    form: isForm(s.form) ? s.form : null,
     foundAt: s.found_at,
     acquired: s.acquired,
     acquiredOn: s.acquired_on,

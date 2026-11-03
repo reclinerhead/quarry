@@ -9,7 +9,9 @@
 // by name as `maybe: string[]`. A typed name saves none (the stone's page adds
 // them). An optional `madeOf` (#62) is the mineral the object is made of, which
 // defaults to the pill's own: none when the two opinions disagreed on it, so a
-// guess they differed on is never saved as though it were known. Finds or
+// guess they differed on is never saved as though it were known. An optional
+// `form` (#73), one of FORMS or "" for none, is the shape of the piece as the
+// person left the Form chips; left out, the pill's own is used. Finds or
 // creates the minerals, creates the specimen with the job's
 // notes and test answers, links the job's photos and writes the confirmation,
 // in one transaction. Saves at once: there is no batch save.
@@ -31,7 +33,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { openReadWrite } from "@/lib/db";
 import { candidatesOf, identifierSlug, nextWaitingJob, waitingJobIds, type ConfirmHow } from "@/lib/jobs";
 import { norm } from "@/lib/names";
-import { planPills, savedParts, type Candidate, type PartRole } from "@/lib/pills";
+import { isForm, planPills, savedParts, type Candidate, type Form, type PartRole } from "@/lib/pills";
 import { mineralId, pruneMinerals, stoneParts, writeMadeOf, writeParts } from "@/lib/specimens";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +47,7 @@ type Body = {
   variety?: unknown;
   maybe?: unknown;
   madeOf?: unknown;
+  form?: unknown;
   how?: unknown;
 };
 
@@ -87,6 +90,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!body) return Response.json({ error: "expected json" }, { status: 400 });
   const variety = clean(body.variety, 80);
   const madeOfTyped = clean(body.madeOf, 80);
+  if (body.form !== undefined && body.form !== null && body.form !== "" && !isForm(body.form))
+    return Response.json({ error: "form must be one of crystal, cluster, geode, druzy, rough, tumbled, slab, carved" }, { status: 400 });
+  const formSent: Form | null | undefined = body.form === undefined ? undefined : isForm(body.form) ? body.form : null;
   const ticked = Array.isArray(body.maybe) ? body.maybe.flatMap((m) => clean(m) ?? []) : [];
 
   const db = open();
@@ -112,6 +118,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     let kind: Candidate["kind"] = "mineral";
     let parts: Array<{ role: PartRole; name: string }> = [];
     let madeOf: string | null = madeOfTyped;
+    let form: Form | null = formSent ?? null;
     if (body.pick) {
       const c = candidates.find((x) => x.model === body.pick?.model && x.rank === Number(body.pick?.rank));
       if (!c) {
@@ -124,6 +131,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       stoneVariety = variety ?? (pill ? pill.variety : c.variety);
       parts = pill ? savedParts(pill, ticked) : (c.parts ?? []);
       madeOf = madeOfTyped ?? (pill ? pill.madeOf : c.madeOf)?.name ?? null;
+      form = formSent === undefined ? ((pill ? pill.form : c.form) ?? null) : formSent;
       source = "pill";
       how = "suggestion";
     } else {
@@ -144,8 +152,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
     const mineral = mineralId(db, mineralName, kind);
     const sp = db
-      .prepare("INSERT INTO specimens (mineral_id, variety, notes, tests) VALUES (?, ?, ?, ?)")
-      .run(mineral, stoneVariety, job.notes, job.tests);
+      .prepare("INSERT INTO specimens (mineral_id, variety, notes, tests, form) VALUES (?, ?, ?, ?, ?)")
+      .run(mineral, stoneVariety, job.notes, job.tests, form);
     const specimenId = Number(sp.lastInsertRowid);
     writeParts(db, specimenId, parts);
     writeMadeOf(db, specimenId, madeOf);
@@ -164,7 +172,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     db.exec("COMMIT");
 
     const nextJobId = nextWaitingJob(waitingJobIds(db), jobId);
-    return Response.json({ specimenId, name, variety: stoneVariety, parts: stoneParts(db, specimenId), madeOf: made?.name ?? null, how, nextJobId }, { status: 201 });
+    return Response.json({ specimenId, name, variety: stoneVariety, parts: stoneParts(db, specimenId), madeOf: made?.name ?? null, form, how, nextJobId }, { status: 201 });
   } catch (err) {
     return fail(db, err);
   } finally {

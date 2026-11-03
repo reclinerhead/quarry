@@ -6,7 +6,7 @@
 // phone. The Conservatory's lib/collection.ts, for stones.
 
 import { norm } from "./names";
-import { pieceName, type PartRole, type StoneKind } from "./pills";
+import { FORM_LABEL, pieceName, type Form, type PartRole, type StoneKind } from "./pills";
 
 export type Acquired = "found" | "bought" | "gifted" | "traded";
 
@@ -18,6 +18,7 @@ export type Tile = {
   variety: string | null;
   parts: Array<{ role: PartRole; name: string }>; // the other minerals on it (#29)
   madeOf: string | null; // what an object that is not a mineral is made of (#62)
+  form: Form | null; // the shape of the piece (#73)
   foundAt: string | null; // where it was found or bought
   acquired: Acquired | null;
   location: string | null; // where it lives now
@@ -26,7 +27,12 @@ export type Tile = {
   thumbUrl: string | null; // the newest photo's thumbnail
 };
 
-export type KindFilter = "all" | "minerals" | "rocks";
+/** DESIGN.md §5's chips: Crystals and Tumbled and polished go by the form (#73), Rocks and fossils by the kind. */
+export type KindFilter = "all" | "crystals" | "rocks" | "tumbled";
+
+/** Which forms each form chip gathers. Rough is in Everything only. */
+export const CRYSTAL_FORMS: readonly Form[] = ["crystal", "cluster", "geode", "druzy"];
+export const WORKED_FORMS: readonly Form[] = ["tumbled", "slab", "carved"];
 export type FromFilter = "all" | "found" | "bought";
 export type Sort = "name" | "new";
 export type Filters = { q: string; kind: KindFilter; from: FromFilter };
@@ -70,16 +76,17 @@ export function metaLine(t: Pick<Tile, "location" | "added">): string {
   return t.location ? `${t.location} · ${added}` : added;
 }
 
-/** The search box: any part of the name, the variety, the other minerals on it, what it is made of or where it was found, ignoring case and punctuation. */
-export function matchesQuery(t: Pick<Tile, "name" | "variety" | "parts" | "madeOf" | "foundAt">, q: string): boolean {
+/** The search box: any part of the name, the variety, the other minerals on it, what it is made of, its form or where it was found, ignoring case and punctuation. */
+export function matchesQuery(t: Pick<Tile, "name" | "variety" | "parts" | "madeOf" | "form" | "foundAt">, q: string): boolean {
   const needle = norm(q);
   if (!needle) return true;
-  return [t.name, t.variety ?? "", ...t.parts.map((p) => p.name), t.madeOf ?? "", t.foundAt ?? ""].some((v) => norm(v).includes(needle));
+  return [t.name, t.variety ?? "", ...t.parts.map((p) => p.name), t.madeOf ?? "", t.form ? FORM_LABEL[t.form] : "", t.foundAt ?? ""].some((v) => norm(v).includes(needle));
 }
 
 function matchesKind(t: Tile, kind: KindFilter): boolean {
-  if (kind === "minerals") return t.kind === "mineral";
+  if (kind === "crystals") return t.form !== null && CRYSTAL_FORMS.includes(t.form);
   if (kind === "rocks") return t.kind !== "mineral"; // "Rocks and fossils": rocks and everything that isn't a mineral
+  if (kind === "tumbled") return t.form !== null && WORKED_FORMS.includes(t.form);
   return true;
 }
 
@@ -106,17 +113,18 @@ export function sortTiles(tiles: Tile[], sort: Sort): Tile[] {
 export type Chip = { key: string; label: string; n: number; on: boolean };
 
 /**
- * The filter chips DESIGN.md §5 names that Phase 1 has data for: Everything,
- * Minerals, Rocks and fossils, Found it myself, Bought or gifted. Counts come
- * from the whole collection, so the row never changes shape while a person
- * types, and a chip with nobody in it is left out.
+ * The filter chips DESIGN.md §5 names that the data allows: Everything,
+ * Crystals, Rocks and fossils, Tumbled and polished (#73), Found it myself,
+ * Bought or gifted. Counts come from the whole collection, so the row never
+ * changes shape while a person types, and a chip with nobody in it is left out.
  */
 export function filterChips(tiles: Tile[], f: Pick<Filters, "kind" | "from">): Chip[] {
   const n = (pred: (t: Tile) => boolean) => tiles.filter(pred).length;
   const chips: Chip[] = [
     { key: "all", label: "Everything", n: tiles.length, on: f.kind === "all" && f.from === "all" },
-    { key: "minerals", label: "Minerals", n: n((t) => matchesKind(t, "minerals")), on: f.kind === "minerals" },
+    { key: "crystals", label: "Crystals", n: n((t) => matchesKind(t, "crystals")), on: f.kind === "crystals" },
     { key: "rocks", label: "Rocks and fossils", n: n((t) => matchesKind(t, "rocks")), on: f.kind === "rocks" },
+    { key: "tumbled", label: "Tumbled and polished", n: n((t) => matchesKind(t, "tumbled")), on: f.kind === "tumbled" },
     { key: "found", label: "Found it myself", n: n((t) => matchesFrom(t, "found")), on: f.from === "found" },
     { key: "bought", label: "Bought or gifted", n: n((t) => matchesFrom(t, "bought")), on: f.from === "bought" },
   ];
