@@ -28,7 +28,7 @@ pnpm dev
 | `GET /media/photos/[yyyy]/[mm]/[file]` | A photo, or the thumbnail Jasper writes beside it, from the data directory | #6 |
 | `/name` | Sends the person to the oldest stone waiting for a name, or says there is none | #8 |
 | `/name/[id]` | The confirm screen, one stone per screen; see below | #8 |
-| `POST /api/jobs/[id]/confirm` | Put a name on the stone: `{ pick: { model, rank } }`, `{ typedName }` or `{ sameAsSpecimenId }`, plus an optional `variety`, and with a pick the one-opinion minerals the person ticked, `maybe: string[]` | #8, #29 |
+| `POST /api/jobs/[id]/confirm` | Put a name on the stone: `{ pick: { model, rank } }` or `{ typedName }`, plus an optional `variety`, and with a pick the one-opinion minerals the person ticked, `maybe: string[]` | #8, #29 |
 | `PATCH /api/jobs/[id]/confirm` | "How do you know?": `{ how }` | #8 |
 | `DELETE /api/jobs/[id]/confirm` | "Change": reverse a naming | #8 |
 | `POST /api/jobs/[id]/dismiss` | "Not a rock": delete the job, its photos, their files and thumbnails | #8 |
@@ -249,7 +249,6 @@ Tests:
   - "Ask Jasper again with these answers" saves both on the job and sends it back to the queue (`POST .../tests`; `cleanAnswers` keeps only `yes`, `no` and a streak colour, and leaves a test not tried out of the JSON).
   - On success the panel closes and focus moves to the heading block, which brings the card's top into view on a phone (the tests sit at the bottom of the card) and has a screen reader say "Jasper is looking again…". The old pills stay in place, dimmed, until Jasper's new plan replaces them, so nothing moves when it lands.
   - Once settled, a job with at least one test answer carries a `text-meta` kicker above the verdict, "Jasper looked again with your answers". It is state, not a toast: it is there after a reload and goes once the stone is named. Nothing is reserved for it on a job with no answers, since it appears only after the person's own press.
-- **"Same stone as the last one"** (`lastNamedStone`, with that stone's name as its label reads) merges this photo into the stone named most recently.
 - **"Not a rock"** is two taps, then deletes the job, its photos, and their files and thumbnails.
 - **"Add another photo of this stone"** stores a photo on the same job (at most five, Jasper's limit) and sends it back to the queue.
 - **"Skip for now"** goes to the next waiting job; **"Done for now"** goes home.
@@ -257,14 +256,14 @@ Tests:
 **Naming saves at once.** `POST .../confirm` does it all in one `BEGIN IMMEDIATE`:
 - it finds or creates the mineral (`mineralId` in `lib/specimens.ts`; `minerals.name` is `COLLATE NOCASE`, so "galena" finds "Galena");
 - it creates the specimen with the variety and the job's notes and test answers;
-- for a pill, it writes the other minerals on the piece (`writeParts`): the pill's parts and the maybes sent, each a `minerals` row made the same way, so Jasper links it to Mindat. A typed name saves none (the stone's page adds them), and another photo keeps the stone's;
+- for a pill, it writes the other minerals on the piece (`writeParts`): the pill's parts and the maybes sent, each a `minerals` row made the same way, so Jasper links it to Mindat. A typed name saves none (the stone's page adds them);
 - it links the photos;
 - it writes the confirmation.
 
 The confirmation records:
 - `chosen_name`;
-- `source`: `pill`, `typed` or `same_as_last`;
-- `how`: a pill is `suggestion`, a typed name `guess`, and another photo inherits the stone's first naming;
+- `source`: `pill` or `typed`. The schema also allows `same_as_last`, from a button that merged a photo into the stone named just before; it was dropped (#60) because the household has few duplicate stones, and only older stones carry it;
+- `how`: a pill is `suggestion`, a typed name `guess`;
 - `verdict`: what the screen said, recomputed from the candidates on the server rather than taken from the request.
 
 A typed name that one of the models also gave takes that candidate's spelling and kind; any other is a mineral until Jasper links it to its Mindat record, when the kind follows Mindat's (a typed Granite becomes a rock; see `jasper.md`).

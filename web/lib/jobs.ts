@@ -174,21 +174,6 @@ export function nextWaitingJob(ids: number[], current: number): number | null {
   return others.find((id) => id > current) ?? others[0];
 }
 
-/** The stone the person named most recently, for "Same stone as the last one". */
-export function lastNamedStone(db: DatabaseSync): { id: number; name: string; variety: string | null; parts: StonePart[] } | null {
-  const row = db
-    .prepare(
-      `SELECT sp.id, m.name, sp.variety
-         FROM confirmations c
-         JOIN specimens sp ON sp.id = c.specimen_id
-         JOIN minerals m ON m.id = sp.mineral_id
-        ORDER BY c.confirmed_at DESC, c.rowid DESC LIMIT 1`,
-    )
-    .get() as { id: number; name: string; variety: string | null } | undefined;
-  // node:sqlite rows have a null prototype, which React refuses to pass to a client component.
-  return row ? { id: row.id, name: row.name, variety: row.variety, parts: stoneParts(db, row.id) } : null;
-}
-
 /** The pending strip: how many stones wait, up to three thumbnails, and the first one's job. */
 export function waitingStrip(db: DatabaseSync): { count: number; thumbs: string[]; first: JobView | null } {
   const ids = waitingJobIds(db);
