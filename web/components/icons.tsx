@@ -80,3 +80,21 @@ export function TagIcon({ className = "" }: IconProps) {
     </svg>
   );
 }
+
+/**
+ * Jasper at work (#31): a rock hammer, pivoting at the grip, taps a stone, and
+ * two ticks flash at each strike. Drawn at the strike; under reduced motion it
+ * rests there, hammer on the stone.
+ */
+export function RockHammerIcon({ className = "" }: IconProps) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 21.5 4.3 17.7 8 16.3l4 .9 2 4.3z" />
+      <path d="M4.9 14.7 3.2 13.7M5.4 12.4 4.3 10.8" className="opacity-0 animate-hammer-spark motion-reduce:animate-none" />
+      <g className="origin-[20.5px_11.5px] animate-hammer-tap motion-reduce:animate-none">
+        <path d="M6.5 15.4h4V10L10 4.2 7 9.6l-.5.4z" />
+        <path d="M10.5 11.5H21" />
+      </g>
+    </svg>
+  );
+}

@@ -112,4 +112,27 @@
   /* Layout */
   --container-page: 1360px;
   --container-sidebar: 400px;
+
+  /* Motion: only Jasper at work moves (DESIGN.md §4), and never under
+     prefers-reduced-motion. The hammer and its spark share one beat. */
+  --animate-hammer-tap: hammer-tap 1.3s infinite;
+  --animate-hammer-spark: hammer-spark 1.3s linear infinite;
+  --animate-line-in: line-in 400ms ease-out;
+
+  @keyframes hammer-tap {
+    0%, 100% { transform: rotate(16deg); animation-timing-function: ease-in-out; }
+    38% { transform: rotate(20deg); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); } /* wind up, then swing */
+    56% { transform: rotate(0deg); animation-timing-function: ease-out; } /* strike */
+    63% { transform: rotate(5deg); animation-timing-function: ease-in; } /* bounce */
+    69% { transform: rotate(0deg); animation-timing-function: ease-in-out; }
+  }
+  @keyframes hammer-spark {
+    0%, 55% { opacity: 0; }
+    58% { opacity: 1; }
+    72%, 100% { opacity: 0; }
+  }
+  @keyframes line-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
 }

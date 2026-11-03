@@ -38,7 +38,8 @@ SaaS dashboard and not a gem-shop sparkle page.
   name, details missing). Violet only means "glows under UV". Never use these
   for decoration.
 - No gradients, no emoji, no glitter, no left-border cards. Icons are
-  1.8–2 px stroke line icons, inline SVG.
+  1.8–2 px stroke line icons, inline SVG. Nothing moves except Jasper at work
+  (§4), and nothing at all under reduced motion.
 - Copy is plain and specific: "3 rocks waiting for a name", "Handle it over a
   towel", "Your answers fit fluorite". Say "stone" or "rock" in friendly copy.
   Use the real term (Mohs hardness, streak, luster) only where it carries
@@ -180,7 +181,20 @@ the Mindat record. When they don't fit, use a `warn` note with the reason
 **Pending strip**: full-width `warn` card with `warn-line` border: up to three
 overlapping 72 px thumbs, "N rocks waiting for a name" (Zilla 26), one line
 with Jasper's guess for the first one and the test that would settle it, and
-one primary button ("Name them").
+one primary button ("Name them"). While Jasper still has rocks and none waits
+for a name, the same box holds them as a plain white card (nothing needs you
+yet): their thumbs (the crystal placeholder for a rock he hasn't started),
+"N rocks waiting for Jasper", Jasper at work under it, and the button's room
+kept empty. When he's done it turns amber in place, with no reload.
+
+**Jasper at work**: the one thing that moves. A rock hammer line icon in
+azurite, 1.5em, pivoting at the grip to tap a stone, with two ticks flashing at
+each strike. Beside it, a rock hound's line that changes every 2.5 s ("Digging
+in…", "Giving it a lick…", "Hand lens out…"). The lines are plain words, never
+a term that needs an info mark, and short enough to stay on one line in a
+narrow row. It's decoration beside a status that says where things stand, so
+it's hidden from screen readers. Under reduced motion the hammer rests on the
+stone and the line holds.
 
 **Candidate pills** (naming, and "How it was named"): confirmed name = solid
 azurite with a check. Other candidates = outlined, 64 px tall, the piece's
@@ -237,7 +251,7 @@ primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
 1. Date, then a greeting that says what changed ("Good evening. Two new stones
    today."), and one line on what the new stones added (a Mohs slot, new
    elements).
-2. Pending strip (only when something is waiting).
+2. Pending strip (only while something waits for a name, or Jasper still has it).
 3. Two columns, 32 px gap: **Your collection** (`flex: 999 1 600px`) and a
    **side column** (`flex: 1 1 320px; max-width: 400px`) that drops below on
    phones.
