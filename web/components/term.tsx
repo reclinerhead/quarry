@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { entry, type GlossaryKey } from "@/lib/glossary";
 
 // The info mark from design/DESIGN.md §4: a 28 px ring in line-strong with an
@@ -9,14 +9,31 @@ import { entry, type GlossaryKey } from "@/lib/glossary";
 // Pressing it opens a sand note with the explanation. The note floats under
 // the mark rather than opening in place (the Conservatory's choice), so
 // opening one never moves anything else: the no-layout-shift rule outranks
-// the canvas's inline block. Closes on a tap outside, Escape, or the mark.
+// the canvas's inline block. It hangs from the mark's left edge, and when that
+// would put it past either edge of the viewport (a mark in the side column,
+// #46), it is measured once it is open and shifted inside the 16 px gutter.
+// Closes on a tap outside, Escape, or the mark.
 // `bare` draws the mark alone, beside a term already written in a <label>
 // (a button inside a label would also focus the label's field).
 export function Term({ k, children, bare = false }: { k: GlossaryKey; children?: React.ReactNode; bare?: boolean }) {
   const e = entry(k);
   const [open, setOpen] = useState(false);
+  const [shift, setShift] = useState(0); // px to move the note left (negative) or right, to stay in the viewport
   const id = useId();
   const ref = useRef<HTMLSpanElement>(null);
+  const note = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !note.current) {
+      setShift(0);
+      return;
+    }
+    const gutter = 16;
+    const r = note.current.getBoundingClientRect();
+    const over = r.right - (window.innerWidth - gutter);
+    const under = gutter - r.left;
+    setShift(over > 0 ? -over : under > 0 ? under : 0);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -53,8 +70,11 @@ export function Term({ k, children, bare = false }: { k: GlossaryKey; children?:
       {open ? (
         <span
           id={id}
+          ref={note}
           role="note"
           aria-live="polite"
+          // The measured shift is the one value no class can know in advance.
+          style={shift ? { left: shift } : undefined}
           className="absolute left-0 top-full z-20 mt-2 block w-[min(24rem,calc(100vw-2rem))] rounded-tile border border-line-2 bg-sand p-5 font-sans text-lead font-normal not-italic leading-normal tracking-normal text-ink shadow-hover"
         >
           <span className="block font-display text-h3 font-semibold capitalize leading-tight">{e.term}</span>
