@@ -21,6 +21,10 @@ export const GLOSSARY = {
     term: "variety",
     text: "A named kind of a mineral, set apart by its colour or by how it formed. Amethyst is a purple variety of quartz, and agate a banded variety of chalcedony. Shop names like Tiger’s Eye or Blue Lace Agate go here too.",
   },
+  mineral: {
+    term: "mineral",
+    text: "The stone itself: the showpiece a show label names first, before the others on it. Its formula, hardness and the Mineral properties card are about this one. The minerals with it and what it sits on get their own rows, With and On.",
+  },
   hardness: {
     term: "hardness",
     text: "How easily a mineral scratches, on the Mohs scale from 1 (talc) to 10 (diamond). A fingernail is about 2.5, a copper coin 3.5, and glass or a steel nail about 5.5, so what scratches a stone narrows down what it can be.",

@@ -99,7 +99,7 @@ pnpm dev
   - Photos are newest first, by `taken_at`, else upload time.
   - `components/photo-view.tsx`, shared with the confirm screen, falls back from a HEIC original a desktop browser cannot draw to Jasper's thumbnail.
 - **This specimen** (`components/stone-editor.tsx`) is the specimen label: paper, a double rule, the name over a 2 px ink rule, and Courier field names.
-  - The title is the piece's name, and the fields are variety, With and On (the other minerals on it, `specimen_parts`, #29), where from, how it came, when, lives in, and notes. An On of plain matrix carries the matrix info mark.
+  - The title is the piece's name, and the fields are the stone's own mineral (#33), variety, With and On (the other minerals on it, `specimen_parts`, #29), where from, how it came, when, lives in, and notes. The first row is read-only and always filled: "Mineral" (or "Rock", or "Other" with no mark) with the species name, `stoneName(name)`, so an Amethyst shows "Quartz" here while the title leads with Amethyst, and its info mark says the main mineral is the one the tags and the Mineral properties follow. It changes through "Change" on the naming, never the form. An On of plain matrix carries the matrix info mark.
   - An unknown reads "Not recorded yet" with an Add link.
   - An amber note counts the details a collector's label wants (`missingDetails`, tested: where from, how, when, where it lives; never the extras), with "Fill in details".
   - Any of those, or "Edit details", turns the label into one form with a single Save (`PATCH /api/stones/[id]`) and focuses the field that was asked for. How it came is chips, with a dashed "Not recorded"; where it lives offers every place already in use.
