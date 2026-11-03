@@ -19,7 +19,8 @@ SaaS dashboard and not a gem-shop sparkle page.
 
 - **Built for older eyes first.** 18 px body text is the floor for anything
   you read. 15 px is the smallest text anywhere (tags). Every target is at
-  least 48 px tall. One idea per card. Nothing hides behind hover or an
+  least 48 px tall. (Design px: a desktop draws everything at 90%, §3.)
+  One idea per card. Nothing hides behind hover or an
   icon-only button.
 - One pale limestone ground, white cards, thin sandstone borders. Flat at rest;
   a card lifts (soft shadow, stronger border) only on hover.
@@ -95,6 +96,13 @@ crystal and the words "No photo yet". Vary the tint between neighbours.
 - Scale (px): 60 specimen title · 46 greeting · 34 list title · 30 section
   title · 24 side-panel title and card name · 22 subtitle under a title ·
   19 lead and info-note text · 18 body · 16 meta · 15 tag.
+- **Drawn at 90% on a desktop.** With a mouse or trackpad (`hover: hover`
+  and `pointer: fine`), the site's root carries `zoom: 0.9` (#55), the
+  browser's one notch smaller built in, so every px in this file and on the
+  canvas is a design px that draws at nine tenths: 18 px body text reads at
+  16.2, a 48 px target at 43. Type, spacing, targets and photos shrink
+  together, so the proportions here hold. Phones and tablets, held close and
+  tapped, draw at full size. Write sizes in design px; never pre-shrink one.
 - Formulas use real subscript characters (`CaF₂`, `SiO₂`), not `<sub>`.
 - Mineral names are upright and capitalized (Fluorite, Milky Quartz). There
   is no italic binomial here. A stone is named as a rock-show label names it
@@ -344,7 +352,8 @@ Part of the design, not a pass at the end:
 - Icon-only buttons have an `aria-label`. Decorative SVG is
   `aria-hidden="true"`. Specimen photos get alt text that describes the stone
   ("Purple fluorite with stepped cubic crystals").
-- Contrast as measured in §2. 48 px minimum targets, 52 px for primary.
+- Contrast as measured in §2. 48 px minimum targets, 52 px for primary
+  (design px, §3).
 - Info notes and filter counts update with `aria-live="polite"`.
 
 ## 8. Using this with Claude Code
