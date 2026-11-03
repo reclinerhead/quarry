@@ -9,6 +9,7 @@ import { PhotoView } from "@/components/photo-view";
 import { PieceTitle } from "@/components/piece-title";
 import { Term } from "@/components/term";
 import { TestsPanel } from "@/components/tests-panel";
+import { WhyNote } from "@/components/why-note";
 import { exifTakenAt } from "@/lib/exif";
 import { HARDNESS_TESTS, TESTS, type Answers, type Misfit } from "@/lib/household-tests";
 import { isSettled } from "@/lib/job-state";
@@ -39,7 +40,8 @@ import type { StonePart } from "@/lib/specimens";
 // opinion saw is a chip under the lead pill, off until the person ticks it.
 // Since #62 an object that is not a mineral says what it is made of under its
 // pill ("Made of Calcite"), with a "Made of" field and, when the two opinions
-// differ on it, both guesses as chips, as the variety has.
+// differ on it, both guesses as chips, as the variety has. Since #71 each pill
+// has "Why?" under it, which opens what the models saw.
 
 type Props = {
   initialJob: JobView;
@@ -390,6 +392,11 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
                     <p className="pl-6 text-meta text-ink-2">
                       On <Term k="matrix">{MATRIX}</Term>: rock nobody has named.
                     </p>
+                  ) : null}
+                  {p.reasons.length > 0 ? (
+                    <div className="pl-4">
+                      <WhyNote reasons={p.reasons} opinions={p.models.length} />
+                    </div>
                   ) : null}
                   {p.maybe.length > 0 ? maybeChips(p) : null}
                 </div>

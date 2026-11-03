@@ -6,6 +6,7 @@ import { CheckIcon } from "@/components/icons";
 import { RemoveStone, StoneEditor } from "@/components/stone-editor";
 import { Term } from "@/components/term";
 import { TestsEditor } from "@/components/tests-editor";
+import { WhyNote } from "@/components/why-note";
 import { fullDay, KIND_LABEL } from "@/lib/collection";
 import { elementsLine } from "@/lib/elements";
 import type { GlossaryKey } from "@/lib/glossary";
@@ -173,11 +174,14 @@ function HowNamed({ job, morePhotos }: { job: JobView; morePhotos: number }) {
         {inPlan ? null : <ChosenPill piece={conf} note="typed by you" />}
         {job.plan.pills.map((p) =>
           sameStone(p, chosen) ? (
-            <ChosenPill key={`${p.pick.model}-${p.pick.rank}`} piece={conf} note={p.word} />
+            <ChosenPill key={`${p.pick.model}-${p.pick.rank}`} piece={conf} note={p.word} reasons={p.reasons} opinions={p.models.length} />
           ) : (
-            <li key={`${p.pick.model}-${p.pick.rank}`} className="flex min-h-12 items-center justify-between gap-3 rounded-[24px] border border-line-2 px-5 py-2">
-              <span className="min-w-0 break-words font-display text-[20px] font-semibold leading-tight">{pieceName(p)}</span>
-              <span className="shrink-0 rounded-pill bg-sand px-3 py-1 text-tag font-bold text-tag-ink">{p.word}</span>
+            <li key={`${p.pick.model}-${p.pick.rank}`} className="flex flex-col">
+              <span className="flex min-h-12 items-center justify-between gap-3 rounded-[24px] border border-line-2 px-5 py-2">
+                <span className="min-w-0 break-words font-display text-[20px] font-semibold leading-tight">{pieceName(p)}</span>
+                <span className="shrink-0 rounded-pill bg-sand px-3 py-1 text-tag font-bold text-tag-ink">{p.word}</span>
+              </span>
+              <WhyRow reasons={p.reasons} opinions={p.models.length} />
             </li>
           ),
         )}
@@ -202,16 +206,29 @@ function HowNamed({ job, morePhotos }: { job: JobView; morePhotos: number }) {
   );
 }
 
-function ChosenPill({ piece, note }: { piece: Parameters<typeof pieceName>[0]; note: string }) {
+function ChosenPill({ piece, note, reasons = [], opinions = 0 }: { piece: Parameters<typeof pieceName>[0]; note: string; reasons?: string[]; opinions?: number }) {
   return (
-    // 24 px corners: a pill on one line, a rounded card when a long name wraps.
-    <li className="flex min-h-12 items-center justify-between gap-3 rounded-[24px] bg-azurite px-5 py-2 text-white">
-      <span className="flex min-w-0 items-center gap-2 font-display text-[20px] font-semibold leading-tight">
-        <CheckIcon className="size-4 flex-none" />
-        <span className="min-w-0 break-words">{pieceName(piece)}</span>
+    <li className="flex flex-col">
+      {/* 24 px corners: a pill on one line, a rounded card when a long name wraps. */}
+      <span className="flex min-h-12 items-center justify-between gap-3 rounded-[24px] bg-azurite px-5 py-2 text-white">
+        <span className="flex min-w-0 items-center gap-2 font-display text-[20px] font-semibold leading-tight">
+          <CheckIcon className="size-4 flex-none" />
+          <span className="min-w-0 break-words">{pieceName(piece)}</span>
+        </span>
+        <span className="shrink-0 rounded-pill bg-white/15 px-3 py-1 text-tag font-bold">{note}</span>
       </span>
-      <span className="shrink-0 rounded-pill bg-white/15 px-3 py-1 text-tag font-bold">{note}</span>
+      <WhyRow reasons={reasons} opinions={opinions} />
     </li>
+  );
+}
+
+/** "Why?" under a pill in "How it was named" (#71), or nothing, and nothing reserved, when the row carried no reasons. */
+function WhyRow({ reasons, opinions }: { reasons: string[]; opinions: number }) {
+  if (reasons.length === 0) return null;
+  return (
+    <span className="pl-3">
+      <WhyNote reasons={reasons} opinions={opinions} />
+    </span>
   );
 }
 
