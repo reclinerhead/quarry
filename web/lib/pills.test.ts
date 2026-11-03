@@ -3,6 +3,7 @@ import type { MindatRecord } from "./names";
 import {
   byModel,
   kindOf,
+  madeOfLine,
   ownName,
   parseParts,
   pieceName,
@@ -196,6 +197,42 @@ describe("planPills", () => {
     expect(verdictLine(plan)).toBe("Probably Amethyst with Calcite on matrix");
   });
 
+  // #62: the honeycomb coral from orchid's job 24, as prompt v3 has the models answer it.
+  const CALCITE = R(859, "Calcite", 3);
+  const fossil = (c: Candidate, madeOf: string | null, chain?: MindatRecord[]): Candidate => ({ ...c, kind: "other", madeOf: madeOf ? { name: madeOf, chain } : null });
+
+  it("agrees on a fossil coral, and doubts what it is made of when the opinions differ (the honeycomb)", () => {
+    const [haiku, haiku2] = cands(HAIKU, "Fossil coral", "Chalcedony");
+    const [flash] = cands(FLASH, ["Fossil coral", "Favosites"]);
+    const plan = planPills([fossil(haiku, "Calcite", [CALCITE]), haiku2, fossil(flash, "Quartz", [QUARTZ])], HAIKU);
+    expect(plan.verdict).toBe("probably");
+    expect(plan.pills[0]).toMatchObject({ name: "Fossil coral", variety: "Favosites", kind: "other", models: [HAIKU, FLASH], madeOf: null });
+    expect(plan.pills[0].madeOfDoubt).toEqual({ guesses: ["Calcite", "Quartz"] });
+    expect(verdictLine(plan)).toBe("Probably Favosites");
+    expect(kindOf(plan.pills[0])).toBe("A kind of Fossil Coral");
+  });
+
+  it("takes what both opinions say a fossil is made of, through the chain, and the one given when only one says", () => {
+    const [haiku] = cands(HAIKU, "Fossil coral");
+    const [flash] = cands(FLASH, "Fossil coral");
+    const agreed = planPills([fossil(haiku, "Quartz", [QUARTZ]), fossil(flash, "Chalcedony", [CHALCEDONY, QUARTZ])], HAIKU);
+    expect(agreed.pills[0].madeOf).toEqual({ name: "Quartz", chain: [QUARTZ] });
+    expect(agreed.pills[0].madeOfDoubt).toBeUndefined();
+    const oneSided = planPills([fossil(haiku, null), fossil(flash, "Calcite", [CALCITE])], HAIKU);
+    expect(oneSided.pills[0].madeOf).toEqual({ name: "Calcite", chain: [CALCITE] });
+    expect(oneSided.pills[0].madeOfDoubt).toBeUndefined();
+  });
+
+  it("gives a could-be pill its own made of, and a row from before prompt v3 none", () => {
+    const [haiku] = cands(HAIKU, "Fossil coral");
+    const plan = planPills([fossil(haiku, "Calcite", [CALCITE]), ...cands(FLASH, "Chalcedony")], HAIKU);
+    expect(plan.verdict).toBe("could_be");
+    expect(plan.pills.map((p) => p.madeOf)).toEqual([{ name: "Calcite", chain: [CALCITE] }, null]);
+    const old = planPills([...cands(HAIKU, "Galena"), ...cands(FLASH, "Galena")], HAIKU);
+    expect(old.pills[0]).toMatchObject({ madeOf: null });
+    expect(old.pills[0].madeOfDoubt).toBeUndefined();
+  });
+
   it("puts no scratch misfit on a piece with parts, since the answer could be about any of them", () => {
     const [haiku] = cands(HAIKU, "Calcite");
     const [flash] = cands(FLASH, "Calcite");
@@ -230,6 +267,12 @@ describe("kindOf", () => {
     expect(kindOf({ name: "Quartz", variety: "Milky" })).toBeNull();
     expect(kindOf({ name: "Quartz", variety: "Rose quartz" })).toBeNull();
     expect(kindOf({ name: "Galena", variety: null })).toBeNull();
+  });
+});
+
+describe("madeOfLine", () => {
+  it("says what a fossil is made of, capitalized", () => {
+    expect(madeOfLine({ name: "calcite" })).toBe("Made of Calcite");
   });
 });
 

@@ -7,7 +7,7 @@ variety of Chalcedony, which is a variety of Quartz, so the confirm screen can
 see that both said agate. Jasper looks each candidate up after the models
 answer and before the job is written, and, since #29, each other mineral the
 model saw on the piece (its `parts`, by name alone; a base of plain matrix is
-never asked). The web app reads the cache and never calls Mindat.
+never asked), and, since #62, the mineral an object is made of (`made_of`). The web app reads the cache and never calls Mindat.
 
 Which term: the most specific one Mindat knows, in this order: the variety as
 written, the variety before its first comma ("Agate, banded" gives "Agate"),
@@ -307,6 +307,9 @@ def resolve_outcome(conn: sqlite3.Connection, api: Api, outcome: Outcome, budget
                     for p in c.parts:
                         if p.name != MATRIX:
                             p.mindat_id = resolve(conn, api, p.name, None, deadline, clock)
+                    # What the object is made of (#62), by name alone, as a part is.
+                    if c.made_of:
+                        c.made_of_mindat_id = resolve(conn, api, c.made_of, None, deadline, clock)
     except Unreachable as e:
         return f"mindat stopped: {e}"
     n = api.requests - before
@@ -335,11 +338,21 @@ SELECT c.job_id, c.model, c.rank, c.parts
 """
 
 
+# What each waiting candidate is made of (#62), when the model said and it has no id yet.
+WAITING_MADE_OF = """
+SELECT c.job_id, c.model, c.rank, c.made_of
+  FROM candidates c JOIN jobs j ON j.id = c.job_id
+ WHERE c.made_of IS NOT NULL AND c.made_of_mindat_id IS NULL AND j.status = 'identified'
+   AND NOT EXISTS (SELECT 1 FROM confirmations f WHERE f.job_id = c.job_id)
+ ORDER BY j.created_at, c.job_id, c.model, c.rank
+"""
+
+
 def catch_up(conn: sqlite3.Connection, api: Api, deadline: float, clock: Clock = time.monotonic) -> int:
-    """Look up the waiting candidates with no Mindat id, then their parts with none. A
-    term already cached costs no request, so a name Mindat doesn't know is not asked
-    again. Returns how many candidates and parts it filled; stops there when the time
-    runs out. Raises Unreachable."""
+    """Look up the waiting candidates with no Mindat id, then their parts with none, then
+    what they are made of. A term already cached costs no request, so a name Mindat
+    doesn't know is not asked again. Returns how many candidates, parts and made-ofs it
+    filled; stops there when the time runs out. Raises Unreachable."""
     filled = 0
     try:
         for row in conn.execute(WAITING).fetchall():
@@ -367,6 +380,15 @@ def catch_up(conn: sqlite3.Connection, api: Api, deadline: float, clock: Clock =
                         (json.dumps(parts), row["job_id"], row["model"], row["rank"]),
                     )
                 filled += n
+        for row in conn.execute(WAITING_MADE_OF).fetchall():
+            rid = resolve(conn, api, row["made_of"], None, deadline, clock)
+            if rid is not None:
+                with conn:
+                    conn.execute(
+                        "UPDATE candidates SET made_of_mindat_id = ? WHERE job_id = ? AND model = ? AND rank = ?",
+                        (rid, row["job_id"], row["model"], row["rank"]),
+                    )
+                filled += 1
     except OutOfTime:
         pass  # the rest wait for the next idle pass
     return filled

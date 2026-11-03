@@ -59,12 +59,13 @@ SCHEMA = {
                     "name": {"type": "string"},
                     "variety": {"type": "string"},
                     "kind": {"type": "string", "enum": list(CANDIDATE_KINDS)},
+                    "made_of": {"type": "string"},
                     "with": {"type": "array", "items": {"type": "string"}},
                     "on": {"type": "string"},
                     "confidence": {"type": "number"},
                     "features": {"type": "array", "items": {"type": "string"}},
                 },
-                "required": ["name", "variety", "kind", "with", "on", "confidence", "features"],
+                "required": ["name", "variety", "kind", "made_of", "with", "on", "confidence", "features"],
                 "additionalProperties": False,
             },
         },
@@ -234,13 +235,19 @@ class Candidate:
     features: list[str] = field(default_factory=list)
     mindat_id: int | None = None  # set by mindat.resolve_outcome before the job is written (#18)
     parts: list[Part] = field(default_factory=list)  # the `with` minerals in order, then the `on`
+    # What an object that is not a mineral is composed of or preserved as (#62): a fossil
+    # coral made of Calcite. None for a mineral, a rock, or when the photos don't say.
+    made_of: str | None = None
+    made_of_mindat_id: int | None = None  # set by mindat.resolve_outcome, as for a part
 
     def label(self) -> str:
-        """The candidate for the log: Galena, Quartz (Amethyst), Pyrite with Sphalerite on Quartz."""
+        """The candidate for the log: Galena, Quartz (Amethyst), Pyrite with Sphalerite on Quartz,
+        Fossil coral made of Calcite."""
         withs = [p.name for p in self.parts if p.role == "with"]
         on = next((p.name for p in self.parts if p.role == "on"), None)
         return (self.name + (f" ({self.variety})" if self.variety else "")
-                + (f" with {', '.join(withs)}" if withs else "") + (f" on {on}" if on else ""))
+                + (f" with {', '.join(withs)}" if withs else "") + (f" on {on}" if on else "")
+                + (f" made of {self.made_of}" if self.made_of else ""))
 
 
 @dataclass
@@ -276,6 +283,13 @@ def _candidate(raw: object, rank: int) -> Candidate:
     features = raw.get("features", [])
     if not isinstance(features, list):
         raise InvalidAnswer(f"candidate {rank} ({name}): features is not a list")
+    made_of = raw.get("made_of", "")
+    if not isinstance(made_of, str):
+        raise InvalidAnswer(f"candidate {rank} ({name}): made_of is not text")
+    # Missing on a v1 or v2 answer; empty, or the name itself, says nothing.
+    made_of = _words(made_of)
+    if made_of.casefold() == name.casefold():
+        made_of = ""
     return Candidate(
         name=name,
         variety=_words(raw.get("variety")) or None,
@@ -283,6 +297,7 @@ def _candidate(raw: object, rank: int) -> Candidate:
         confidence=min(1.0, max(0.0, float(conf))),
         features=[f for f in (_words(x) for x in features) if f],
         parts=_parts(raw, name, rank),
+        made_of=made_of or None,
     )
 
 

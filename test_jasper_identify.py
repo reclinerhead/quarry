@@ -155,10 +155,26 @@ def test_parts_that_repeat_are_dropped_matrix_is_spelled_and_with_is_capped():
     assert parts(identify.parse_answer(json.dumps(answer(candidates=[c]))).candidates[0]) == []
 
 
-@pytest.mark.parametrize("over", [{"with": "Sphalerite"}, {"on": ["Quartz"]}], ids=["with not a list", "on not text"])
+@pytest.mark.parametrize("over", [{"with": "Sphalerite"}, {"on": ["Quartz"]}, {"made_of": ["Calcite"]}], ids=["with not a list", "on not text", "made_of not text"])
 def test_malformed_parts_are_an_invalid_answer(over):
     with pytest.raises(identify.InvalidAnswer):
         identify.parse_answer(json.dumps(answer(candidates=[cand(**over)])))
+
+
+def test_made_of_is_read_and_tidied_and_says_what_a_fossil_is_preserved_as():
+    """#62: a fossil coral is named for what it is; the mineral it is made of is its own field."""
+    coral = cand(name="Fossil coral", kind="other", made_of="  Calcite ")
+    c = identify.parse_answer(json.dumps(answer(candidates=[coral]))).candidates[0]
+    assert (c.name, c.kind, c.made_of, c.made_of_mindat_id) == ("Fossil coral", "other", "Calcite", None)
+    assert c.label() == "Fossil coral made of Calcite"
+    piece = cand(name="Fossil coral", kind="other", made_of="Calcite", **{"with": ["Quartz"], "on": "matrix"})
+    assert identify.parse_answer(json.dumps(answer(candidates=[piece]))).candidates[0].label() == "Fossil coral with Quartz on matrix made of Calcite"
+
+
+@pytest.mark.parametrize("over", [{}, {"made_of": ""}, {"made_of": "   "}, {"made_of": "pyrite"}], ids=["missing (a v2 answer)", "empty", "blank", "the name itself"])
+def test_made_of_is_none_when_missing_empty_or_the_mineral_itself(over):
+    c = identify.parse_answer(json.dumps(answer(candidates=[cand(**over)]))).candidates[0]
+    assert c.made_of is None and c.label() == "Pyrite"
 
 
 # --- the prompt and the schema -------------------------------------------------
@@ -166,8 +182,8 @@ def test_malformed_parts_are_an_invalid_answer(over):
 
 def test_the_prompt_has_a_version_and_names_every_test_kind():
     version, body = identify.load_prompt()
-    assert version == 2
-    assert '"matrix"' in body and "- with:" in body and "- on:" in body
+    assert version == 3
+    assert '"matrix"' in body and "- with:" in body and "- on:" in body and "- made_of:" in body
     assert not body.startswith("---")
     for kind in identify.TEST_KINDS:
         assert f"- {kind}:" in body
@@ -192,7 +208,7 @@ def test_the_schemas_test_kinds_are_the_tables(tmp_path):
     item = identify.SCHEMA["properties"]["candidates"]["items"]
     assert item["properties"]["kind"]["enum"] == list(identify.CANDIDATE_KINDS)
     # Strict structured output: every property is required, with and on included.
-    assert set(item["required"]) == set(item["properties"]) >= {"with", "on"}
+    assert set(item["required"]) == set(item["properties"]) >= {"with", "on", "made_of"}
 
 
 # --- the user message ----------------------------------------------------------

@@ -1,9 +1,9 @@
 // PATCH /api/stones/:id: edit a stone's own facts, from its specimen label and
 // its kitchen-table tests. Any subset of: variety, parts (the other minerals on
 // it, #29: `{ with: string[], on: string | null }`, where `on` may be "matrix";
-// it replaces them all), foundAt, acquired (found, bought, gifted, traded),
-// acquiredOn (yyyy-mm-dd), location, notes, tests. An empty string clears a
-// field.
+// it replaces them all), madeOf (what an object that is not a mineral is made
+// of, #62), foundAt, acquired (found, bought, gifted, traded), acquiredOn
+// (yyyy-mm-dd), location, notes, tests. An empty string clears a field.
 //
 // DELETE /api/stones/:id: remove the stone for good. Its photos go from the
 // table and from disk with their thumbnails, and so do the jobs that brought
@@ -15,7 +15,7 @@ import { openReadWrite } from "@/lib/db";
 import { cleanAnswers } from "@/lib/household-tests";
 import { thumbPathFor } from "@/lib/photos";
 import type { PartRole } from "@/lib/pills";
-import { pruneMinerals, writeParts } from "@/lib/specimens";
+import { pruneMinerals, writeMadeOf, writeParts } from "@/lib/specimens";
 import { discardUpload } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +81,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (body.tests !== undefined) set("tests", JSON.stringify(cleanAnswers(body.tests)));
   const parts = partsOf(body.parts);
   if (parts === null) return Response.json({ error: `parts must be { with: up to ${MAX_PARTS} names, on: a name or null }` }, { status: 400 });
-  if (sets.length === 0 && parts === undefined) return Response.json({ error: "nothing to change" }, { status: 400 });
+  const madeOf = text(body.madeOf, 80);
+  if (sets.length === 0 && parts === undefined && madeOf === undefined) return Response.json({ error: "nothing to change" }, { status: 400 });
 
   let db;
   try {
@@ -94,6 +95,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     db.exec("BEGIN IMMEDIATE");
     if (sets.length > 0) db.prepare(`UPDATE specimens SET ${sets.join(", ")} WHERE id = ?`).run(...values, id);
     if (parts !== undefined) pruneMinerals(db, writeParts(db, id, parts));
+    if (madeOf !== undefined) pruneMinerals(db, writeMadeOf(db, id, madeOf));
     db.exec("COMMIT");
     return Response.json({ ok: true });
   } catch (err) {
@@ -114,7 +116,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     return Response.json({ error: (err as Error).message }, { status: 503 });
   }
   try {
-    const sp = db.prepare("SELECT mineral_id FROM specimens WHERE id = ?").get(id) as { mineral_id: number } | undefined;
+    const sp = db.prepare("SELECT mineral_id, made_of_id FROM specimens WHERE id = ?").get(id) as { mineral_id: number; made_of_id: number | null } | undefined;
     if (!sp) return Response.json({ error: "no such stone" }, { status: 404 });
     const photos = db.prepare("SELECT path, job_id FROM photos WHERE specimen_id = ?").all(id) as Array<{ path: string; job_id: number | null }>;
     const named = db.prepare("SELECT job_id FROM confirmations WHERE specimen_id = ?").all(id) as Array<{ job_id: number }>;
@@ -126,7 +128,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     const delJob = db.prepare("DELETE FROM jobs WHERE id = ?"); // candidates, suggested tests and confirmations cascade
     for (const j of jobIds) delJob.run(j);
     db.prepare("DELETE FROM specimens WHERE id = ?").run(id); // its parts cascade
-    const mineralsRemoved = pruneMinerals(db, [sp.mineral_id, ...parts.map((p) => p.mineral_id)]);
+    const mineralsRemoved = pruneMinerals(db, [sp.mineral_id, ...(sp.made_of_id === null ? [] : [sp.made_of_id]), ...parts.map((p) => p.mineral_id)]);
     db.exec("COMMIT");
 
     for (const p of photos) {

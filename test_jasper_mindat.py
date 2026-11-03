@@ -337,6 +337,35 @@ def test_each_part_is_looked_up_by_name_and_written_with_its_record(tmp_path):
     assert written[(FLASH.model, 2)] == [{"role": "on", "name": "matrix", "mindat_id": None}]
 
 
+def test_what_a_candidate_is_made_of_is_looked_up_by_name_and_written(tmp_path):
+    """#62: a fossil coral made of Calcite gets Calcite's record beside it; the coral itself is a miss."""
+    conn, api = _db(tmp_path), FakeApi(RECORDS + [rec(859, "Calcite", hmin=3, hmax=3)])
+    coral = identify.Candidate("Fossil coral", None, "other", 0.7, made_of="Calcite")
+    glass = identify.Candidate("Sea glass", None, "other", 0.2)
+    out = identify.classify([identify.Opinion(HAIKU, 200, identify.Answer([coral, glass], [], None))])
+    assert mindat.resolve_outcome(conn, api, out) == "mindat 3 requests"  # fossil coral, calcite, sea glass
+    assert (coral.mindat_id, coral.made_of_mindat_id, glass.made_of_mindat_id) == (None, 859, None)
+    jid = _job(conn)
+    queue.record_outcome(conn, jid, out, NOW)
+    rows = [tuple(r) for r in conn.execute("SELECT name, mindat_id, made_of, made_of_mindat_id FROM candidates ORDER BY rank")]
+    assert rows == [("Fossil coral", None, "Calcite", 859), ("Sea glass", None, None, None)]
+
+
+def test_catch_up_fills_what_a_waiting_candidate_is_made_of(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    jid = _job(conn, "identified")
+    conn.execute(
+        "INSERT INTO candidates (job_id, model, rank, name, variety, kind, confidence, made_of) VALUES (?, ?, 1, 'Fossil coral', NULL, 'other', 0.7, 'Hematite')",
+        (jid, HAIKU.model),
+    )
+    conn.commit()
+    assert mindat.catch_up(conn, api, float("inf")) == 1
+    assert conn.execute("SELECT made_of_mindat_id FROM candidates").fetchone()[0] == 1856
+    asked = api.requests
+    assert mindat.catch_up(conn, api, float("inf")) == 0  # the coral's own miss is cached, the id is filled
+    assert api.requests == asked
+
+
 def test_catch_up_fills_a_waiting_candidates_parts_too(tmp_path):
     conn, api = _db(tmp_path), FakeApi()
     jid = _job(conn, "identified")

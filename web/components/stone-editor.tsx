@@ -21,13 +21,15 @@ import type { StonePart } from "@/lib/specimens";
 // "With" and "On", picked in the form with the name field's autocomplete.
 // The first row is the stone's own mineral (#33), the species the title leads
 // with or hides behind a hobby name; it is read-only, since the main mineral
-// changes through "Change" on the naming, not the form.
+// changes through "Change" on the naming, not the form. A stone that is not a
+// mineral has a "Made of" row too (#62), the mineral it is made of.
 
 export type StoneFacts = {
   name: string;
   kind: StoneKind;
   variety: string | null;
   parts: StonePart[];
+  madeOf: string | null;
   foundAt: string | null;
   acquired: Acquired | null;
   acquiredOn: string | null;
@@ -37,6 +39,7 @@ export type StoneFacts = {
 
 type Draft = {
   variety: string;
+  madeOf: string;
   withs: Array<{ name: string; kept: boolean }>; // untick to take one off, so a slip is one tap to undo
   on: string; // "" for nothing under it, MATRIX for unnamed rock
   foundAt: string;
@@ -51,6 +54,7 @@ type Field = keyof Draft;
 function toDraft(f: StoneFacts): Draft {
   return {
     variety: f.variety ?? "",
+    madeOf: f.madeOf ?? "",
     withs: f.parts.filter((p) => p.role === "with").map((p) => ({ name: p.name, kept: true })),
     on: f.parts.find((p) => p.role === "on")?.name ?? "",
     foundAt: f.foundAt ?? "",
@@ -63,6 +67,7 @@ function toDraft(f: StoneFacts): Draft {
 
 const ROWS: Array<{ field: Field; label: string; show: (f: StoneFacts) => React.ReactNode | null }> = [
   { field: "variety", label: "Variety", show: (f) => f.variety },
+  { field: "madeOf", label: "Made of", show: (f) => (f.madeOf ? stoneName(f.madeOf) : null) },
   {
     field: "withs",
     label: "With",
@@ -85,7 +90,12 @@ const ROWS: Array<{ field: Field; label: string; show: (f: StoneFacts) => React.
 ];
 
 /** The Add link's name where "Add with" or "Add on" would make no sense read aloud. */
-const ADD_LABEL: Partial<Record<Field, string>> = { withs: "Add the other minerals on it", on: "Add what it sits on" };
+const ADD_LABEL: Partial<Record<Field, string>> = { withs: "Add the other minerals on it", on: "Add what it sits on", madeOf: "Add what it is made of" };
+
+/** "Made of" is a fossil's row, a shell's, sea glass's: a mineral is itself, and a rock is a mix. */
+function hasMadeOf(f: StoneFacts): boolean {
+  return f.kind === "other" || f.madeOf !== null;
+}
 
 export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFacts; places: string[] }) {
   const router = useRouter();
@@ -180,13 +190,13 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
                 </dt>
                 <dd className="min-w-0 break-words">{stoneName(facts.name)}</dd>
               </div>
-              {ROWS.map((row) => {
+              {ROWS.filter((row) => row.field !== "madeOf" || hasMadeOf(facts)).map((row) => {
                 const value = row.show(facts);
                 return (
                   <div key={row.field} className="flex flex-col gap-0.5 border-b border-rule py-2.5 last:border-b-0 sm:flex-row sm:items-baseline sm:gap-6">
                     <dt className="flex-none font-label text-ink-2 sm:w-[140px]">
                       {row.label}
-                      {row.field === "variety" ? <Term k="variety" bare /> : null}
+                      {row.field === "variety" ? <Term k="variety" bare /> : row.field === "madeOf" ? <Term k="madeOf" bare /> : null}
                     </dt>
                     <dd className="min-w-0 whitespace-pre-line break-words">
                       {value ?? (
@@ -252,6 +262,7 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
     >
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         {input("variety", "Variety or shop name", "Amethyst, or Blue Lace Agate")}
+        {hasMadeOf(facts) ? input("madeOf", "Made of", "Calcite, or Quartz") : null}
         {input("foundAt", "Where it came from", "Grand Marais beach, or the Tucson show")}
         {input("acquiredOn", "When", "")}
         {input("location", "Where it lives now", "Glass case, top shelf", `${ids}-places`)}

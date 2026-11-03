@@ -17,6 +17,7 @@ export type Tile = {
   mineralClass: string | null; // "Sulfide" (#38); none for a rock, or before Jasper fetched the record
   variety: string | null;
   parts: Array<{ role: PartRole; name: string }>; // the other minerals on it (#29)
+  madeOf: string | null; // what an object that is not a mineral is made of (#62)
   foundAt: string | null; // where it was found or bought
   acquired: Acquired | null;
   location: string | null; // where it lives now
@@ -69,11 +70,11 @@ export function metaLine(t: Pick<Tile, "location" | "added">): string {
   return t.location ? `${t.location} · ${added}` : added;
 }
 
-/** The search box: any part of the name, the variety, the other minerals on it or where it was found, ignoring case and punctuation. */
-export function matchesQuery(t: Pick<Tile, "name" | "variety" | "parts" | "foundAt">, q: string): boolean {
+/** The search box: any part of the name, the variety, the other minerals on it, what it is made of or where it was found, ignoring case and punctuation. */
+export function matchesQuery(t: Pick<Tile, "name" | "variety" | "parts" | "madeOf" | "foundAt">, q: string): boolean {
   const needle = norm(q);
   if (!needle) return true;
-  return [t.name, t.variety ?? "", ...t.parts.map((p) => p.name), t.foundAt ?? ""].some((v) => norm(v).includes(needle));
+  return [t.name, t.variety ?? "", ...t.parts.map((p) => p.name), t.madeOf ?? "", t.foundAt ?? ""].some((v) => norm(v).includes(needle));
 }
 
 function matchesKind(t: Tile, kind: KindFilter): boolean {

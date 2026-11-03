@@ -7,7 +7,10 @@
 // were known. A pill also saves the other minerals on the piece (#29): its
 // parts, and each of its one-opinion `maybe` minerals the person ticked, sent
 // by name as `maybe: string[]`. A typed name saves none (the stone's page adds
-// them). Finds or creates the minerals, creates the specimen with the job's
+// them). An optional `madeOf` (#62) is the mineral the object is made of, which
+// defaults to the pill's own: none when the two opinions disagreed on it, so a
+// guess they differed on is never saved as though it were known. Finds or
+// creates the minerals, creates the specimen with the job's
 // notes and test answers, links the job's photos and writes the confirmation,
 // in one transaction. Saves at once: there is no batch save.
 //
@@ -29,7 +32,7 @@ import { openReadWrite } from "@/lib/db";
 import { candidatesOf, identifierSlug, nextWaitingJob, waitingJobIds, type ConfirmHow } from "@/lib/jobs";
 import { norm } from "@/lib/names";
 import { planPills, savedParts, type Candidate, type PartRole } from "@/lib/pills";
-import { mineralId, pruneMinerals, stoneParts, writeParts } from "@/lib/specimens";
+import { mineralId, pruneMinerals, stoneParts, writeMadeOf, writeParts } from "@/lib/specimens";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +44,7 @@ type Body = {
   typedName?: unknown;
   variety?: unknown;
   maybe?: unknown;
+  madeOf?: unknown;
   how?: unknown;
 };
 
@@ -82,6 +86,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const body = await bodyOf(req);
   if (!body) return Response.json({ error: "expected json" }, { status: 400 });
   const variety = clean(body.variety, 80);
+  const madeOfTyped = clean(body.madeOf, 80);
   const ticked = Array.isArray(body.maybe) ? body.maybe.flatMap((m) => clean(m) ?? []) : [];
 
   const db = open();
@@ -106,6 +111,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     let mineralName: string;
     let kind: Candidate["kind"] = "mineral";
     let parts: Array<{ role: PartRole; name: string }> = [];
+    let madeOf: string | null = madeOfTyped;
     if (body.pick) {
       const c = candidates.find((x) => x.model === body.pick?.model && x.rank === Number(body.pick?.rank));
       if (!c) {
@@ -117,6 +123,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       const pill = plan.pills.find((p) => p.pick.model === c.model && p.pick.rank === c.rank);
       stoneVariety = variety ?? (pill ? pill.variety : c.variety);
       parts = pill ? savedParts(pill, ticked) : (c.parts ?? []);
+      madeOf = madeOfTyped ?? (pill ? pill.madeOf : c.madeOf)?.name ?? null;
       source = "pill";
       how = "suggestion";
     } else {
@@ -141,7 +148,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       .run(mineral, stoneVariety, job.notes, job.tests);
     const specimenId = Number(sp.lastInsertRowid);
     writeParts(db, specimenId, parts);
+    writeMadeOf(db, specimenId, madeOf);
     const name = (db.prepare("SELECT name FROM minerals WHERE id = ?").get(mineral) as { name: string }).name;
+    const made = db.prepare("SELECT m.name FROM specimens sp JOIN minerals m ON m.id = sp.made_of_id WHERE sp.id = ?").get(specimenId) as { name: string } | undefined;
 
     db.prepare("UPDATE photos SET specimen_id = ? WHERE job_id = ?").run(specimenId, jobId);
     db.prepare("INSERT INTO confirmations (job_id, specimen_id, chosen_name, source, how, verdict) VALUES (?, ?, ?, ?, ?, ?)").run(
@@ -155,7 +164,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     db.exec("COMMIT");
 
     const nextJobId = nextWaitingJob(waitingJobIds(db), jobId);
-    return Response.json({ specimenId, name, variety: stoneVariety, parts: stoneParts(db, specimenId), how, nextJobId }, { status: 201 });
+    return Response.json({ specimenId, name, variety: stoneVariety, parts: stoneParts(db, specimenId), madeOf: made?.name ?? null, how, nextJobId }, { status: 201 });
   } catch (err) {
     return fail(db, err);
   } finally {
@@ -197,8 +206,12 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     let removedStone = false;
     if (left === 0) {
       const minerals = db
-        .prepare("SELECT mineral_id FROM specimens WHERE id = ? UNION SELECT mineral_id FROM specimen_parts WHERE specimen_id = ? AND mineral_id IS NOT NULL")
-        .all(conf.specimen_id, conf.specimen_id) as Array<{ mineral_id: number }>;
+        .prepare(
+          `SELECT mineral_id FROM specimens WHERE id = ?
+           UNION SELECT made_of_id FROM specimens WHERE id = ? AND made_of_id IS NOT NULL
+           UNION SELECT mineral_id FROM specimen_parts WHERE specimen_id = ? AND mineral_id IS NOT NULL`,
+        )
+        .all(conf.specimen_id, conf.specimen_id, conf.specimen_id) as Array<{ mineral_id: number }>;
       db.prepare("DELETE FROM specimens WHERE id = ?").run(conf.specimen_id); // its parts cascade
       removedStone = true;
       pruneMinerals(db, minerals.map((m) => m.mineral_id));

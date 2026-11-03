@@ -16,7 +16,7 @@ import type { JobView } from "@/lib/jobs";
 import type { MineralHit } from "@/lib/minerals";
 import { HOW_CHOICES, type ConfirmHow } from "@/lib/naming";
 import { takenLabel } from "@/lib/photos";
-import { isMatrix, kindOf, MATRIX, pieceName, savedParts, stoneName, verdictLine, type Pill } from "@/lib/pills";
+import { isMatrix, kindOf, madeOfLine, MATRIX, pieceName, savedParts, stoneName, verdictLine, type Pill } from "@/lib/pills";
 import { shrinkToJpeg } from "@/lib/shrink";
 import type { StonePart } from "@/lib/specimens";
 
@@ -37,6 +37,9 @@ import type { StonePart } from "@/lib/specimens";
 // the screen and read out. Since #29 each pill names the whole piece as a show
 // label does (pieceName), wrapping rather than cut, and a mineral only one
 // opinion saw is a chip under the lead pill, off until the person ticks it.
+// Since #62 an object that is not a mineral says what it is made of under its
+// pill ("Made of Calcite"), with a "Made of" field and, when the two opinions
+// differ on it, both guesses as chips, as the variety has.
 
 type Props = {
   initialJob: JobView;
@@ -45,7 +48,7 @@ type Props = {
   nextJobId: number | null;
 };
 
-type Named = { specimenId: number; name: string; variety: string | null; parts: StonePart[]; how: ConfirmHow; nextJobId: number | null };
+type Named = { specimenId: number; name: string; variety: string | null; parts: StonePart[]; madeOf: string | null; how: ConfirmHow; nextJobId: number | null };
 
 const MAX_PHOTOS = 5;
 const POLL_MS = 1500;
@@ -58,6 +61,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
   const [error, setError] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
   const [variety, setVariety] = useState("");
+  const [madeOf, setMadeOf] = useState(""); // what an object that is not a mineral is made of (#62)
   const [ticked, setTicked] = useState<string[]>([]); // the lead pill's one-opinion minerals the person added
   const [hits, setHits] = useState<MineralHit[]>([]);
   const [showTests, setShowTests] = useState(false);
@@ -72,6 +76,9 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
   const plan = job.plan;
   const asking = !settled && plan.pills.length > 0; // asked again; the old pills wait for the new
   const doubt = plan.verdict === "probably" ? plan.pills[0]?.doubt : undefined;
+  const madeOfDoubt = plan.verdict === "probably" ? plan.pills[0]?.madeOfDoubt : undefined;
+  // The "Made of" field is for a fossil, a shell, sea glass: shown when any pill is one, or says what it is made of.
+  const asksMadeOf = plan.pills.some((p) => p.kind === "other" || p.madeOf !== null || p.madeOfDoubt !== undefined);
   const nextJobId = named?.nextJobId ?? initialNext;
 
   // Poll until Jasper has answered (the on-the-spot flow, and asking again).
@@ -135,7 +142,11 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
   async function confirm(body: Record<string, unknown>) {
     const data = await send<Named>(
       `/api/jobs/${job.id}/confirm`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, variety: variety.trim() || undefined }) },
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...body, variety: variety.trim() || undefined, madeOf: madeOf.trim() || undefined }),
+      },
       "That name wasn’t saved",
     );
     if (data) {
@@ -433,6 +444,54 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
           ) : null}
         </div>
 
+        {asksMadeOf ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center">
+              <label htmlFor="made-of" className="font-bold">
+                Made of <span className="font-normal text-ink-2">(optional)</span>
+              </label>
+              <Term k="madeOf" bare />
+            </div>
+            <div className="field flex items-center">
+              <input
+                id="made-of"
+                type="text"
+                value={madeOf}
+                onChange={(e) => setMadeOf(e.target.value)}
+                maxLength={80}
+                placeholder="Calcite, or Quartz"
+                autoComplete="off"
+              />
+            </div>
+            {madeOfDoubt ? (
+              <div className="flex flex-col gap-2 pt-1">
+                <p id="made-of-guesses-h" className="text-meta text-ink-2">
+                  Jasper&rsquo;s two guesses
+                </p>
+                <ul aria-labelledby="made-of-guesses-h" className="flex flex-wrap gap-2">
+                  {madeOfDoubt.guesses.map((g) => {
+                    const on = madeOf === stoneName(g);
+                    return (
+                      <li key={g}>
+                        <button
+                          type="button"
+                          disabled={busy || asking}
+                          aria-pressed={on}
+                          onClick={() => setMadeOf(on ? "" : stoneName(g))}
+                          className="chip"
+                        >
+                          {on ? <CheckIcon className="size-4" /> : null}
+                          {stoneName(g)}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {!none ? nameField(false) : null}
 
         <div className="flex flex-col gap-4 border-t border-line pt-5">
@@ -462,9 +521,24 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
           {`: ${doubt.guesses.map(stoneName).join(" or ")}.`}
         </>
       );
+    if (madeOfDoubt) {
+      const test = job.suggestedTests[0];
+      const phrase = test ? TESTS[test.kind].phrase : null;
+      return (
+        <>
+          {opinions}
+          {` agree it’s ${pieceName(plan.pills[0])}, but not what it’s `}
+          <Term k="madeOf">made of</Term>
+          {`: ${madeOfDoubt.guesses.map(stoneName).join(" or ")}.`}
+          {phrase ? ` ${phrase.charAt(0).toUpperCase()}${phrase.slice(1)} would tell.` : null}
+        </>
+      );
+    }
     if (plan.verdict === "probably") return <>{opinions} agree. Tap it if it looks right, or name it yourself.</>;
     const test = job.suggestedTests[0];
-    if (plan.verdict === "could_be" && plan.opinions === 2 && test) {
+    // A test tells two minerals apart; two readings of a fossil it can only tell what it is made of.
+    const bothStones = !plan.pills.slice(0, 2).some((p) => p.kind === "other");
+    if (plan.verdict === "could_be" && plan.opinions === 2 && test && bothStones) {
       const phrase = TESTS[test.kind].phrase;
       return (
         <>
@@ -591,6 +665,11 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
             <p className="font-label text-meta text-ink-2">
               Variety: <span className={`font-sans text-body ${n.variety ? "text-ink" : "italic text-ink-3"}`}>{n.variety ?? "Not recorded"}</span>
             </p>
+            {n.madeOf ? (
+              <p className="font-label text-meta text-ink-2">
+                Made of: <span className="font-sans text-body text-ink">{stoneName(n.madeOf)}</span>
+              </p>
+            ) : null}
           </div>
         </div>
         <p className="text-lead text-ink-2">It&rsquo;s in your collection now.</p>
@@ -639,17 +718,18 @@ function countLine(named: boolean, waiting: number, position: number): string {
 /**
  * One of Jasper's suggestions (DESIGN.md §4): the piece's name as a show label
  * gives it, wrapping onto a second line rather than cut, with "A kind of
- * Quartz" under a hobby name, and its word.
+ * Quartz" under a hobby name, "Made of Calcite" under a fossil (#62), and its word.
  */
 function PillButton({ pill, name, describedBy, disabled, onPick }: { pill: Pill; name: string; describedBy?: string; disabled: boolean; onPick: () => void }) {
   const lead = pill.word === "probably";
   const kind = kindOf(pill);
+  const made = pill.madeOf ? madeOfLine(pill.madeOf) : null;
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onPick}
-      aria-label={`${name}${kind ? `, ${kind.toLowerCase()}` : ""}: ${pill.word}`}
+      aria-label={`${name}${kind ? `, ${kind.toLowerCase()}` : ""}${made ? `, ${made.toLowerCase()}` : ""}: ${pill.word}`}
       aria-describedby={describedBy}
       // 32 px corners: a pill on one line, and a rounded card, not an oval, when a long name wraps.
       className={`flex min-h-16 w-full items-center justify-between gap-4 rounded-[32px] border bg-surface py-2.5 pl-6 pr-3 text-left transition-colors hover:border-line-strong hover:bg-sand disabled:opacity-60 ${lead ? "border-2 border-azurite" : "border-line-2"}`}
@@ -657,6 +737,7 @@ function PillButton({ pill, name, describedBy, disabled, onPick }: { pill: Pill;
       <span className="min-w-0">
         <span className="block text-balance break-words font-display text-h3 font-semibold leading-tight">{name}</span>
         {kind ? <span className="block text-[17px] text-ink-2">{kind}</span> : null}
+        {made ? <span className="block text-[17px] text-ink-2">{made}</span> : null}
       </span>
       <span className={`shrink-0 rounded-pill px-3 py-1 text-tag font-bold ${lead ? "bg-azurite-soft text-azurite-note" : "bg-sand text-tag-ink"}`}>{pill.word}</span>
     </button>
