@@ -152,8 +152,9 @@ Two across.
 **Mohs set**: ten slots, numbered in Courier Prime. Owned = `azurite-soft`
 fill, `azurite-deep` text. Just added = solid azurite, white text, "· new".
 Missing = dashed `line-2` border, ink-3 text. The dashboard shows it as a
-5 × 2 list with mineral names. The specimen page shows a single row of ten with
-this stone's slot solid.
+one-column list with mineral names (the canvas's 5 × 2 can't hold
+"Orthoclase" at the side column's width). The specimen page shows a single
+row of ten with this stone's slot solid.
 
 **Info mark**: 26–28 px ring in `line-strong`, "i" in azurite, a real
 `<button>` with an `aria-label` ("What is streak?"), 8 px after the term.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MOHS_SET, mohsCard, mohsRowLabel, placeOf, referenceSlot, type StoneNames } from "./mohs";
+import { MOHS_SET, mohsCard, mohsRowLabel, mohsSet, placeOf, referenceSlot, type StoneNames } from "./mohs";
 
 describe("MOHS_SET", () => {
   it("is Mohs's ten, talc to diamond", () => {
@@ -79,5 +79,24 @@ describe("mohsRowLabel", () => {
     expect(mohsRowLabel(mohsCard(2, STONES, [4, 4]), "Fluorite")).toBe("Mohs scale 1 to 10, with 4 highlighted for this Fluorite, and 3 and 7 in your set");
     expect(mohsRowLabel(mohsCard(4, STONES, [2.5, 2.5]), "Galena")).toBe("Mohs scale 1 to 10, with 3, 4 and 7 in your set");
     expect(mohsRowLabel(mohsCard(1, [CALCITE], [3, 3]), "Calcite")).toBe("Mohs scale 1 to 10, with 3 highlighted for this Calcite, and none in your set yet");
+  });
+});
+
+describe("mohsSet", () => {
+  const today = (iso: string) => iso.startsWith("2026-10-12");
+
+  it("lists each slot with the stone that filled it, new when that stone came today", () => {
+    const set = mohsSet(STONES, today);
+    expect(set.owned).toBe(3);
+    expect(set.slots.map((s) => `${s.n}${s.state[0]}`).join(" ")).toBe("1m 2m 3o 4o 5m 6m 7o 8m 9m 10m");
+    expect(set.slots[3].stone?.id).toBe(2); // the first Fluorite, not today's second one
+  });
+
+  it("marks a slot new only when its first stone came today, and owns through a variety's chain", () => {
+    const amethyst: StoneNames = { id: 9, createdAt: "2026-10-12T09:00:00Z", names: ["Amethyst", "Quartz"] };
+    const set = mohsSet([GALENA, amethyst, FLUORITE_2], today);
+    expect(set.slots.map((s) => s.state)).toEqual(["missing", "missing", "missing", "new", "missing", "missing", "new", "missing", "missing", "missing"]);
+    expect(set.slots[6].stone?.id).toBe(9);
+    expect(mohsSet([], today)).toEqual({ slots: MOHS_SET.map((r) => ({ ...r, state: "missing", stone: null })), owned: 0 });
   });
 });

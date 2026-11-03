@@ -42,12 +42,13 @@ pnpm dev
 
 ## The home page
 
-`app/page.tsx` is the dashboard from DESIGN.md §5, as far as Phase 1 has data for it. The hardness filter, the Mohs set and what new stones add to the periodic table wait for Mindat in Phase 2; the catalog dab on each card waits for Phase 3.
+`app/page.tsx` is the dashboard from DESIGN.md §5. The hardness filter waits for its own issue; the catalog dab on each card waits for Phase 3.
 
 - **The greeting** (`lib/greeting.ts`, tested) has three parts:
   - the date ("Sunday, November 1");
   - "Good evening.";
-  - what changed: "Two new stones today." (`addedToday` and `whatChanged` in `lib/collection.ts`, counted in the station's time zone), or "Your collection starts here." while it is empty.
+  - what changed: "Two new stones today." (`addedToday` and `whatChanged` in `lib/collection.ts`, counted in the station's time zone), or "Your collection starts here." while it is empty;
+  - under it, what today's stones added (#52, `whatTheyAdded`, tested): "Your Fluorite filled slot 4 on the Mohs scale, and calcium and fluorine are now lit on your periodic table.", from the slots whose first stone came today (`mohsSet`) and the elements whose first stone did (`periodicTable`'s `first`). On a quiet day the standing sentence stays: "Photograph a stone and Jasper will suggest what it is." The page reads `collectionElements` beside `collectionTiles` for this and the side column.
 - **The pending strip** (DESIGN.md §4), drawn on the server, so it never pops in:
   - It's an amber card with up to three overlapping 72 px thumbnails and "3 rocks waiting for a name".
   - Under that is the first stone's line (`stripLine` in `lib/pills.ts`): "Jasper's guess for the first one: could be Chalcopyrite or Marcasite." When the models are torn, it adds the first suggested test: "A steel nail would tell them apart."
@@ -84,7 +85,8 @@ pnpm dev
 ### The side column
 
 - **Newest additions:** four rows, each a whole 64 px link (thumbnail, the piece's name on up to two lines, "added Nov 1" after any "A kind of …"), then "See everything by date" (`/?sort=new`).
-- **At a glance:** four stat tiles, stones, different minerals, kinds of rock and places they live (`glance`), each a number over a phrase.
+- **At a glance:** four stat tiles, stones, different minerals and rocks, elements on your periodic table (from `periodicTable`) and places they live (`glance`), each a number over a phrase, then "Open your periodic table".
+- **Your Mohs scale** (#52): the ten reference minerals as a one-column list (`mohsSet` in `lib/mohs.ts`, tested; the canvas's 5 × 2 can't hold "Orthoclase" at the side column's width), each row the number in Courier Prime and the name, on the `mohs-slot` recipe: owned soft, filled by a stone added today solid with "· new", missing dashed. A slot is owned through the main mineral's name or any name up its chain, as on the stone page, by the earliest such stone. The line above counts them: "3 of the 10 reference stones. Collect all ten, talc to diamond." "New" here means added today, the dashboard's sense of it; the stone page's "new" means the stone was the first ever to bring it.
 - **Where they live:** each place with its count, most stones first (`places`), or a line saying where to record one.
 
 ## A stone
@@ -148,7 +150,7 @@ pnpm dev
   - Both cards' headings carry a mark (`element`, `mohsScale`), and with nothing to show, both take the property card's one-line fallbacks (`NoRecord`): a rock, a name Mindat doesn't have, or a record Jasper hasn't fetched.
 - **Remove** (`RemoveStone`): two taps, "Remove this stone" then "Yes, remove it", with "Keep it" to back out. `DELETE /api/stones/[id]` removes the photo rows and the jobs that brought them, found through the photos and through the stone's confirmations; candidates, suggested tests and confirmations cascade. It then removes the stone (its parts cascade), and each of its minerals, main or on it, that no stone uses any more (`pruneMinerals`), and unlinks the files and their thumbnails. Then home.
 
-Tests: `lib/collection.test.ts` (search, by a part too, the kind and source filters, both sorts, by the shown name, the chips, the count line, the side column, date labels, what changed today, missing details), `lib/greeting.test.ts`, `lib/mindat.test.ts` (formula runs, plain text, the luster, gravity and fluorescence rules on Mindat's own strings, inheritance up the chain, the card's four states, the class on the tiles' shape (`mineralClassOf`), and `fold` on Jasper's cases), `lib/elements.test.ts` (the table and its layout, Mindat's string in its shapes, inheritance, what is new on each of three stones in date order with a tie broken by id, a companion's elements, the lit count, and the line) and `lib/mohs.test.ts` (the set, the slot by name, through the chain and for Apatite's species, where a hardness sits, the slots' states, first versus already filled, and the row's label).
+Tests: `lib/collection.test.ts` (search, by a part too, the kind and source filters, both sorts, by the shown name, the chips, the count line, the side column, date labels, what changed today, missing details), `lib/greeting.test.ts` (the parts of the day, the date line, the greeting, and what today's stones added), `lib/mohs.test.ts` (`mohsSet`: the states, new only for today's first stone, owned through a chain), `lib/mindat.test.ts` (formula runs, plain text, the luster, gravity and fluorescence rules on Mindat's own strings, inheritance up the chain, the card's four states, the class on the tiles' shape (`mineralClassOf`), and `fold` on Jasper's cases), `lib/elements.test.ts` (the table and its layout, Mindat's string in its shapes, inheritance, what is new on each of three stones in date order with a tie broken by id, a companion's elements, the lit count, and the line) and `lib/mohs.test.ts` (the set, the slot by name, through the chain and for Apatite's species, where a hardness sits, the slots' states, first versus already filled, and the row's label).
 
 ## The periodic table
 

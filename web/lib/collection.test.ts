@@ -113,8 +113,8 @@ describe("countLine", () => {
 });
 
 describe("the side column", () => {
-  it("counts stones, different minerals, kinds of rock and places", () => {
-    expect(glance([...all, tile("galena")])).toEqual({ stones: 5, minerals: 2, rocks: 2, places: 2 });
+  it("counts stones, different minerals and rocks, and places", () => {
+    expect(glance([...all, tile("galena")])).toEqual({ stones: 5, kinds: 4, places: 2 });
   });
 
   it("lists where they live, most stones first", () => {
