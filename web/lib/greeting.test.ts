@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateLine, greeting, partOfDay } from "./greeting";
+import { dateLine, greeting, partOfDay, whatTheyAdded } from "./greeting";
 
 describe("partOfDay", () => {
   it("turns at noon and at five", () => {
@@ -32,5 +32,20 @@ describe("greeting", () => {
 
   it("says what changed today", () => {
     expect(greeting(evening, 3, 2)).toBe("Good evening. Two new stones today.");
+  });
+});
+
+describe("whatTheyAdded", () => {
+  it("says what today's stones did to the set and the table", () => {
+    expect(whatTheyAdded([{ n: 4, piece: "Fluorite" }], ["calcium", "fluorine"])).toBe(
+      "Your Fluorite filled slot 4 on the Mohs scale, and calcium and fluorine are now lit on your periodic table.",
+    );
+    expect(whatTheyAdded([{ n: 4, piece: "Fluorite" }, { n: 3, piece: "Calcite" }], [])).toBe("Your Fluorite and your Calcite filled slots 4 and 3 on the Mohs scale.");
+    expect(whatTheyAdded([], ["zinc"])).toBe("Zinc is now lit on your periodic table.");
+    expect(whatTheyAdded([], ["iron", "sulfur", "zinc"])).toBe("Iron, sulfur and zinc are now lit on your periodic table.");
+  });
+
+  it("says nothing on a quiet day", () => {
+    expect(whatTheyAdded([], [])).toBeNull();
   });
 });

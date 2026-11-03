@@ -87,3 +87,33 @@ export function mohsRowLabel(card: MohsCard, name: string): string {
   const own = card.reference ? `with ${card.reference.n} highlighted for this ${name}, and ${set}` : `with ${set}`;
   return `Mohs scale 1 to 10, ${own}`;
 }
+
+// --- The dashboard's set (#52) --------------------------------------------------
+
+export type SetSlot<T extends StoneNames> = Reference & {
+  state: "missing" | "owned" | "new"; // new: filled by a stone added today
+  stone: T | null; // the stone that filled it: the earliest of its mineral
+};
+
+export type MohsSet<T extends StoneNames> = { slots: SetSlot<T>[]; owned: number };
+
+/**
+ * The household's set as the dashboard lists it: each slot with the stone
+ * that filled it (the earliest of that reference mineral, by `created_at`
+ * then id), new when that stone was added today, and how many are owned.
+ * A second stone of an owned mineral changes nothing.
+ */
+export function mohsSet<T extends StoneNames>(stones: T[], isToday: (createdAt: string) => boolean): MohsSet<T> {
+  const filled = new Map<number, T>();
+  for (const s of stones) {
+    const n = referenceSlot(s.names);
+    if (n === null) continue;
+    const have = filled.get(n);
+    if (!have || before(s, have)) filled.set(n, s);
+  }
+  const slots = MOHS_SET.map((r): SetSlot<T> => {
+    const stone = filled.get(r.n) ?? null;
+    return { ...r, state: stone ? (isToday(stone.createdAt) ? "new" : "owned") : "missing", stone };
+  });
+  return { slots, owned: filled.size };
+}

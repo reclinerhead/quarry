@@ -129,13 +129,12 @@ export function countLine(shown: number, total: number, filtered: boolean): stri
   return `Showing ${shown} of ${stones(total)}`;
 }
 
-/** The "At a glance" tiles: stones, different minerals, kinds of rock, places they live. */
-export function glance(tiles: Tile[]): { stones: number; minerals: number; rocks: number; places: number } {
+/** The "At a glance" tiles: stones, different minerals and rocks, places they live. The elements come from the periodic table (#52). */
+export function glance(tiles: Tile[]): { stones: number; kinds: number; places: number } {
   const distinct = (xs: string[]) => new Set(xs.map((x) => x.toLowerCase())).size;
   return {
     stones: tiles.length,
-    minerals: distinct(tiles.filter((t) => t.kind === "mineral").map((t) => t.name)),
-    rocks: distinct(tiles.filter((t) => t.kind !== "mineral").map((t) => t.name)),
+    kinds: distinct(tiles.map((t) => t.name)),
     places: distinct(tiles.flatMap((t) => (t.location ? [t.location] : []))),
   };
 }
@@ -155,12 +154,15 @@ export function places(tiles: Tile[]): Array<{ place: string; n: number }> {
 
 const NUMBER_WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
 
+/** Whether an instant falls on the same calendar day as `now`, in `now`'s time zone. */
+export function sameDay(iso: string, now: Date): boolean {
+  const d = new Date(iso);
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
 /** How many stones were added on the same calendar day as `now`, in `now`'s time zone. */
 export function addedToday(createdAts: string[], now: Date): number {
-  return createdAts.filter((iso) => {
-    const d = new Date(iso);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  }).length;
+  return createdAts.filter((iso) => sameDay(iso, now)).length;
 }
 
 /** The greeting's "what changed" (DESIGN.md §5): "Two new stones today.", or nothing on a quiet day. */

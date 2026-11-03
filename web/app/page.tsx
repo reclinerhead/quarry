@@ -3,20 +3,22 @@ import { Collection } from "@/components/collection";
 import { CameraIcon, CrystalIcon } from "@/components/icons";
 import { JasperAtWork } from "@/components/jasper-at-work";
 import { StripWatch } from "@/components/strip-watch";
-import { addedToday, glance, places, sortTiles, type Tile } from "@/lib/collection";
-import { dateLine, greeting } from "@/lib/greeting";
+import { Term } from "@/components/term";
+import { addedToday, glance, places, sameDay, sortTiles, type Tile } from "@/lib/collection";
+import { periodicTable } from "@/lib/elements";
+import { dateLine, greeting, whatTheyAdded } from "@/lib/greeting";
 import { waitingStrip, withReadDb, workingStrip } from "@/lib/jobs";
+import { mohsSet, type MohsSet } from "@/lib/mohs";
 import { kindOf, pieceName, stripLine } from "@/lib/pills";
-import { collectionTiles } from "@/lib/specimens";
+import { collectionElements, collectionTiles, type PieceElements } from "@/lib/specimens";
 
-// The dashboard from design/DESIGN.md §5, Phase 1 subset (#9): the greeting
-// that says what changed, the pending strip (#8), then two columns: Your
-// collection (components/collection.tsx) and the side column with Newest
-// additions, At a glance and Where they live. While there are no stones, the
-// collection is one empty card in the specimen card's shape. The hardness
-// filter, the Mohs set and what new stones add to the periodic table wait for
-// Mindat in Phase 2. Everything comes from the database on every request,
-// never from the build.
+// The dashboard from design/DESIGN.md §5 (#9): the greeting that says what
+// changed and what today's stones added (#52), the pending strip (#8), then
+// two columns: Your collection (components/collection.tsx) and the side
+// column with Newest additions, At a glance, Your Mohs scale and Where they
+// live. While there are no stones, the collection is one empty card in the
+// specimen card's shape. The hardness filter waits for its own issue.
+// Everything comes from the database on every request, never from the build.
 export const dynamic = "force-dynamic";
 
 // Faint cards beside the empty one, so a wide screen shows the grid it will
@@ -29,10 +31,11 @@ const PLACEHOLDERS = [
 
 export default function Home() {
   const now = new Date();
-  const { tiles, strip, working } = withReadDb(
-    (db) => ({ tiles: collectionTiles(db), strip: waitingStrip(db), working: workingStrip(db) }),
+  const { tiles, pieces, strip, working } = withReadDb(
+    (db) => ({ tiles: collectionTiles(db), pieces: collectionElements(db), strip: waitingStrip(db), working: workingStrip(db) }),
     {
       tiles: [] as Tile[],
+      pieces: [] as PieceElements[],
       strip: { count: 0, thumbs: [], first: null },
       working: { ids: [], thumbs: [] },
     },
@@ -40,6 +43,16 @@ export default function Home() {
   const today = addedToday(
     tiles.map((t) => t.createdAt),
     now,
+  );
+  const isToday = (iso: string) => sameDay(iso, now);
+  const table = periodicTable(pieces);
+  const set = mohsSet(
+    pieces.map((p) => ({ ...p, names: p.minerals[0].chainNames })),
+    isToday,
+  );
+  const added = whatTheyAdded(
+    set.slots.flatMap((s) => (s.state === "new" && s.stone ? [{ n: s.n, piece: pieceName(s.stone) }] : [])),
+    table.lit.filter((l) => isToday(l.first.createdAt)).map((l) => l.element.name.toLowerCase()),
   );
 
   return (
@@ -49,7 +62,7 @@ export default function Home() {
         <h1 id="hello" className="text-[36px] leading-tight sm:text-h1 sm:leading-[1.1]">
           {greeting(now, tiles.length, today)}
         </h1>
-        <p className="text-lead text-ink-2">Photograph a stone and Jasper will suggest what it is. You decide what it&rsquo;s called.</p>
+        <p className="text-lead text-ink-2">{added ?? "Photograph a stone and Jasper will suggest what it is. You decide what it’s called."}</p>
       </section>
 
       {/* The pending strip (DESIGN.md §4): amber means "needs you". Drawn on
@@ -112,7 +125,7 @@ export default function Home() {
           <div className="min-w-0 flex-[999_1_600px]">
             <Collection tiles={tiles} />
           </div>
-          <SideColumn tiles={tiles} />
+          <SideColumn tiles={tiles} elements={table.lit.length} set={set} />
         </div>
       )}
     </main>
@@ -156,16 +169,22 @@ function EmptyCollection() {
 }
 
 /** DESIGN.md §5's side column: a flex sibling that drops below the collection on a phone, never sticky. */
-function SideColumn({ tiles }: { tiles: Tile[] }) {
+function SideColumn({ tiles, elements, set }: { tiles: Tile[]; elements: number; set: MohsSet<PieceElements & { names: string[] }> }) {
   const newest = sortTiles(tiles, "new").slice(0, 4);
   const g = glance(tiles);
   const where = places(tiles);
   const stats: Array<[number, string]> = [
     [g.stones, g.stones === 1 ? "stone in your collection" : "stones in your collection"],
-    [g.minerals, g.minerals === 1 ? "mineral" : "different minerals"],
-    [g.rocks, g.rocks === 1 ? "kind of rock" : "kinds of rock"],
+    [g.kinds, g.kinds === 1 ? "kind of mineral or rock" : "different minerals and rocks"],
+    [elements, elements === 1 ? "element on your periodic table" : "elements on your periodic table"],
     [g.places, g.places === 1 ? "place they live" : "places they live"],
   ];
+  const setLine =
+    set.owned === 10
+      ? "All ten, talc to diamond."
+      : set.owned === 0
+        ? "None of the 10 reference stones yet. Collect all ten, talc to diamond."
+        : `${set.owned} of the 10 reference stones. Collect all ten, talc to diamond.`;
   return (
     <aside aria-label="At a glance" className="flex w-full min-w-0 flex-[1_1_320px] flex-col gap-6 lg:max-w-sidebar">
       <section aria-labelledby="newest-h" className="card flex flex-col gap-3 p-card">
@@ -212,6 +231,39 @@ function SideColumn({ tiles }: { tiles: Tile[] }) {
             </div>
           ))}
         </dl>
+        <Link href="/periodic-table" className="text-link self-start">
+          Open your periodic table
+        </Link>
+      </section>
+
+      {/* DESIGN.md §4's Mohs set as the dashboard lists it (#52): the ten
+          reference minerals in one column (two don't hold "Orthoclase" at the
+          side column's width), owned soft, filled today solid with "· new". */}
+      <section aria-labelledby="mohs-set-h" className="card flex flex-col gap-3 p-card">
+        <h2 id="mohs-set-h" className="text-h3 leading-tight">
+          Your Mohs scale
+          <Term k="mohsScale" bare />
+        </h2>
+        <p className="text-meta text-ink-2">{setLine}</p>
+        <ol className="flex flex-col gap-1.5">
+          {set.slots.map((s) => (
+            <li
+              key={s.n}
+              className={`mohs-slot flex-row justify-start gap-2.5 rounded-thumb px-3 ${s.state === "new" ? "mohs-slot-this" : s.state === "owned" ? "mohs-slot-owned" : ""}`}
+            >
+              <span className="w-6 flex-none tabular-nums">{s.n}</span>
+              <span className={`py-2 leading-tight ${s.state === "missing" ? "font-sans font-normal" : "font-sans"}`}>
+                {s.name}
+                {s.state === "new" ? (
+                  <>
+                    {" "}
+                    <span className="whitespace-nowrap">· new</span>
+                  </>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ol>
       </section>
 
       <section aria-labelledby="where-h" className="card flex flex-col gap-3 p-card">

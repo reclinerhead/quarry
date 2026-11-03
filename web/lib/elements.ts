@@ -175,10 +175,11 @@ export function elementsLine(card: ElementsCard): string {
 
 // --- The periodic table page (#48) ---------------------------------------------
 
-/** A lit element: which stones carry it, newest first, with the mineral on each piece that has it. */
+/** A lit element: which stones carry it, newest first, with the mineral on each piece that has it, and the stone that brought it. */
 export type Lit<T extends StoneMinerals> = {
   element: PeriodicElement;
   stones: Array<{ stone: T; mineral: PieceMineral }>;
+  first: T; // the oldest stone carrying it: the one that lit it (#52)
 };
 
 export type PeriodicTable<T extends StoneMinerals> = {
@@ -200,7 +201,7 @@ function newestFirst<T extends { id: number; createdAt: string }>(a: T, b: T): n
  * to carry.
  */
 export function periodicTable<T extends StoneMinerals>(stones: T[]): PeriodicTable<T> {
-  const bySymbol = new Map<string, Lit<T>>();
+  const bySymbol = new Map<string, Omit<Lit<T>, "first">>();
   for (const stone of [...stones].sort(newestFirst))
     for (const mineral of stone.minerals)
       for (const element of mineral.elements) {
@@ -208,9 +209,10 @@ export function periodicTable<T extends StoneMinerals>(stones: T[]): PeriodicTab
         if (!lit.stones.some((s) => s.stone.id === stone.id)) lit.stones.push({ stone, mineral });
         bySymbol.set(element.symbol, lit);
       }
-  const lit = [...bySymbol.values()].sort((a, b) => a.element.number - b.element.number);
-  const firstOf = new Map(lit.map((l) => [l.element.symbol, l.stones[l.stones.length - 1].stone])); // the oldest stone carrying each
-  const last = [...firstOf.values()].sort(newestFirst)[0];
-  const newest = last ? { elements: pieceElements(last).filter((e) => firstOf.get(e.symbol)?.id === last.id), stone: last } : null;
+  const lit: Lit<T>[] = [...bySymbol.values()]
+    .map((l) => ({ ...l, first: l.stones[l.stones.length - 1].stone }))
+    .sort((a, b) => a.element.number - b.element.number);
+  const last = lit.map((l) => l.first).sort(newestFirst)[0];
+  const newest = last ? { elements: lit.filter((l) => l.first.id === last.id).map((l) => l.element), stone: last } : null;
   return { lit, stones: new Set(lit.flatMap((l) => l.stones.map((s) => s.stone.id))).size, newest };
 }

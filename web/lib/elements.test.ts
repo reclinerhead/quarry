@@ -160,7 +160,8 @@ describe("periodicTable", () => {
   it("counts the stones that carry anything, and names the element that arrived last", () => {
     expect(table.stones).toBe(3);
     expect(table.newest?.stone.id).toBe(3);
-    expect(sym(table.newest!.elements)).toEqual(["Fe", "S", "Zn", "Si"]);
+    expect(sym(table.newest!.elements)).toEqual(["Si", "S", "Fe", "Zn"]);
+    expect(table.lit.map((l) => [l.element.symbol, l.first.id])).toEqual([["C", 1], ["O", 1], ["F", 2], ["Si", 3], ["S", 3], ["Ca", 1], ["Fe", 3], ["Zn", 3]]);
     expect(periodicTable([P_GRANITE])).toEqual({ lit: [], stones: 0, newest: null });
     const two = periodicTable([P_FLUORITE, P_CALCITE]).newest!;
     expect([two.stone.id, sym(two.elements)]).toEqual([2, ["F"]]);
