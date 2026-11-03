@@ -326,7 +326,7 @@ export function Uploader() {
           <h2 className="text-[22px] leading-tight">For the best guess, three photos of each rock</h2>
           <ul className="mt-4 grid gap-4 md:grid-cols-3 md:gap-7">
             <Tip icon={<SunIcon className="size-7" />} lead="One close-up, in daylight." why="Window light shows the stone's true colour and shine." />
-            <Tip icon={<CoinIcon className="size-7" />} lead="One with a coin beside it." why="The coin shows how big the stone is." />
+            <Tip icon={<CoinIcon className="size-7" />} lead="One with a penny or quarter beside it." why="The coin shows how big the stone and its details are." />
             <Tip icon={<TagIcon className="size-7" />} lead="One of any label or tag." why="Jasper reads them, and a label is the best clue there is." />
           </ul>
         </div>
