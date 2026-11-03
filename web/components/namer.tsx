@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CameraIcon, CheckIcon, TagIcon } from "@/components/icons";
+import { JasperAtWork } from "@/components/jasper-at-work";
 import { PhotoView } from "@/components/photo-view";
 import { PieceTitle } from "@/components/piece-title";
 import { Term } from "@/components/term";
@@ -30,7 +31,10 @@ import type { StonePart } from "@/lib/specimens";
 // #18 it also says when the two agree on the stone but not its variety (and
 // offers both guesses for the variety field), names the test that would
 // settle a real disagreement, and notes a pill that can't fit a scratch test
-// the person answered. Since #29 each pill names the whole piece as a show
+// the person answered. Since #36 the card's heading is where the wait shows:
+// "Jasper is looking…" with Jasper at work under it, for the first look and
+// again after "Ask Jasper again", when focus moves there so the heading is on
+// the screen and read out. Since #29 each pill names the whole piece as a show
 // label does (pieceName), wrapping rather than cut, and a mineral only one
 // opinion saw is a chip under the lead pill, off until the person ticks it.
 
@@ -65,6 +69,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
   const [photoIndex, setPhotoIndex] = useState(0);
   const addRef = useRef<HTMLInputElement>(null);
   const typedRef = useRef<HTMLInputElement>(null);
+  const headRef = useRef<HTMLDivElement>(null); // the card's heading block: focused after "Ask Jasper again"
 
   const settled = isSettled(job);
   const plan = job.plan;
@@ -185,6 +190,10 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
     if (data) {
       setJob((j) => ({ ...j, status: "queued", nextAttemptAt: null, tests: data.tests, notes: note.trim() || null }));
       setShowTests(false);
+      // The button just pressed goes with the panel, so focus would be lost;
+      // the heading takes it, which also brings the card's top into view on a
+      // phone and has a screen reader say "Jasper is looking again…".
+      headRef.current?.focus();
     }
   }
 
@@ -298,16 +307,30 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
   // Namer would be a new type on every render, and React would remount the
   // inputs on each keystroke and drop the focus.
 
+  // The heading block, one element for both looks and the verdict, so focus
+  // and the live region stay put while the words under them change. Jasper at
+  // work sits under the heading while he has the stone; it is aria-hidden, so
+  // the live region reads only the heading and the line.
+  function head(heading: ReactNode, line: ReactNode, working: boolean) {
+    const answered = !working && Object.keys(job.tests).length > 0;
+    return (
+      <div ref={headRef} tabIndex={-1} aria-live="polite" className="flex flex-col gap-2 outline-none">
+        {answered ? <p className="text-meta font-bold text-ink-2">Jasper looked again with your answers</p> : null}
+        <p className={`font-display font-semibold leading-tight ${working ? "text-h2" : "text-[30px] sm:text-h2"}`}>{heading}</p>
+        {working ? <JasperAtWork seed={job.id} className="text-lead text-ink-2" /> : null}
+        <p className="text-lead text-ink-2">{line}</p>
+      </div>
+    );
+  }
+
+  function snag() {
+    return job.status === "failed" ? "Jasper hit a snag and will try again shortly." : null;
+  }
+
   function lookingView() {
-    const retrying = job.status === "failed";
     return (
       <>
-        <div className="flex flex-col gap-2">
-          <p className="font-display text-h2 font-semibold leading-tight">Jasper is looking&hellip;</p>
-          <p className="text-lead text-ink-2">
-            {retrying ? "Jasper hit a snag and will try again shortly." : "Usually a few seconds. Jasper’s suggestions appear here."}
-          </p>
-        </div>
+        {head(<>Jasper is looking&hellip;</>, snag() ?? "Usually a few seconds. Jasper’s suggestions appear here.", true)}
         <div aria-hidden className="flex flex-col gap-3">
           {[0, 1, 2].map((i) => (
             <div key={i} className="h-16 rounded-pill border border-line bg-ground" />
@@ -322,10 +345,9 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
     const heading = !none ? verdictLine(plan) : job.status === "failed" ? "Jasper couldn’t look at this one" : "Jasper had no guess";
     return (
       <>
-        <div className="flex flex-col gap-2">
-          <p className="font-display text-[30px] font-semibold leading-tight sm:text-h2">{heading}</p>
-          <p className="text-lead text-ink-2">{explain()}</p>
-        </div>
+        {asking
+          ? head(<>Jasper is looking again&hellip;</>, snag() ?? "With your answers. The new suggestions replace these in a few seconds.", true)
+          : head(heading, explain(), false)}
 
         {job.labelText ? (
           <figure className="flex items-start gap-3 rounded-[4px] border border-ink bg-label px-4 py-3">
@@ -438,7 +460,6 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext, l
   }
 
   function explain() {
-    if (asking) return "Jasper is asking again with your answers. The new suggestions replace these in a few seconds.";
     const opinions = <Term k="opinions">Jasper&rsquo;s two opinions</Term>;
     if (doubt)
       return (
@@ -639,7 +660,7 @@ function PillButton({ pill, name, describedBy, disabled, onPick }: { pill: Pill;
       aria-label={`${name}${kind ? `, ${kind.toLowerCase()}` : ""}: ${pill.word}`}
       aria-describedby={describedBy}
       // 32 px corners: a pill on one line, and a rounded card, not an oval, when a long name wraps.
-      className={`flex min-h-16 w-full items-center justify-between gap-4 rounded-[32px] border bg-surface py-2.5 pl-6 pr-3 text-left transition-colors hover:border-line-strong hover:bg-sand disabled:cursor-progress disabled:opacity-60 ${lead ? "border-2 border-azurite" : "border-line-2"}`}
+      className={`flex min-h-16 w-full items-center justify-between gap-4 rounded-[32px] border bg-surface py-2.5 pl-6 pr-3 text-left transition-colors hover:border-line-strong hover:bg-sand disabled:opacity-60 ${lead ? "border-2 border-azurite" : "border-line-2"}`}
     >
       <span className="min-w-0">
         <span className="block text-balance break-words font-display text-h3 font-semibold leading-tight">{name}</span>

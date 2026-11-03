@@ -54,9 +54,10 @@
     background: var(--color-sand-2);
   }
   /* A button that is working ("Sending…") rather than one drawn dead: pages
-     render a button only when it can do something. */
+     render a button only when it can do something. The screen says in words
+     that Jasper is working; the cursor stays the arrow, since the progress
+     cursor reads as a hung browser. */
   .btn:disabled {
-    cursor: progress;
     opacity: 0.7;
   }
 
