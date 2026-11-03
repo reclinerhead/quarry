@@ -9,13 +9,13 @@ import { isSettled } from "@/lib/job-state";
 import type { JobView } from "@/lib/jobs";
 import { verdictLine } from "@/lib/pills";
 import { NoRetry, withRetry } from "@/lib/retry";
-import { shrinkToJpeg } from "@/lib/shrink";
+import { decodeHeic, shrinkToJpeg } from "@/lib/shrink";
 
 type Photo = {
   key: string;
   file: File;
   preview: string;
-  previewFailed?: boolean; // a HEIC the browser cannot draw
+  look: "photo" | "reading" | "none"; // reading: a HEIC the browser cannot draw, being decoded in the page
 };
 
 type Rock = {
@@ -60,6 +60,8 @@ export function Uploader() {
   const rollRef = useRef<HTMLInputElement>(null);
   const nextKey = useRef(0);
   const uploaded = useRef(new Map<string, number>()); // photo key -> photos.id, once the Quarry has it
+  const decoded = useRef(new Map<string, Promise<File | null>>()); // photo key -> its HEIC as a JPEG, once the browser could not draw it
+  const gone = useRef(new Set<string>()); // photos removed while their decode was still running
   const line = useRef<Promise<void>>(Promise.resolve()); // rocks send one after another
 
   function pick(input: HTMLInputElement | null) {
@@ -74,6 +76,7 @@ export function Uploader() {
       key: String(++nextKey.current),
       file,
       preview: URL.createObjectURL(file),
+      look: "photo",
     }));
     const left = picked.length - next.length;
     setCurrent((cur) => [...cur, ...next]);
@@ -82,13 +85,37 @@ export function Uploader() {
 
   function removePhoto(key: string) {
     const p = current.find((x) => x.key === key);
-    if (p) URL.revokeObjectURL(p.preview);
+    if (p) forget(p);
     setCurrent((cur) => cur.filter((x) => x.key !== key));
     setNotice(null);
   }
 
-  function noPreview(key: string) {
-    const mark = (ps: Photo[]) => ps.map((p) => (p.key === key ? { ...p, previewFailed: true } : p));
+  function forget(p: Photo) {
+    URL.revokeObjectURL(p.preview);
+    gone.current.add(p.key);
+  }
+
+  // The <img> failing is the one sign this browser cannot draw the file (an
+  // iPhone draws HEIC itself and never gets here). Decode it in the page, show
+  // the JPEG, and keep it for the send; a file that isn't a HEIC, or one the
+  // decoder can't read, gets "No preview" and goes up as it is.
+  function noPreview(p: Photo) {
+    if (decoded.current.has(p.key)) return;
+    patchPhoto(p.key, { look: "reading" });
+    const job = decodeHeic(p.file).then((jpeg) => {
+      if (gone.current.has(p.key)) return jpeg;
+      if (!jpeg) patchPhoto(p.key, { look: "none" });
+      else {
+        URL.revokeObjectURL(p.preview);
+        patchPhoto(p.key, { look: "photo", preview: URL.createObjectURL(jpeg) });
+      }
+      return jpeg;
+    });
+    decoded.current.set(p.key, job);
+  }
+
+  function patchPhoto(key: string, change: Partial<Photo>) {
+    const mark = (ps: Photo[]) => ps.map((p) => (p.key === key ? { ...p, ...change } : p));
     setCurrent(mark);
     setRocks((cur) => cur.map((r) => (r.photos.some((p) => p.key === key) ? { ...r, photos: mark(r.photos) } : r)));
   }
@@ -116,7 +143,7 @@ export function Uploader() {
   }
 
   function removeRock(rock: Rock) {
-    for (const p of rock.photos) URL.revokeObjectURL(p.preview);
+    for (const p of rock.photos) forget(p);
     setRocks((cur) => cur.filter((r) => r.key !== rock.key)); // photos it already sent are swept by the Quarry a day later
   }
 
@@ -149,8 +176,9 @@ export function Uploader() {
   async function sendPhoto(rockKey: string, p: Photo): Promise<{ ok: true; photoId: number } | { ok: false; status: number | null }> {
     let status: number | null = null;
     try {
-      const takenAt = exifTakenAt(await p.file.arrayBuffer()); // before the shrink drops EXIF
-      const { blob, mime } = await shrinkToJpeg(p.file);
+      const takenAt = exifTakenAt(await p.file.arrayBuffer()); // from the original: the decode and the shrink both drop EXIF
+      const jpeg = await decoded.current.get(p.key); // a decode still running is waited for, never run twice
+      const { blob, mime } = await shrinkToJpeg(jpeg ?? p.file);
       const res = await withRetry(
         async (attempt) => {
           patch(rockKey, { attempt });
@@ -335,7 +363,7 @@ export function Uploader() {
             const p = current[i];
             return p ? (
               <li key={p.key} className="flex flex-col gap-2">
-                <Thumb photo={p} onNoPreview={() => noPreview(p.key)} className="aspect-square w-full" />
+                <Thumb photo={p} onNoPreview={() => noPreview(p)} className="aspect-square w-full" />
                 <button type="button" onClick={() => removePhoto(p.key)} aria-label={`Remove photo ${i + 1}`} className="btn btn-soft w-full px-3">
                   Remove
                 </button>
@@ -405,10 +433,10 @@ function Tip({ icon, lead, why }: { icon: React.ReactNode; lead: string; why: st
 function Thumb({ photo, onNoPreview, className }: { photo: Photo; onNoPreview: () => void; className: string }) {
   return (
     <div className={`overflow-hidden rounded-thumb bg-tile-stone ${className}`}>
-      {photo.previewFailed ? (
-        <div className="flex size-full flex-col items-center justify-center gap-1">
-          <CrystalIcon className="size-9 text-icon-muted" />
-          <span className="text-meta text-ink-2">No preview</span>
+      {photo.look !== "photo" ? (
+        <div className="flex size-full flex-col items-center justify-center gap-1 px-2 text-center">
+          <CrystalIcon className={`size-9 text-icon-muted ${photo.look === "reading" ? "animate-pulse motion-reduce:animate-none" : ""}`} />
+          <span className="text-meta text-ink-2">{photo.look === "reading" ? "Reading the photo…" : "No preview"}</span>
         </div>
       ) : (
         // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL, nothing for next/image to optimise
@@ -425,7 +453,7 @@ function Row({
   onRemove,
 }: {
   rock: Rock;
-  onNoPreview: (photoKey: string) => void;
+  onNoPreview: (photo: Photo) => void;
   onSendAgain: () => void;
   onRemove: () => void;
 }) {
@@ -469,7 +497,7 @@ function Row({
   const first = rock.photos[0];
   return (
     <li className={`card flex gap-4 p-4 ${needsYou ? "border-warn-line bg-warn" : ""}`}>
-      <Thumb photo={first} onNoPreview={() => onNoPreview(first.key)} className="size-[104px] flex-none" />
+      <Thumb photo={first} onNoPreview={() => onNoPreview(first)} className="size-[104px] flex-none" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className={`font-bold leading-snug ${needsYou ? "text-warn-ink" : "text-ink"}`}>{status}</p>
         {detail ? <p className={`text-meta ${needsYou ? "text-warn-ink" : "text-ink-2"}`}>{detail}</p> : null}
