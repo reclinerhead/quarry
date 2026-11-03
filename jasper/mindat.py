@@ -33,6 +33,12 @@ for that record and each one above it (`fetch_details`), into
 full. Running out of time is not a failure there: the pass stops quietly and
 the rest waits for the next one.
 
+Where each of those records is found (#65) is the pass's fourth step
+(`fetch_places`): Mindat's occurrence counts for the USA, each of the 50 states
+and each of Michigan's counties, three requests a record, kept in
+`mindat_records.places` and counted again after 30 days. The record a stone's
+variety names is counted too, so an Amethyst shows Amethyst's places.
+
 `Api` is the only part that touches the network, over urllib as llm.py is, so
 Jasper's venv grows no dependency.
 """
@@ -47,7 +53,7 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -60,6 +66,11 @@ if TYPE_CHECKING:
 API_HOST = "api.mindat.org"
 API_URL = f"https://{API_HOST}/v1/geomaterials/"
 FIELDS = "id,name,entrytype_text,varietyof,synid,hmin,hmax,streak"
+LOCALITIES_URL = f"https://{API_HOST}/v1/localities/"
+COUNTS_URL = f"https://{API_HOST}/v1/occurrences-statistics/"
+# Enough for one page of every list Jasper asks for: 104 places at level 1 under
+# the USA, 87 at level 2 under Michigan, on 2026-11-03.
+PAGE_SIZE = 500
 
 
 @dataclass(frozen=True)
@@ -103,6 +114,7 @@ class Api:
         self._key = key
         self.limits = limits
         self.requests = 0
+        self.geography: Geography | None = None  # the states and counties, asked once a run (`fetch_places`)
 
     def __repr__(self) -> str:
         return "Api(key=…)"  # never logged
@@ -118,9 +130,17 @@ class Api:
 
     def search(self, term: str) -> list[dict]:
         """Mindat's entries named `term`. The search is exact, ignoring case and accents."""
-        body = self._get(API_URL + "?" + urllib.parse.urlencode({"name": term, "fields": FIELDS}))
-        results = body.get("results") if body else None
-        return [r for r in results if isinstance(r, dict)] if isinstance(results, list) else []
+        return _results(self._get(API_URL + "?" + urllib.parse.urlencode({"name": term, "fields": FIELDS})))
+
+    def localities(self, query: Mapping[str, str | int]) -> list[dict]:
+        """Mindat's localities matching `query`, one page, each its `id`, `txt` ("Michigan, USA") and `level`."""
+        return _results(self._get(LOCALITIES_URL + "?" + _query({**query, "fields": "id,txt,level", "page-size": PAGE_SIZE})))
+
+    def counts(self, mindat_id: int, localities: Iterable[int]) -> list[dict]:
+        """How many places under each locality report the record (`lstm_numlocs`), rolled up
+        from every place below it: one row per locality with any, `lstm_loc` its id."""
+        ids = ",".join(str(i) for i in localities)
+        return _results(self._get(COUNTS_URL + "?" + _query({"lstm_min": mindat_id, "lstm_loc": ids, "page-size": PAGE_SIZE})))
 
     def record(self, mindat_id: int) -> dict | None:
         """One entry by id, or None when Mindat has no such id."""
@@ -150,6 +170,17 @@ class Api:
             except Exception as e:  # noqa: BLE001  (unreachable, timed out, unreadable body)
                 last = f"{API_HOST} unreachable ({type(e).__name__}: {e})"[:200]
         raise Unreachable(last)
+
+
+def _query(params: Mapping[str, object]) -> str:
+    """A query string as the requests measured on 2026-11-03 sent it: commas left as they are, spaces as %20."""
+    return urllib.parse.urlencode(params, safe=",", quote_via=urllib.parse.quote)
+
+
+def _results(body: dict | None) -> list[dict]:
+    """A list endpoint's `results`, the objects only; none for a 404 or anything else."""
+    results = body.get("results") if body else None
+    return [r for r in results if isinstance(r, dict)] if isinstance(results, list) else []
 
 
 def api(environ: Mapping[str, str] | None = None) -> Api | None:
@@ -468,13 +499,168 @@ def fetch_details(conn: sqlite3.Connection, api: Api, deadline: float, clock: Cl
     return fetched
 
 
+# ----------------------------------------------------------------------------
+# Where it's found (#65): Mindat's occurrence counts, in the USA and at home
+# ----------------------------------------------------------------------------
+
+
+# The household's state, whose counties are counted. A second state waits for a
+# household outside it.
+HOME_STATE = "Michigan"
+STATES = frozenset({
+    "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware",
+    "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky",
+    "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi",
+    "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico",
+    "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania",
+    "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont",
+    "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming",
+})
+# The USA and everything one level under it; the home state's places one level under it.
+US_LOCALITIES = {"country": "USA", "level_lte": 1}
+HOME_LOCALITIES = {"revtxtd_istartswith": f"USA, {HOME_STATE},", "level_gte": 2, "level_lte": 2}
+# Counts are counted again after this many days: three requests a record a month.
+PLACES_FRESH_DAYS = 30
+
+
+@dataclass(frozen=True)
+class Geography:
+    """Where places are counted, by Mindat's locality id."""
+
+    usa: int
+    states: Mapping[int, str]  # 3293: "Arizona"
+    counties: Mapping[int, str]  # the home state's, 55636: "Kalamazoo County"
+
+
+def geography(us: list[dict], home: list[dict]) -> Geography:
+    """The USA, its 50 states and the home state's counties, from the two locality lists.
+    Level 1 under the USA also holds mining districts, national parks and formations
+    ("Tri-State Mining District", "Colorado Plateau"), so a state is kept by its name;
+    level 2 under Michigan also holds regions that overlap its counties (Keweenaw
+    Peninsula, the iron ranges), so only a name ending " County" is kept.
+    Raises Unreachable when the USA, its states or the counties aren't among them:
+    asking for an empty list of places would bring back every place Mindat has."""
+    usa = next((_id(r.get("id")) for r in us if r.get("level") == 0 and r.get("txt") == "USA"), None)
+    states = {i: n for r in us if r.get("level") == 1 and (i := _id(r.get("id"))) and (n := _place_name(r, ", USA")) in STATES}
+    counties = {i: n for r in home if (i := _id(r.get("id"))) and (n := _place_name(r, f", {HOME_STATE}, USA")).endswith(" County")}
+    if usa is None or not states or not counties:
+        raise Unreachable(f"{API_HOST} sent no USA, states or {HOME_STATE} counties among its localities")
+    return Geography(usa, states, counties)
+
+
+def _place_name(r: dict, suffix: str) -> str:
+    """A place's own name, "Keweenaw County" from "Keweenaw County, Michigan, USA"; nothing when it isn't under `suffix`."""
+    txt = r.get("txt")
+    return txt.removesuffix(suffix) if isinstance(txt, str) and txt.endswith(suffix) else ""
+
+
+def _count(r: dict) -> int:
+    n = r.get("lstm_numlocs")
+    return n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
+
+
+def _total(geo: Geography, usa: list[dict]) -> int:
+    """The USA's count from its request; Mindat sends no row for a place with none."""
+    return next((_count(r) for r in usa if _id(r.get("lstm_loc")) == geo.usa), 0)
+
+
+def _areas(rows: list[dict], names: Mapping[int, str]) -> list[dict]:
+    """The places asked about that report any, most first, then by name."""
+    found = {loc: _count(r) for r in rows if (loc := _id(r.get("lstm_loc"))) in names}
+    areas = [{"id": loc, "name": names[loc], "n": n} for loc, n in found.items() if n]
+    return sorted(areas, key=lambda a: (-a["n"], a["name"]))
+
+
+def places_of(geo: Geography, usa: list[dict], states: list[dict], counties: list[dict]) -> dict:
+    """The three counts as `mindat_records.places` keeps them: the USA's total, then the
+    states and the home state's counties that report any, most first; `{"usa": 0}`
+    when the USA reports none."""
+    total = _total(geo, usa)
+    if not total:
+        return {"usa": 0}
+    return {"usa": total, "states": _areas(states, geo.states), "michigan": _areas(counties, geo.counties)}
+
+
+# Records whose places are wanted and missing or stale: each record a mineral needs
+# (as NEEDS_DETAIL), and each record a stone's variety names, with the records
+# above it, since the stone page walks up from the most specific record with places.
+NEEDS_PLACES = """
+WITH RECURSIVE up(id, depth) AS (
+  SELECT id, 1 FROM (SELECT mindat_id AS id FROM minerals WHERE mindat_id IS NOT NULL
+                     UNION SELECT value FROM json_each(:varieties))
+  UNION
+  SELECT r.varietyof, up.depth + 1 FROM up JOIN mindat_records r ON r.id = up.id
+   WHERE r.varietyof IS NOT NULL AND up.depth < :max_depth
+)
+SELECT id FROM mindat_records
+ WHERE id IN (SELECT id FROM up)
+   AND (places IS NULL OR places_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', :stale))
+ ORDER BY places_at IS NOT NULL, places_at, id
+"""
+
+
+def _varieties(conn: sqlite3.Connection, api: Api, deadline: float, clock: Clock) -> list[int]:
+    """The record each stone's variety names, through the cache a candidate's goes through.
+    Asked as its own name, so its terms are the variety and the variety before its
+    first comma, never the mineral's. A typed variety is asked once."""
+    found = []
+    for row in conn.execute("SELECT DISTINCT variety FROM specimens WHERE trim(coalesce(variety, '')) <> ''").fetchall():
+        v = row["variety"]
+        rid = resolve(conn, api, v.split(",")[0], v, deadline, clock)
+        if rid is not None:
+            found.append(rid)
+    return found
+
+
+def _geography(api: Api, deadline: float, clock: Clock) -> Geography:
+    """The states and counties, asked once a run: two requests."""
+    if api.geography is None:
+        _in_time(deadline, clock)
+        us = api.localities(US_LOCALITIES)
+        _in_time(deadline, clock)
+        api.geography = geography(us, api.localities(HOME_LOCALITIES))
+    return api.geography
+
+
+def fetch_places(conn: sqlite3.Connection, api: Api, deadline: float, clock: Clock = time.monotonic) -> int:
+    """Count where each record in `NEEDS_PLACES` is found: the USA, then, when it has
+    any there, the states and the home state's counties. Three requests a record, one
+    when the USA has none; one transaction per record, nothing stored for a record
+    whose counts didn't all come. Returns how many it stored; stops there when the
+    time runs out. Raises Unreachable."""
+    placed = 0
+    try:
+        varieties = _varieties(conn, api, deadline, clock)
+        params = {"varieties": json.dumps(varieties), "max_depth": MAX_DEPTH, "stale": f"-{PLACES_FRESH_DAYS} days"}
+        for row in conn.execute(NEEDS_PLACES, params).fetchall():
+            geo = _geography(api, deadline, clock)
+            _in_time(deadline, clock)
+            usa = api.counts(row["id"], [geo.usa])
+            states = counties = []
+            if _total(geo, usa):
+                _in_time(deadline, clock)
+                states = api.counts(row["id"], geo.states)
+                _in_time(deadline, clock)
+                counties = api.counts(row["id"], geo.counties)
+            with conn:
+                conn.execute(
+                    "UPDATE mindat_records SET places = ?, places_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+                    (json.dumps(places_of(geo, usa, states, counties), ensure_ascii=False, separators=(",", ":")), row["id"]),
+                )
+            placed += 1
+    except OutOfTime:
+        pass
+    return placed
+
+
 def idle(conn: sqlite3.Connection, api: Api, budget_s: float = IDLE_BUDGET_S,
-         clock: Clock = time.monotonic, should_stop: Callable[[], bool] | None = None) -> tuple[int, int, int]:
+         clock: Clock = time.monotonic, should_stop: Callable[[], bool] | None = None) -> tuple[int, int, int, int]:
     """Jasper's Mindat work while the queue is empty, in one budget: the waiting
-    candidates, then the minerals, then their records. Returns (candidates filled,
-    minerals linked, records fetched). Raises Unreachable; what was done before stays.
-    `should_stop` (a job has arrived, #40) ends the pass at its next request the way
-    running out of time does: the steps keep what they did, and the rest waits a minute."""
+    candidates, then the minerals, then their records, then where those are found.
+    Returns (candidates filled, minerals linked, records fetched, records counted).
+    Raises Unreachable; what was done before stays. `should_stop` (a job has
+    arrived, #40) ends the pass at its next request the way running out of time
+    does: the steps keep what they did, and the rest waits a minute."""
     deadline = clock() + budget_s
     if should_stop is not None:
         wall = clock
@@ -484,4 +670,5 @@ def idle(conn: sqlite3.Connection, api: Api, budget_s: float = IDLE_BUDGET_S,
 
     filled = catch_up(conn, api, deadline, clock)
     linked = link_minerals(conn, api, deadline, clock)
-    return filled, linked, fetch_details(conn, api, deadline, clock)
+    fetched = fetch_details(conn, api, deadline, clock)
+    return filled, linked, fetched, fetch_places(conn, api, deadline, clock)

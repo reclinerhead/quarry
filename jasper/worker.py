@@ -11,8 +11,9 @@ With a Mindat key (#18), an identified job's candidates are looked up in
 Mindat before the job is written, on a short leash (#40): a person may be
 waiting on the confirm screen. When the queue is idle (`mindat.idle`), the
 candidates a lookup missed are tried again, then each named mineral is linked
-to its record and that record is fetched whole (#21), once a minute, or ten
-minutes after Mindat failed, and the pass stops as soon as a job arrives.
+to its record and that record is fetched whole (#21), then where those records
+are found is counted (#65), once a minute, or ten minutes after Mindat failed,
+and the pass stops as soon as a job arrives.
 Mindat never decides a job's outcome. The log line times each part, and the
 job's `finished_at` is when it finished, not when it was claimed.
 """
@@ -120,12 +121,12 @@ def _log_line(job_id: int, outcome: identify.Outcome, row: sqlite3.Row, seconds:
 
 
 def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api, now: datetime) -> datetime:
-    """The idle Mindat pass: the waiting candidates, then the named minerals and their
-    records. Returns when to try next. Running out of time is not a failure: the rest
-    waits a minute, not ten."""
+    """The idle Mindat pass: the waiting candidates, then the named minerals, their
+    records, and where those are found. Returns when to try next. Running out of time
+    is not a failure: the rest waits a minute, not ten."""
     try:
         # A job arriving mid-pass ends it at the next request; the rest waits a minute.
-        filled, linked, fetched = mindat.idle(conn, mindat_api, should_stop=lambda: queue.has_runnable(conn, datetime.now(timezone.utc)))
+        filled, linked, fetched, placed = mindat.idle(conn, mindat_api, should_stop=lambda: queue.has_runnable(conn, datetime.now(timezone.utc)))
     except mindat.Unreachable as e:
         log.warning("mindat catch-up stopped: %s; next try in %d minutes", e, CATCH_UP_AFTER_FAILURE.seconds // 60)
         return now + CATCH_UP_AFTER_FAILURE
@@ -133,6 +134,8 @@ def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api, now: datetime) ->
         log.info("mindat caught up on %d waiting candidate(s)", filled)
     if linked or fetched:
         log.info("mindat linked %d mineral(s), fetched %d record(s)", linked, fetched)
+    if placed:
+        log.info("mindat counted where %d record(s) are found", placed)
     return now + CATCH_UP_EVERY
 
 
