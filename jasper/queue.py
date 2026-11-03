@@ -48,18 +48,22 @@ def requeue_interrupted(conn: sqlite3.Connection) -> int:
         return conn.execute("UPDATE jobs SET status = 'queued' WHERE status = 'identifying'").rowcount
 
 
+# A job Jasper may run now: queued, or failed with its next attempt due and tries
+# left. `claim_next` and `has_runnable` share it so they can't drift apart.
+RUNNABLE = "status = 'queued' OR (status = 'failed' AND attempts < ? AND next_attempt_at IS NOT NULL AND next_attempt_at <= ?)"
+
+
+def has_runnable(conn: sqlite3.Connection, now: datetime) -> bool:
+    """Whether `claim_next` would find a job: the idle Mindat pass asks between requests (#40)."""
+    return conn.execute(f"SELECT 1 FROM jobs WHERE {RUNNABLE} LIMIT 1", (MAX_ATTEMPTS, iso(now))).fetchone() is not None
+
+
 def claim_next(conn: sqlite3.Connection, now: datetime) -> sqlite3.Row | None:
     """Pick the oldest runnable job and mark it `identifying`. Returns the job row, or None."""
     now_s = iso(now)
     with conn:
         row = conn.execute(
-            """
-            SELECT * FROM jobs
-             WHERE status = 'queued'
-                OR (status = 'failed' AND attempts < ? AND next_attempt_at IS NOT NULL AND next_attempt_at <= ?)
-             ORDER BY created_at, id
-             LIMIT 1
-            """,
+            f"SELECT * FROM jobs WHERE {RUNNABLE} ORDER BY created_at, id LIMIT 1",
             (MAX_ATTEMPTS, now_s),
         ).fetchone()
         if row is None:

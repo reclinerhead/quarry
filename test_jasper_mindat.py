@@ -6,7 +6,9 @@ A fake API stands in for Mindat; the HTTP itself stays untested."""
 import json
 
 import logging
-from datetime import datetime, timezone
+import re
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from PIL import Image
@@ -58,12 +60,23 @@ class FakeApi:
         self.fail = fail
         self.fail_full = set(fail_full)
         self.clock = clock
+        self.limits = mindat.IDLE
         self.requests = 0
         self.asked = []
         self.fetched = []
+        self.leashes = []  # the limits in force at each request
+
+    @contextmanager
+    def within(self, limits):
+        before, self.limits = self.limits, limits
+        try:
+            yield
+        finally:
+            self.limits = before
 
     def _request(self):
         self.requests += 1
+        self.leashes.append(self.limits)
         if self.clock:
             self.clock.t += 1
         if self.fail:
@@ -231,6 +244,46 @@ def test_an_identified_job_is_written_with_each_candidates_record(tmp_path):
     assert mindat.resolve_outcome(conn, api, out) == "mindat cached"
 
 
+def test_a_jobs_lookups_run_on_the_short_leash_and_stop_at_its_budget(tmp_path):
+    """A person may be waiting (#40): 3 s a request, one try, 4 s a job; the rest is the idle pass's."""
+    conn, clock = _db(tmp_path), Clock()
+    api = FakeApi(clock=clock)
+    out = _outcome([("Chalcedony", "Agate"), ("Jasper", None)], [("Baryte", None)])
+    # Agate, Chalcedony, Quartz at 0, 1, 2 s; Jasper at 3 s; at 4 s the time is up before Baryte.
+    assert mindat.resolve_outcome(conn, api, out, clock=clock) == "mindat stopped: out of time for this job"
+    assert api.requests == 4 and api.leashes == [mindat.WAIT] * 4 and api.limits == mindat.IDLE
+    ids = [c.mindat_id for o in out.opinions for c in o.answer.candidates]
+    assert ids == [51, 2082, None]
+    assert mindat.WAIT_BUDGET_S == 4 and mindat.WAIT == mindat.Limits(timeout_s=3, tries=1)
+    assert mindat.IDLE_BUDGET_S == 20 and mindat.IDLE == mindat.Limits(timeout_s=8, tries=2)
+    # The idle pass finishes the job on its own leash.
+    conn.execute("INSERT INTO jobs (id, status) VALUES (7, 'identified')")
+    queue.record_outcome(conn, 7, out, NOW)
+    clock.t = 0.0
+    assert mindat.catch_up(conn, api, clock() + mindat.IDLE_BUDGET_S, clock) == 1
+    assert api.leashes[4:] == [mindat.IDLE]
+    assert conn.execute("SELECT mindat_id FROM candidates WHERE name = 'Baryte'").fetchone()[0] == 549
+
+
+def test_a_jobs_request_is_tried_once_and_the_idle_pass_s_twice(monkeypatch):
+    """The real client against a Mindat that never answers: the tries and the timeout follow the leash."""
+    calls = []
+
+    def never(req, timeout):
+        calls.append(timeout)
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(mindat.urllib.request, "urlopen", never)
+    api = mindat.Api("k")
+    with pytest.raises(mindat.Unreachable, match="unreachable"):
+        api.search("Agate")
+    assert calls == [8, 8]
+    calls.clear()
+    with api.within(mindat.WAIT), pytest.raises(mindat.Unreachable, match="unreachable"):
+        api.search("Agate")
+    assert calls == [3] and api.limits == mindat.IDLE and api.requests == 3
+
+
 def test_a_failed_lookup_leaves_the_job_as_it_would_be(tmp_path):
     conn = _db(tmp_path)
     out = _outcome([("Calcite", None)], [("Calcite", None)])
@@ -320,7 +373,7 @@ def test_run_once_looks_up_the_candidates_and_says_so(tmp_path, caplog):
         worker.run_once(conn, data, CFG, NOW, ask=fake_ask, mindat_api=FakeApi())
     assert [r[0] for r in conn.execute("SELECT mindat_id FROM candidates ORDER BY model")] == [51, 51]
     line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith(f"job {jid} "))
-    assert " · mindat 4 requests · " in line and line.endswith(" s")
+    assert re.search(r" · mindat 4 requests \(\d+\.\d s\) · \d+\.\d s$", line), line
 
 
 # --- enrichment (#21) -------------------------------------------------------------
@@ -450,6 +503,31 @@ def test_running_out_of_time_stops_quietly_and_the_next_pass_goes_on(tmp_path):
     assert _detailed(conn) == {51, 960, 3337}
 
 
+def test_the_idle_pass_stops_for_a_job_and_keeps_what_it_did(tmp_path):
+    conn, clock = _db(tmp_path), Clock()
+    api = FakeApi(clock=clock)
+    _mineral(conn, "Agate")
+    # Linking Agate takes three requests (Agate, Chalcedony, Quartz); a job arrives after two.
+    assert mindat.idle(conn, api, clock=clock, should_stop=lambda: api.requests >= 2) == (0, 0, 0)
+    assert api.requests == 2 and _mineral_row(conn, 1)[2] is None
+    assert mindat.idle(conn, api, clock=clock) == (0, 1, 3)  # the chain, then its three records
+    assert _mineral_row(conn, 1)[2] == 51
+
+
+def test_the_worker_ends_the_pass_for_a_queued_job_and_tries_again_in_a_minute(tmp_path, caplog):
+    conn = _db(tmp_path)
+    _mineral(conn, "Agate")
+    _job(conn)  # queued: the pass must not hold it
+    api = FakeApi()
+    with caplog.at_level(logging.INFO, logger="jasper"):
+        assert worker.catch_up(conn, api, NOW) == NOW + worker.CATCH_UP_EVERY
+    assert api.requests == 0 and not caplog.records
+    conn.execute("UPDATE jobs SET status = 'identified'")
+    conn.commit()
+    assert worker.catch_up(conn, api, NOW) == NOW + worker.CATCH_UP_EVERY
+    assert _mineral_row(conn, 1)[2] == 51
+
+
 def test_a_failure_partway_keeps_what_was_fetched_before_it(tmp_path):
     conn = _db(tmp_path)
     _mineral(conn, "Agate")
@@ -477,7 +555,7 @@ def test_without_a_key_the_idle_pass_never_runs(tmp_path, monkeypatch):
     conn = _db(tmp_path)
     calls = []
     monkeypatch.setattr(worker.time, "sleep", lambda s: None)
-    monkeypatch.setattr(worker.mindat, "idle", lambda conn, api: calls.append(api) or (0, 0, 0))
+    monkeypatch.setattr(worker.mindat, "idle", lambda conn, api, should_stop=None: calls.append(api) or (0, 0, 0))
     worker.run_forever(conn, tmp_path, CFG, iter([True, False]).__next__, None)
     assert calls == []
     api = FakeApi()

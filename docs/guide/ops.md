@@ -99,11 +99,13 @@ How it behaves:
 - pearl's record for `quarry.lan`, when `dig` is installed;
 - the watcher's last lines, and Jasper's.
 
-**Jasper's journal** has one line per job, with what each model said and what the job cost:
+**Jasper's journal** has one line per job, with what each model said, how long each took, what the job cost, and the Mindat part when Mindat was asked:
 
 ```
-job 7 identified: haiku Galena 0.82 · flash Galena 0.90 · $0.0041 · 6.2 s
+job 7 identified: haiku Galena 0.82 (5.8 s) · flash Galena 0.90 (4.1 s) · $0.0041 · mindat cached (0.0 s) · 6.2 s
 ```
+
+- The models alone take 6 to 11 s. A job's Mindat lookups are held to about 4 s (#40); `mindat stopped: …` means Mindat was slow or down and the idle pass will fill the ids in.
 
 - A model that did not answer makes it a WARNING.
 - A job that failed for good, such as a bad key, is an ERROR.

@@ -4,6 +4,7 @@ import base64
 import io
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -65,6 +66,22 @@ def test_claim_takes_the_oldest_queued_job_and_marks_it_identifying(tmp_path):
     assert row["id"] == older and row["status"] == "identifying"
     assert queue.claim_next(conn, NOW)["id"] == newer
     assert queue.claim_next(conn, NOW) is None
+
+
+def test_has_runnable_agrees_with_claim_next(tmp_path):
+    """The idle Mindat pass asks it between requests (#40): the same rule as the claim."""
+    conn = _db(tmp_path)
+    assert not queue.has_runnable(conn, NOW)
+    jid = _job(conn)
+    assert queue.has_runnable(conn, NOW)
+    assert queue.claim_next(conn, NOW)["id"] == jid
+    assert not queue.has_runnable(conn, NOW)  # identifying
+    queue.record_outcome(conn, jid, identify.Outcome("retry", error="503"), NOW)
+    assert not queue.has_runnable(conn, NOW + timedelta(seconds=10))  # failed, not yet due
+    assert queue.has_runnable(conn, NOW + timedelta(seconds=31))  # due
+    conn.execute("UPDATE jobs SET attempts = ?", (queue.MAX_ATTEMPTS,))
+    conn.commit()
+    assert not queue.has_runnable(conn, NOW + timedelta(seconds=31))  # out of tries
 
 
 def test_failed_jobs_come_back_only_after_their_backoff(tmp_path):
@@ -228,9 +245,11 @@ def _dominant(b64):
     return "red" if r > max(g, b) else "blue" if b > max(r, g) else "other"
 
 
-def test_run_once_asks_both_models_and_records_both_answers(tmp_path, caplog):
+def test_run_once_asks_both_models_and_records_both_answers(tmp_path, caplog, monkeypatch):
     conn = _db(tmp_path)
     data = tmp_path / "data"
+    ticks = iter(range(100))
+    monkeypatch.setattr(worker.time, "monotonic", lambda: float(next(ticks)))  # a second a glance
     first, second = "photos/2026/11/a.jpg", "photos/2026/11/b.jpg"
     _photo(data, first, (200, 20, 20))
     _photo(data, second, (20, 20, 200), size=(900, 1400))
@@ -273,8 +292,11 @@ def test_run_once_asks_both_models_and_records_both_answers(tmp_path, caplog):
     assert _row(conn, jid)["status"] == "identified"
     line = next(r for r in caplog.records if r.getMessage().startswith(f"job {jid} "))
     assert line.levelno == logging.INFO
-    assert line.getMessage().startswith(f"job {jid} identified: haiku Galena 0.82 · flash Galena 0.90 · $0.0041 · ")
-    assert line.getMessage().endswith(" s")
+    assert line.getMessage().startswith(f"job {jid} identified: haiku Galena 0.82 (3.0 s) · flash Galena 0.90 (3.0 s) · $0.0041 · ")
+    total = re.fullmatch(r".* · (\d+\.\d) s", line.getMessage()).group(1)
+    # finished_at is when the job finished, not when it was claimed (#40).
+    assert _row(conn, jid)["finished_at"] == queue.iso(NOW + timedelta(seconds=float(total)))
+    assert float(total) > 0
 
     assert worker.run_once(conn, data, CFG, NOW, ask=fake_ask) is None
 
