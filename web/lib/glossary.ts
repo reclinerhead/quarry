@@ -73,6 +73,14 @@ export const GLOSSARY = {
     term: "rock",
     text: "A mix of minerals, or of grains of them, rather than a single mineral. Granite is quartz, feldspar and mica together, so it has no one formula or hardness. That is why a rock’s card says less than a mineral’s.",
   },
+  element: {
+    term: "element",
+    text: "The simplest ingredients everything is made of: calcium, fluorine, iron and about ninety more, each with a symbol and a number on the periodic table. A mineral’s formula is a recipe of them, so CaF₂ is calcium and fluorine. Every element in your stones lights up on your periodic table.",
+  },
+  mohsScale: {
+    term: "Mohs scale",
+    text: "Friedrich Mohs picked ten minerals in 1812, talc to diamond, and numbered them so that each one scratches the one below it. A stone’s Mohs number says which of the ten it would scratch. The ten reference minerals are a set a collection can complete.",
+  },
   matrix: {
     term: "matrix",
     text: "The ordinary rock a crystal grew on or in. When nobody can name that rock, a show label calls it matrix: “Amethyst on matrix”. Collectors often leave it on, because it shows how the crystal was found.",

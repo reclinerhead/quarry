@@ -58,6 +58,7 @@ export type PropertyCard = {
   formula: Segment[] | null;
   mineralClass: string | null; // Strunz's class, singular: "Halide"
   mohs: string | null; // "4", "6.5 to 7"
+  mohsRange: [number, number] | null; // the numbers the label was made from, Mindat's hmin and hmax
   glow: Glow | null;
 };
 
@@ -251,7 +252,7 @@ export function mineralClassOf(chain: Array<Pick<ChainRecord, "detail">>): strin
  */
 export function propertyCard(chain: ChainRecord[], miss: boolean): PropertyCard {
   const own = chain[0];
-  const card: PropertyCard = { state: "pending", mindatId: own?.id ?? null, cells: [], formula: null, mineralClass: null, mohs: null, glow: null };
+  const card: PropertyCard = { state: "pending", mindatId: own?.id ?? null, cells: [], formula: null, mineralClass: null, mohs: null, mohsRange: null, glow: null };
   if (!own) return { ...card, state: miss ? "unknown" : "pending" };
   if (!own.detail) return card;
 
@@ -259,7 +260,8 @@ export function propertyCard(chain: ChainRecord[], miss: boolean): PropertyCard 
     const f = field(r, "mindat_formula");
     return f ? formulaSegments(f) : null;
   });
-  const hard = inherit(chain, (r) => (r.hmin !== null && r.hmax !== null ? mohsLabel(r.hmin, r.hmax) : null));
+  const range = inherit(chain, (r): [number, number] | null => (r.hmin !== null && r.hmax !== null ? [r.hmin, r.hmax] : null));
+  const hard = range ? mohsLabel(range[0], range[1]) : null;
   const system = inherit(chain, (r) => field(r, "csystem"));
   const luster = inherit(chain, (r) => {
     const t = field(r, "lustretype");
@@ -290,6 +292,7 @@ export function propertyCard(chain: ChainRecord[], miss: boolean): PropertyCard 
     formula: formula?.length ? formula : null,
     mineralClass: mineralClassOf(chain),
     mohs: hard,
+    mohsRange: range,
     glow: glow?.glow ?? null,
   };
 }

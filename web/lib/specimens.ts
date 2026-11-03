@@ -5,8 +5,10 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { shortDay, type Acquired, type Tile } from "./collection";
+import { elementsCard, elementsOf, type ElementsCard } from "./elements";
 import { cleanAnswers, type Answers } from "./household-tests";
 import { fold, mineralClassOf, propertyCard, type ChainRecord, type PropertyCard } from "./mindat";
+import { mohsCard, type MohsCard } from "./mohs";
 import { chainOf, MAX_DEPTH } from "./names";
 import { thumbPathFor } from "./photos";
 import { isMatrix, MATRIX, type PartRole, type StoneKind } from "./pills";
@@ -28,12 +30,16 @@ export function stoneParts(db: DatabaseSync, specimenId: number): StonePart[] {
   return (db.prepare(`${PARTS} WHERE sp.specimen_id = ? ORDER BY sp.position`).all(specimenId) as PartRow[]).map(partOf);
 }
 
+/** A record in a stone's mineral's chain, as the collection-wide pass reads it: its name, and two fields of `detail`. */
+type ChainLink = { name: string; detail: { strunz10ed1: unknown; elements: unknown } | null };
+
 /**
- * The class of each stone's own mineral, by `minerals.id`, for the tiles (#38):
- * every chain read at once, as `readProperties` reads one, with only Strunz's
- * field taken out of `detail`, so the dashboard never parses whole records.
+ * The chain of each stone's own mineral, by `minerals.id`, for the tiles (#38)
+ * and the stone page's side cards (#42): every chain read at once, as
+ * `readProperties` reads one, with only Strunz's class and the elements taken
+ * out of `detail`, so the dashboard never parses whole records.
  */
-function mineralClasses(db: DatabaseSync): Map<number, string | null> {
+function mineralChains(db: DatabaseSync): Map<number, ChainLink[]> {
   const rows = db
     .prepare(
       `WITH RECURSIVE up(mineral, id, depth) AS (
@@ -42,15 +48,21 @@ function mineralClasses(db: DatabaseSync): Map<number, string | null> {
          UNION
          SELECT up.mineral, r.varietyof, up.depth + 1 FROM up JOIN mindat_records r ON r.id = up.id
           WHERE r.varietyof IS NOT NULL AND up.depth < ?)
-       SELECT up.mineral, r.detail IS NOT NULL AS fetched,
-              CASE WHEN json_valid(r.detail) THEN json_extract(r.detail, '$.strunz10ed1') END AS strunz
+       SELECT up.mineral, r.name, r.detail IS NOT NULL AS fetched,
+              CASE WHEN json_valid(r.detail) THEN json_extract(r.detail, '$.strunz10ed1') END AS strunz,
+              CASE WHEN json_valid(r.detail) THEN json_extract(r.detail, '$.elements') END AS elements
          FROM up JOIN mindat_records r ON r.id = up.id ORDER BY up.mineral, up.depth`,
     )
-    .all(MAX_DEPTH) as Array<{ mineral: number; fetched: number; strunz: string | number | null }>;
-  const chains = new Map<number, Array<Pick<ChainRecord, "detail">>>();
+    .all(MAX_DEPTH) as Array<{ mineral: number; name: string; fetched: number; strunz: string | number | null; elements: string | null }>;
+  const chains = new Map<number, ChainLink[]>();
   for (const r of rows)
-    chains.set(r.mineral, [...(chains.get(r.mineral) ?? []), { detail: r.fetched ? { strunz10ed1: r.strunz } : null }]);
-  return new Map([...chains].map(([id, chain]) => [id, mineralClassOf(chain)]));
+    chains.set(r.mineral, [...(chains.get(r.mineral) ?? []), { name: r.name, detail: r.fetched ? { strunz10ed1: r.strunz, elements: r.elements } : null }]);
+  return chains;
+}
+
+/** The class of each stone's own mineral, by `minerals.id`, for the tiles (#38). */
+function mineralClasses(db: DatabaseSync): Map<number, string | null> {
+  return new Map([...mineralChains(db)].map(([id, chain]) => [id, mineralClassOf(chain)]));
 }
 
 /** Every stone as a dashboard tile, its date label worked out in the station's time zone. */
@@ -113,6 +125,8 @@ export type StoneView = {
   morePhotosNamed: number; // later photos named "same stone as the last one"
   places: string[]; // every place a stone lives, most stones first, for the location field
   properties: PropertyCard; // the Mineral properties card, from the mineral's Mindat record (#23)
+  elements: ElementsCard; // "What it's made of" (#42)
+  mohsSet: MohsCard; // "On your Mohs scale" (#42)
 };
 
 /**
@@ -186,6 +200,20 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
   const places = db
     .prepare("SELECT location FROM specimens WHERE location IS NOT NULL GROUP BY lower(location) ORDER BY COUNT(*) DESC, location")
     .all() as Array<{ location: string }>;
+  const properties = readProperties(db, s.name, s.mindat_id);
+  // Every stone's main mineral with its chain, for what this one was the first to bring (#42).
+  const chains = mineralChains(db);
+  const stones = (
+    db.prepare("SELECT sp.id, sp.mineral_id, m.name, sp.created_at FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id").all() as Array<{
+      id: number;
+      mineral_id: number;
+      name: string;
+      created_at: string;
+    }>
+  ).map((r) => {
+    const chain = chains.get(r.mineral_id) ?? [];
+    return { id: r.id, createdAt: r.created_at, elements: elementsOf(chain), names: [r.name, ...chain.map((c) => c.name)] };
+  });
   return {
     id: s.id,
     name: s.name,
@@ -205,7 +233,9 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     namedBy: confirmations[0]?.job_id ?? null,
     morePhotosNamed: Math.max(0, confirmations.length - 1),
     places: places.map((p) => p.location),
-    properties: readProperties(db, s.name, s.mindat_id),
+    properties,
+    elements: elementsCard(s.id, stones),
+    mohsSet: mohsCard(s.id, stones, properties.mohsRange),
   };
 }
 
