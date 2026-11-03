@@ -182,9 +182,10 @@ def test_made_of_is_none_when_missing_empty_or_the_mineral_itself(over):
 
 def test_the_prompt_has_a_version_and_names_every_test_kind():
     version, body = identify.load_prompt()
-    assert version == 4
+    assert version == 5
     assert '"matrix"' in body and "- with:" in body and "- on:" in body and "- made_of:" in body
     assert "penny is 19 mm" in body and "no scale in the photos" in body  # #67
+    assert "answer differently" in body and "return an empty list" in body and "name each candidate" in body  # #69
     assert not body.startswith("---")
     for kind in identify.TEST_KINDS:
         assert f"- {kind}:" in body
