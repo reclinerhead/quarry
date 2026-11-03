@@ -15,7 +15,7 @@ import { mohsRowLabel } from "@/lib/mohs";
 import { HOW_SUMMARY } from "@/lib/naming";
 import { sameStone } from "@/lib/names";
 import { PieceTitle } from "@/components/piece-title";
-import { kindOf, pieceName, stoneName } from "@/lib/pills";
+import { kindOf, madeOfLine, pieceName, stoneName } from "@/lib/pills";
 import { readStone, type StoneView } from "@/lib/specimens";
 
 // /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 2
@@ -47,6 +47,22 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
   const mineral = stoneName(stone.name); // the main mineral, which the property card and tags follow
   const kind = kindOf(stone);
   const props = stone.properties;
+  // The line under the title: "A kind of Quartz", "Made of Calcite" (#62) and the formula, with " · " between.
+  const underTitle = [
+    kind,
+    stone.madeOf ? (
+      <>
+        {madeOfLine({ name: stone.madeOf })}
+        <Term k="madeOf" bare />
+      </>
+    ) : null,
+    props.formula ? (
+      <span className="font-label font-bold text-ink">
+        <span className="sr-only">Formula: </span>
+        <Formula segments={props.formula} />
+      </span>
+    ) : null,
+  ].filter((x) => x !== null);
 
   return (
     <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-8 px-4 pb-16 pt-6 sm:px-10 sm:pb-[72px] sm:pt-8">
@@ -70,16 +86,14 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
         <h1 className="text-balance text-[40px] leading-[1.05] sm:text-page-title">
           <PieceTitle piece={stone} />
         </h1>
-        {kind || props.formula ? (
+        {underTitle.length > 0 ? (
           <p className="text-[22px] text-ink-2">
-            {kind}
-            {kind && props.formula ? " · " : null}
-            {props.formula ? (
-              <span className="font-label font-bold text-ink">
-                <span className="sr-only">Formula: </span>
-                <Formula segments={props.formula} />
+            {underTitle.map((x, i) => (
+              <span key={i}>
+                {i > 0 ? " · " : null}
+                {x}
               </span>
-            ) : null}
+            ))}
           </p>
         ) : null}
         <p className="flex flex-wrap items-center gap-2">

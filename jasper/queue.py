@@ -89,12 +89,14 @@ def record_outcome(conn: sqlite3.Connection, job_id: int, outcome: Outcome, now:
                 if o.answer is None:
                     continue
                 conn.executemany(
-                    """INSERT INTO candidates (job_id, model, rank, name, variety, kind, confidence, features, cost_usd, mindat_id, parts)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    """INSERT INTO candidates (job_id, model, rank, name, variety, kind, confidence, features, cost_usd, mindat_id, parts,
+                                               made_of, made_of_mindat_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     [
                         # The whole call's cost on the rank-1 row only, so a SUM is the spend.
                         (job_id, o.role.model, rank, c.name, c.variety, c.kind, c.confidence, json.dumps(c.features),
-                         o.cost_usd if rank == 1 else None, c.mindat_id, json.dumps([p.as_json() for p in c.parts]))
+                         o.cost_usd if rank == 1 else None, c.mindat_id, json.dumps([p.as_json() for p in c.parts]),
+                         c.made_of, c.made_of_mindat_id)
                         for rank, c in enumerate(o.answer.candidates, start=1)
                     ],
                 )

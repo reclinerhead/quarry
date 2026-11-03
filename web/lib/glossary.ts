@@ -85,6 +85,10 @@ export const GLOSSARY = {
     term: "Mohs scale",
     text: "Friedrich Mohs picked ten minerals in 1812, talc to diamond, and numbered them so that each one scratches the one below it. A stone’s Mohs number says which of the ten it would scratch. The ten reference minerals are a set a collection can complete.",
   },
+  madeOf: {
+    term: "made of",
+    text: "A fossil, a shell or a piece of sea glass is not a mineral itself, but it is made of one. A coral from a lime-rich sea is usually preserved as calcite, while one buried in silica-rich water is replaced by quartz or chalcedony. The name says what the object is; this says what it is made of.",
+  },
   matrix: {
     term: "matrix",
     text: "The ordinary rock a crystal grew on or in. When nobody can name that rock, a show label calls it matrix: “Amethyst on matrix”. Collectors often leave it on, because it shows how the crystal was found.",

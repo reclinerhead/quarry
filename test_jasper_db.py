@@ -75,7 +75,7 @@ def test_a_version_3_database_takes_step_4_and_moves_also_on_it_into_the_notes(t
     old.close()
     monkeypatch.undo()
     conn = db.connect(path)
-    assert db.current_version(conn) == 4
+    assert db.current_version(conn) == db.LATEST_VERSION
     rows = [tuple(r) for r in conn.execute("SELECT associates, notes FROM specimens ORDER BY id")]
     assert rows == [
         (None, "Also on it: on sphalerite"),
@@ -84,6 +84,27 @@ def test_a_version_3_database_takes_step_4_and_moves_also_on_it_into_the_notes(t
         (None, None),
     ]
     assert "parts" in {r["name"] for r in conn.execute("PRAGMA table_info(candidates)")}
+
+
+def test_a_version_4_database_takes_step_5_with_its_rows(tmp_path, monkeypatch):
+    """#62: made_of on candidates, and the mineral a stone is made of on specimens."""
+    path = tmp_path / "q.db"
+    monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS[:3])
+    old = db.connect(path)
+    assert db.current_version(old) == 4
+    quartz = old.execute("INSERT INTO minerals (name) VALUES ('Quartz')").lastrowid
+    old.execute("INSERT INTO specimens (mineral_id) VALUES (?)", (quartz,))
+    old.commit()
+    old.close()
+    monkeypatch.undo()
+    conn = db.connect(path)
+    assert db.current_version(conn) == 5
+    assert {"made_of", "made_of_mindat_id"} <= {r["name"] for r in conn.execute("PRAGMA table_info(candidates)")}
+    assert tuple(conn.execute("SELECT mineral_id, made_of_id FROM specimens").fetchone()) == (quartz, None)
+    calcite = conn.execute("INSERT INTO minerals (name) VALUES ('Calcite')").lastrowid
+    conn.execute("UPDATE specimens SET made_of_id = ?", (calcite,))
+    conn.execute("DELETE FROM minerals WHERE id = ?", (calcite,))
+    assert conn.execute("SELECT made_of_id FROM specimens").fetchone()[0] is None  # ON DELETE SET NULL
 
 
 def test_a_stones_parts_need_a_mineral_unless_it_sits_on_matrix(tmp_path):

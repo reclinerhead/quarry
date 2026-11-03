@@ -26,6 +26,7 @@ function tile(name: string, over: Partial<Tile> = {}): Tile {
     mineralClass: null,
     variety: null,
     parts: [],
+    madeOf: null,
     foundAt: null,
     acquired: null,
     location: null,
@@ -50,6 +51,12 @@ describe("filterTiles", () => {
     expect(names(filterTiles(all, { ...none, q: "purple" }))).toEqual(["Fluorite"]);
     expect(names(filterTiles(all, { ...none, q: "michigan" }))).toEqual(["Slate"]);
     expect(names(filterTiles(all, { ...none, q: "grandpas" }))).toEqual(["Galena"]);
+  });
+
+  it("finds a fossil by what it is made of (#62)", () => {
+    const coral = tile("Fossil coral", { kind: "other", madeOf: "Calcite" });
+    expect(filterTiles([coral, galena], { q: "calcite", kind: "all", from: "all" })).toEqual([coral]);
+    expect(filterTiles([coral, galena], { q: "calcite", kind: "rocks", from: "all" })).toEqual([coral]);
   });
 
   it("finds a stone by any of the other minerals on it (#29)", () => {

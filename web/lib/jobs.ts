@@ -31,6 +31,7 @@ export type JobView = {
     name: string;
     variety: string | null;
     parts: StonePart[];
+    madeOf: string | null; // what the stone is made of (#62), a minerals row's name
     how: ConfirmHow;
     source: "pill" | "typed" | "same_as_last";
     confirmedAt: string;
@@ -51,15 +52,20 @@ export function identifierSlug(): string {
  * up: the record from `candidates.mindat_id`, then each `varietyof` above it in
  * the cache. Jasper writes the chain whole before the candidate, so a missing
  * record only shortens it. Each of a candidate's parts (#29) gets its chain the
- * same way, from the `mindat_id` in its `parts` JSON.
+ * same way, from the `mindat_id` in its `parts` JSON, and so does what the
+ * object is made of (#62), from `made_of_mindat_id`.
  */
 export function candidatesOf(db: DatabaseSync, jobId: number): Candidate[] {
   const rows = (
     db
-      .prepare("SELECT model, rank, name, variety, kind, confidence, mindat_id, parts FROM candidates WHERE job_id = ? ORDER BY model, rank")
-      .all(jobId) as Array<Omit<Candidate, "chain" | "parts"> & { mindat_id: number | null; parts: string | null }>
+      .prepare(
+        "SELECT model, rank, name, variety, kind, confidence, mindat_id, parts, made_of, made_of_mindat_id FROM candidates WHERE job_id = ? ORDER BY model, rank",
+      )
+      .all(jobId) as Array<
+      Omit<Candidate, "chain" | "parts" | "madeOf"> & { mindat_id: number | null; parts: string | null; made_of: string | null; made_of_mindat_id: number | null }
+    >
   ).map((r) => ({ ...r, parts: parseParts(r.parts) }));
-  const seeds = rows.flatMap((r) => [r.mindat_id, ...r.parts.map((p) => p.mindatId)]).filter((id) => id !== null);
+  const seeds = rows.flatMap((r) => [r.mindat_id, ...r.parts.map((p) => p.mindatId), r.made_of_mindat_id]).filter((id) => id !== null);
   const records = db
     .prepare(
       `WITH RECURSIVE up(id, depth) AS (
@@ -81,6 +87,7 @@ export function candidatesOf(db: DatabaseSync, jobId: number): Candidate[] {
     confidence: r.confidence,
     chain: chainOf(r.mindat_id, byId),
     parts: r.parts.map((p) => ({ role: p.role, name: p.name, chain: chainOf(p.mindatId, byId) })),
+    madeOf: r.made_of ? { name: r.made_of, chain: chainOf(r.made_of_mindat_id, byId) } : null,
   }));
 }
 
@@ -103,10 +110,11 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
     .all(jobId) as Array<{ model: string; rank: number; kind: TestKind; how: string; expected: string }>;
   const conf = db
     .prepare(
-      `SELECT c.specimen_id, c.how, c.source, c.confirmed_at, m.name, sp.variety
+      `SELECT c.specimen_id, c.how, c.source, c.confirmed_at, m.name, sp.variety, mo.name AS made_of
          FROM confirmations c
          JOIN specimens sp ON sp.id = c.specimen_id
          JOIN minerals m ON m.id = sp.mineral_id
+         LEFT JOIN minerals mo ON mo.id = sp.made_of_id
         WHERE c.job_id = ?`,
     )
     .get(jobId) as
@@ -117,6 +125,7 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
         confirmed_at: string;
         name: string;
         variety: string | null;
+        made_of: string | null;
       }
     | undefined;
   const identifier = identifierSlug();
@@ -137,6 +146,7 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
           name: conf.name,
           variety: conf.variety,
           parts: stoneParts(db, conf.specimen_id),
+          madeOf: conf.made_of,
           how: conf.how,
           source: conf.source,
           confirmedAt: conf.confirmed_at,

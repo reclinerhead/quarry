@@ -145,9 +145,9 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
   const classes = mineralClasses(db);
   const rows = db
     .prepare(
-      `SELECT sp.id, sp.mineral_id, m.name, m.kind, sp.variety, sp.found_at, sp.acquired, sp.location, sp.created_at,
+      `SELECT sp.id, sp.mineral_id, m.name, m.kind, sp.variety, mo.name AS made_of, sp.found_at, sp.acquired, sp.location, sp.created_at,
               (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${NEWEST_PHOTO} LIMIT 1) AS path
-         FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id`,
+         FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id LEFT JOIN minerals mo ON mo.id = sp.made_of_id`,
     )
     .all() as Array<{
     id: number;
@@ -155,6 +155,7 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
     name: string;
     kind: StoneKind;
     variety: string | null;
+    made_of: string | null;
     found_at: string | null;
     acquired: Acquired | null;
     location: string | null;
@@ -167,6 +168,7 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
     kind: r.kind,
     mineralClass: classes.get(r.mineral_id) ?? null,
     variety: r.variety,
+    madeOf: r.made_of,
     parts: (parts.get(r.id) ?? []).map(partOf),
     foundAt: r.found_at,
     acquired: r.acquired,
@@ -183,6 +185,7 @@ export type StoneView = {
   kind: StoneKind;
   variety: string | null;
   parts: StonePart[]; // the other minerals on it (#29), "with" in order, then "on"
+  madeOf: string | null; // what an object that is not a mineral is made of (#62): a minerals row's name
   foundAt: string | null;
   acquired: Acquired | null;
   acquiredOn: string | null;
@@ -240,9 +243,9 @@ function parseDetail(json: string | null): Record<string, unknown> | null {
 export function readStone(db: DatabaseSync, id: number): StoneView | null {
   const s = db
     .prepare(
-      `SELECT sp.id, sp.mineral_id, m.name, m.kind, m.mindat_id, sp.variety, sp.found_at, sp.acquired, sp.acquired_on,
+      `SELECT sp.id, sp.mineral_id, m.name, m.kind, m.mindat_id, sp.variety, mo.name AS made_of, sp.found_at, sp.acquired, sp.acquired_on,
               sp.location, sp.notes, sp.tests, sp.created_at
-         FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id WHERE sp.id = ?`,
+         FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id LEFT JOIN minerals mo ON mo.id = sp.made_of_id WHERE sp.id = ?`,
     )
     .get(id) as
     | {
@@ -252,6 +255,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
         kind: StoneKind;
         mindat_id: number | null;
         variety: string | null;
+        made_of: string | null;
         found_at: string | null;
         acquired: Acquired | null;
         acquired_on: string | null;
@@ -284,6 +288,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     kind: s.kind,
     variety: s.variety,
     parts: stoneParts(db, s.id),
+    madeOf: s.made_of,
     foundAt: s.found_at,
     acquired: s.acquired,
     acquiredOn: s.acquired_on,
@@ -342,14 +347,30 @@ export function writeParts(db: DatabaseSync, specimenId: number, parts: Readonly
 }
 
 /**
- * Delete each of these minerals that no stone uses any more, as its own mineral
- * or on it: what a Change, a removed stone or an edited list leaves behind.
- * Returns how many went.
+ * Set what a stone is made of (#62): a `minerals` row for the name, made the way
+ * a part's is, so Jasper links it to Mindat; none for an empty name. Never the
+ * stone's own mineral. Returns the mineral the stone no longer uses, for
+ * `pruneMinerals`. Call inside the caller's transaction.
+ */
+export function writeMadeOf(db: DatabaseSync, specimenId: number, name: string | null): number[] {
+  const before = db.prepare("SELECT mineral_id, made_of_id FROM specimens WHERE id = ?").get(specimenId) as { mineral_id: number; made_of_id: number | null };
+  const n = (name ?? "").trim().replace(/\s+/g, " ").slice(0, 120);
+  const found = n && !isMatrix(n) ? mineralId(db, n.charAt(0).toUpperCase() + n.slice(1)) : null;
+  const madeOf = found === before.mineral_id ? null : found;
+  db.prepare("UPDATE specimens SET made_of_id = ? WHERE id = ?").run(madeOf, specimenId);
+  return before.made_of_id !== null && before.made_of_id !== madeOf ? [before.made_of_id] : [];
+}
+
+/**
+ * Delete each of these minerals that no stone uses any more, as its own mineral,
+ * on it, or as what it is made of: what a Change, a removed stone or an edited
+ * list leaves behind. Returns how many went.
  */
 export function pruneMinerals(db: DatabaseSync, ids: number[]): number {
   const del = db.prepare(
     `DELETE FROM minerals WHERE id = ?
         AND NOT EXISTS (SELECT 1 FROM specimens WHERE mineral_id = minerals.id)
+        AND NOT EXISTS (SELECT 1 FROM specimens WHERE made_of_id = minerals.id)
         AND NOT EXISTS (SELECT 1 FROM specimen_parts WHERE mineral_id = minerals.id)`,
   );
   return [...new Set(ids)].reduce((n, id) => n + Number(del.run(id).changes), 0);

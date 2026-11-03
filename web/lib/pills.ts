@@ -10,6 +10,10 @@
 // not on its variety. Since #29 a candidate is a reading of the whole piece, as
 // a rock-show label names it (Pyrite with Sphalerite on Quartz): agreement is
 // judged mineral by mineral, and pieceName builds the name every screen shows.
+// Since #62 an object that is not a mineral (a fossil, sea glass) is named for
+// what it is, and the mineral it is made of rides beside the name: shown under
+// the pill, never part of the name, and in doubt when the two opinions differ
+// on it the way a variety can be.
 
 import { misfit, TESTS, type Answers, type Misfit, type TestKind } from "./household-tests";
 import { finer, norm, sameStone, varietySplit, type MindatRecord, type Named } from "./names";
@@ -28,6 +32,9 @@ export function isMatrix(name: string): boolean {
   return norm(name) === MATRIX;
 }
 
+/** What an object that is not a mineral is made of (#62): the mineral it is composed of or preserved as, with its Mindat chain. */
+export type MadeOf = { name: string; chain?: MindatRecord[] };
+
 export type Candidate = {
   model: string; // the gateway slug
   rank: number;
@@ -37,6 +44,7 @@ export type Candidate = {
   confidence: number;
   chain?: MindatRecord[]; // its Mindat record and those above it, when Jasper looked it up
   parts?: Part[]; // the other minerals the model saw on the piece; none on a prompt v1 answer
+  madeOf?: MadeOf | null; // a fossil coral made of Calcite; none on a mineral, a rock, or an answer before prompt v3
 };
 
 export type Verdict = "probably" | "could_be" | "none";
@@ -55,6 +63,10 @@ export type Pill = {
   parts: Part[]; // the other minerals on the piece that a tap saves: on the lead pill, those both models saw
   maybe: Part[]; // the lead pill only: minerals one model saw, offered but never saved by the tap alone
   misfit: Misfit | null; // an answered scratch test this stone can't fit; never on a piece with parts
+  madeOf: MadeOf | null; // what the object is made of, which a tap saves: on the lead pill, what both models said, or the one that said
+  // The lead pill only: both first choices name this object, but each says it is
+  // made of a different mineral, so neither is taken.
+  madeOfDoubt?: { guesses: string[] };
 };
 
 export type Plan = { verdict: Verdict; opinions: number; pills: Pill[] };
@@ -119,6 +131,7 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
         parts: c.parts ?? [],
         maybe: [],
         misfit: c.parts?.length ? null : misfit(c.chain ?? [], answers),
+        madeOf: c.madeOf ?? null,
       });
   };
 
@@ -149,6 +162,9 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
     lead.parts = parts;
     lead.maybe = maybe;
     if (parts.length > 0) lead.misfit = null;
+    const made = agreedMadeOf(a[0], b[0]);
+    lead.madeOf = made.madeOf;
+    if (made.doubt) lead.madeOfDoubt = made.doubt;
     for (const c of rest) add(c, "could also be", true);
     return { verdict: "probably", opinions: 2, pills };
   }
@@ -188,6 +204,25 @@ function agreedParts(lead: Candidate, other: Candidate): { parts: Part[]; maybe:
   }
   for (const p of other.parts ?? []) if (!isMatrix(p.name) && !saw(lead, asNamed(p)) && !known(p)) maybe.push(p);
   return { parts, maybe };
+}
+
+/**
+ * What the lead pill says the object is made of (#62): what both first readings
+ * said when they agree (Quartz and Chalcedony agree through the chain), the one
+ * that said anything when only one did, and neither, as a doubt, when they
+ * differ: a coral preserved as Calcite or as Quartz.
+ */
+function agreedMadeOf(lead: Candidate, other: Candidate): { madeOf: MadeOf | null; doubt?: { guesses: string[] } } {
+  const x = lead.madeOf ?? null;
+  const y = other.madeOf ?? null;
+  if (!x || !y) return { madeOf: x ?? y };
+  if (sameStone({ name: x.name, variety: null, chain: x.chain }, { name: y.name, variety: null, chain: y.chain })) return { madeOf: x };
+  return { madeOf: null, doubt: { guesses: [x.name, y.name] } };
+}
+
+/** The line under a pill or a title that says what the object is made of: "Made of Calcite". */
+export function madeOfLine(madeOf: { name: string }): string {
+  return `Made of ${stoneName(madeOf.name)}`;
 }
 
 /**

@@ -88,6 +88,21 @@ UPDATE specimens
  WHERE associates IS NOT NULL AND trim(associates) <> '';
 """,
     ),
+    # 5 (#62): what an object that is not a mineral is made of. A fossil coral is named
+    # for what it is, and the mineral it is preserved as is a field of its own.
+    (
+        5,
+        """
+ALTER TABLE candidates ADD COLUMN made_of TEXT;              -- Calcite; NULL for a mineral, a rock, or when the model didn't say
+ALTER TABLE candidates ADD COLUMN made_of_mindat_id INTEGER; -- the record made_of names; NULL until looked up, or unknown
+
+-- The mineral a stone that is not a mineral is made of, as a minerals row, so it
+-- links to Mindat and has a page. Never the stone's own mineral: the filters and
+-- the counts go by specimens.mineral_id alone.
+ALTER TABLE specimens ADD COLUMN made_of_id INTEGER REFERENCES minerals(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS specimens_made_of ON specimens (made_of_id);
+""",
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else BASELINE_VERSION
