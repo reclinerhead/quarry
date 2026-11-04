@@ -286,7 +286,11 @@ export function Uploader() {
         />
       ) : null}
 
-      <section aria-label="Choose photos" className="flex flex-col gap-5">
+      <section aria-labelledby="rock-h" className="card flex flex-col gap-5 p-5 sm:px-8 sm:py-7">
+        <h2 id="rock-h" className="text-section leading-tight">
+          {rocks.length === 0 ? "This rock" : "The next rock"}
+        </h2>
+        {/* The two ways in, in the card with the slots they fill (#99), so a rock is put together in one place. */}
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <button type="button" onClick={() => pick(cameraRef.current)} className="btn btn-primary btn-lg">
             <CameraIcon className="size-[22px]" />
@@ -319,22 +323,6 @@ export function Uploader() {
             }}
           />
         </div>
-
-        {/* The README's photo advice, as an info note under the buttons. */}
-        <div className="rounded-tile bg-sand px-5 py-5 sm:px-7 sm:py-6">
-          <h2 className="text-[22px] leading-tight">For the best guess, three photos of each rock</h2>
-          <ul className="mt-4 grid gap-4 md:grid-cols-3 md:gap-7">
-            <Tip icon={<SunIcon className="size-7" />} lead="One close-up, in daylight." why="Window light shows the stone's true colour and shine." />
-            <Tip icon={<CoinIcon className="size-7" />} lead="One with a penny or quarter beside it." why="The coin shows how big the stone and its details are." />
-            <Tip icon={<TagIcon className="size-7" />} lead="One of any label or tag." why="Jasper reads them, and a label is the best clue there is." />
-          </ul>
-        </div>
-      </section>
-
-      <section aria-labelledby="rock-h" className="card flex flex-col gap-5 p-5 sm:px-8 sm:py-7">
-        <h2 id="rock-h" className="text-section leading-tight">
-          {rocks.length === 0 ? "This rock" : "The next rock"}
-        </h2>
         {/* Five slots, always drawn, so a photo fills a slot and moves nothing. */}
         <ul aria-label="Its photos" className="grid grid-cols-3 gap-3 sm:grid-cols-5">
           {Array.from({ length: MAX_PHOTOS }, (_, i) => {
@@ -389,6 +377,16 @@ export function Uploader() {
           </div>
         </div>
       </section>
+
+      {/* The README's photo advice, under the card: read the first time, then out of the way. */}
+      <aside aria-label="Photo tips" className="rounded-tile bg-sand px-5 py-5 sm:px-7 sm:py-6">
+        <h2 className="text-[22px] leading-tight">For the best guess, three photos of each rock</h2>
+        <ul className="mt-4 grid gap-4 md:grid-cols-3 md:gap-7">
+          <Tip icon={<SunIcon className="size-7" />} lead="One close-up, in daylight." why="Window light shows the stone's true colour and shine." />
+          <Tip icon={<CoinIcon className="size-7" />} lead="One with a penny or quarter beside it." why="The coin shows how big the stone and its details are." />
+          <Tip icon={<TagIcon className="size-7" />} lead="One of any label or tag." why="Jasper reads them, and a label is the best clue there is." />
+        </ul>
+      </aside>
     </div>
   );
 }
