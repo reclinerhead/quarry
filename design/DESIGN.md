@@ -324,8 +324,12 @@ primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
 3. Photo gallery.
 4. Two columns, same split as the dashboard.
    - Main: **This specimen** (the label card) · **Kitchen-table tests** (with
-     the card check) · **About [mineral]** (Wikipedia summary, source line with
-     fetch date, article link) · **Mineral properties** (the meta line names the
+     the card check) · **About [mineral]** (the heading names the article the
+     lead came from, "About Gneiss" on a Granite Gneiss, with the mineral info
+     mark; Wikipedia's lead paragraphs, whole; "From Wikipedia · fetched <date>"
+     right of the heading, then "Read the article on Wikipedia"; before Jasper
+     has asked, or for a name Wikipedia has no article for, one line holds the
+     card's place) · **Mineral properties** (the meta line names the
      main mineral the cells are about, "Pyrite ⓘ, from Mindat"; Mindat cells: Formula,
      Mohs hardness, Crystal system, Luster, Streak, Cleavage, Specific gravity,
      Fluorescence, each with an info mark, then the note block) · **Where it's

@@ -24,10 +24,10 @@ import { readStone, type StoneView } from "@/lib/specimens";
 
 // /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 2
 // has data: the breadcrumb, the title block (with Mindat's tags, #23), the photo gallery, then two columns. Main: "This specimen" (the
-// editable specimen label), "Kitchen-table tests", "Mineral properties" and
+// editable specimen label), "Kitchen-table tests", "About [mineral]" (#92), "Mineral properties" and
 // "Where it's found" (#65).
 // Side: "How it was named", "At the show" (#81), "What it's made of", "On your
-// Mohs scale" (#42) and Remove. About, handling notes, relatives, the story log and the box
+// Mohs scale" (#42) and Remove. Handling notes, relatives, the story log and the box
 // label arrive later in Phases 2 and 3.
 export const dynamic = "force-dynamic";
 
@@ -133,6 +133,7 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
             </h2>
             <TestsEditor id={stone.id} initial={stone.tests} />
           </section>
+          <AboutStone stone={stone} name={mineral} />
           <MineralProperties stone={stone} name={mineral} />
           <WhereFound stone={stone} name={mineral} />
         </div>
@@ -249,6 +250,54 @@ const TERM: Record<PropertyKey, GlossaryKey> = {
   specificGravity: "specificGravity",
   fluorescence: "fluorescence",
 };
+
+/**
+ * "About [mineral]" (#92), between the tests and the properties: Wikipedia's
+ * lead paragraphs for the most specific name the stone has an article under
+ * (`lib/about.ts`), headed with the article's title, so a Granite Gneiss reads
+ * "About Gneiss". The source line credits Wikipedia with the fetch date, as the
+ * README promises. The card is always drawn: before Jasper has asked, or for a
+ * name Wikipedia has no article for, one line holds its place.
+ */
+function AboutStone({ stone, name }: { stone: StoneView; name: string }) {
+  const card = stone.about;
+  const title = card.state === "page" ? card.title : name;
+  return (
+    <section aria-labelledby="about-h" className="card flex flex-col gap-5 px-5 py-6 sm:px-8 sm:py-7">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+        <h2 id="about-h" className="text-section leading-tight">
+          {`About ${title}`}
+          <Term k="mineral" bare />
+        </h2>
+        {card.state === "page" ? (
+          <p className="flex flex-wrap items-center text-meta text-ink-2">
+            From
+            <a href={card.url} target="_blank" rel="noreferrer" className="text-link">
+              Wikipedia
+            </a>
+            <span>{`· fetched ${fullDay(card.fetchedAt)}`}</span>
+          </p>
+        ) : null}
+      </div>
+      {card.state === "page" ? (
+        <>
+          <div className="flex flex-col gap-4 text-lead">
+            {card.paragraphs.map((p, i) => (
+              <p key={i}>{p}</p>
+            ))}
+          </div>
+          <a href={card.url} target="_blank" rel="noreferrer" className="text-link -ml-1.5 self-start">
+            Read the article on Wikipedia
+          </a>
+        </>
+      ) : (
+        <p className="text-ink-2">
+          {card.state === "none" ? `Wikipedia has no article called ${stone.variety?.trim() || name}.` : "Jasper will look it up on Wikipedia."}
+        </p>
+      )}
+    </section>
+  );
+}
 
 /**
  * DESIGN.md §5's Mineral properties card (#23): Mindat's cells in the canvas's

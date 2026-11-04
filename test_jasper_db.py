@@ -261,3 +261,25 @@ def test_confirmation_records_how_it_was_named(tmp_path):
             " VALUES (?, ?, 'Galena', 'pill', 'hunch', 'probably')",
             (conn.execute("INSERT INTO jobs DEFAULT VALUES").lastrowid, specimen),
         )
+
+
+def test_a_version_9_database_takes_step_10_and_gets_the_wikipedia_pages(tmp_path, monkeypatch):
+    """#92: Wikipedia's lead for each name, one row per term asked, with none for a name it has no article for."""
+    path = tmp_path / "q.db"
+    monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS[:8])
+    old = db.connect(path)
+    assert db.current_version(old) == 9
+    mineral = old.execute("INSERT INTO minerals (name) VALUES ('Gneiss')").lastrowid
+    old.execute("INSERT INTO specimens (mineral_id, variety) VALUES (?, 'Granite Gneiss')", (mineral,))
+    old.commit()
+    old.close()
+    monkeypatch.undo()
+    conn = db.connect(path)
+    assert db.current_version(conn) == db.LATEST_VERSION
+    conn.execute("INSERT INTO wikipedia_pages (term, title, url, summary) VALUES ('gneiss', 'Gneiss', 'https://en.wikipedia.org/wiki/Gneiss', 'Gneiss is a rock.')")
+    conn.execute("INSERT INTO wikipedia_pages (term) VALUES ('fossil coral')")
+    rows = {r["term"]: (r["title"], r["fetched_at"] is not None) for r in conn.execute("SELECT term, title, fetched_at FROM wikipedia_pages")}
+    assert rows == {"gneiss": ("Gneiss", True), "fossil coral": (None, True)}
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO wikipedia_pages (term) VALUES ('gneiss')")
+    assert tuple(conn.execute("SELECT variety FROM specimens").fetchone()) == ("Granite Gneiss",)
