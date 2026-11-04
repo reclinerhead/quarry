@@ -17,7 +17,7 @@ import type { JobView } from "@/lib/jobs";
 import type { MineralHit } from "@/lib/minerals";
 import { HOW_CHOICES, type ConfirmHow } from "@/lib/naming";
 import { takenLabel } from "@/lib/photos";
-import { FORM_LABEL, FORMS, isMatrix, kindOf, madeOfLine, MATRIX, pieceName, savedParts, stoneName, verdictLine, type Form, type Pill } from "@/lib/pills";
+import { FORM_LABEL, FORMS, kindOf, madeOfLine, pieceName, savedParts, stoneName, verdictLine, type Form, type Pill } from "@/lib/pills";
 import { shrinkToJpeg } from "@/lib/shrink";
 import type { StonePart } from "@/lib/specimens";
 
@@ -382,7 +382,6 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
               const key = `${p.pick.model}-${p.pick.rank}`.replace(/[^a-z0-9]+/gi, "-");
               // What a tap saves, so the pill always says it: its parts and the maybes ticked.
               const parts = savedParts(p, ticked);
-              const onMatrix = parts.some((x) => x.role === "on" && isMatrix(x.name));
               return (
                 <div key={key} className="flex flex-col gap-1.5">
                   <PillButton
@@ -392,17 +391,13 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
                     disabled={busy || asking}
                     onPick={() => confirm({ pick: p.pick, maybe: ticked })}
                   />
-                  {p.misfit ? misfitNote(p.misfit, `misfit-${key}`) : null}
-                  {onMatrix ? (
-                    <p className="pl-6 text-meta text-ink-2">
-                      On <Term k="matrix">{MATRIX}</Term>: rock nobody has named.
-                    </p>
-                  ) : null}
+                  {/* Flush under its pill: the 48 px target starts at the pill's edge, with no gap above it. */}
                   {p.reasons.length > 0 ? (
-                    <div className="pl-4">
+                    <div className="-mt-1.5 pl-4">
                       <WhyNote reasons={p.reasons} opinions={p.models.length} />
                     </div>
                   ) : null}
+                  {p.misfit ? misfitNote(p.misfit, `misfit-${key}`) : null}
                   {p.maybe.length > 0 ? maybeChips(p) : null}
                 </div>
               );
