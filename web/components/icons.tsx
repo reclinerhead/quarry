@@ -98,3 +98,13 @@ export function RockHammerIcon({ className = "" }: IconProps) {
     </svg>
   );
 }
+
+/** Four corner arrows: "See it full size" on the photo well (#85). */
+export function ExpandIcon({ className = "" }: IconProps) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+      <path d="m4 4 5 5m11-5-5 5M4 20l5-5m11 5-5-5" />
+    </svg>
+  );
+}

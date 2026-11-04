@@ -2,7 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CrystalIcon } from "@/components/icons";
+import Lightbox from "yet-another-react-lightbox";
+import Counter from "yet-another-react-lightbox/plugins/counter";
+import Zoom from "yet-another-react-lightbox/plugins/zoom";
+import "yet-another-react-lightbox/styles.css";
+import "yet-another-react-lightbox/plugins/counter.css";
+import { CrystalIcon, ExpandIcon } from "@/components/icons";
 import { PhotoView } from "@/components/photo-view";
 import { longDay } from "@/lib/collection";
 
@@ -16,12 +21,22 @@ import { longDay } from "@/lib/collection";
 // "Use this as the main photo" shows while another photo is selected. The
 // selection is kept by photo id, not position, so when the save's refresh
 // reorders the photos the one the person chose stays in the well.
+//
+// "See it full size" (#85), and a tap on the hero itself, open the stored
+// photo in a lightbox (yet-another-react-lightbox, with its Zoom and Counter
+// plugins and nothing else: the page's grid is the thumbnails, and the
+// viewport is the size). Every photo of the stone is a slide; moving through
+// them moves the gallery's selection too, so closing leaves the photo that was
+// showing in the well. Its colours come from the tokens (globals.css). The
+// stylesheet is imported here, the one client that uses it, so the add page
+// and the dashboard never load it.
 
 type Photo = { id: number; url: string; thumbUrl: string; takenAt: string | null; main: boolean };
 
 export function Gallery({ id, photos, name }: { id: number; photos: Photo[]; name: string }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [chosenId, setChosenId] = useState<number | null>(null); // saved as main, until the refresh shows it as such
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +53,7 @@ export function Gallery({ id, photos, name }: { id: number; photos: Photo[]; nam
   const date = longDay(hero.takenAt);
   const caption = [date ? `Your photo · ${date}` : "Your photo", ...(several ? [`${index + 1} of ${photos.length}`] : []), ...(several && hero.main ? ["Main photo"] : [])].join(" · ");
   const saving = busy || (chosenId === hero.id && !hero.main);
+  const alt = `Your photo of the ${name}`;
 
   async function makeMain() {
     setBusy(true);
@@ -57,9 +73,20 @@ export function Gallery({ id, photos, name }: { id: number; photos: Photo[]; nam
 
   return (
     <section aria-label="Photos" className="flex flex-wrap items-start gap-6">
-      <div className="relative flex h-[360px] min-w-0 flex-[999_1_560px] items-center justify-center overflow-hidden rounded-photo bg-photo-well sm:h-[640px]">
-        <PhotoView key={hero.id} url={hero.url} thumbUrl={hero.thumbUrl} alt={`Your photo of the ${name}`} />
+      <div className="relative h-[360px] min-w-0 flex-[999_1_560px] overflow-hidden rounded-photo bg-photo-well sm:h-[640px]">
+        <button type="button" onClick={() => setOpen(true)} aria-label="See it full size" className="flex size-full cursor-zoom-in items-center justify-center">
+          <PhotoView key={hero.id} url={hero.url} thumbUrl={hero.thumbUrl} alt={alt} />
+        </button>
         <span className="absolute bottom-3 left-3 rounded-pill bg-caption px-3.5 py-1.5 text-meta font-bold text-white">{caption}</span>
+        {/* Top-right in the phone's 360 px well, where the caption may wrap to two lines; bottom-right, opposite the caption, from sm. */}
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="absolute top-3 right-3 inline-flex min-h-12 items-center gap-2.5 rounded-pill bg-caption px-4 text-meta font-bold text-white hover:bg-ink sm:top-auto sm:bottom-3"
+        >
+          <ExpandIcon className="size-5" />
+          See it full size
+        </button>
       </div>
       {several ? (
         <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-3">
@@ -97,6 +124,19 @@ export function Gallery({ id, photos, name }: { id: number; photos: Photo[]; nam
           </div>
         </div>
       ) : null}
+      <Lightbox
+        open={open}
+        close={() => setOpen(false)}
+        index={index}
+        slides={photos.map((p) => ({ src: p.url, alt }))}
+        plugins={several ? [Zoom, Counter] : [Zoom]}
+        on={{ view: ({ index: i }) => setSelectedId(photos[i]?.id ?? null) }}
+        zoom={{ maxZoomPixelRatio: 3, scrollToZoom: true }}
+        counter={{ separator: "of" }}
+        labels={{ Previous: "Previous photo", Next: "Next photo", Close: "Close", Lightbox: `Photos of the ${name}` }}
+        carousel={{ finite: true }}
+        controller={{ closeOnBackdropClick: true }}
+      />
     </section>
   );
 }

@@ -487,3 +487,20 @@
     outline-offset: 2px;
   }
 }
+
+/* The lightbox (#85): yet-another-react-lightbox, themed from the tokens
+   rather than left to its defaults. The backdrop is the photo well, nearly
+   solid; the buttons are surface white; the counter reads as the well's
+   caption does. Its own stylesheet is unlayered, so these are too. */
+.yarl__portal {
+  --yarl__color_backdrop: color-mix(in srgb, var(--color-photo-well) 96%, transparent);
+  --yarl__color_button: var(--color-surface);
+  --yarl__color_button_active: #fff;
+  --yarl__color_button_disabled: rgb(255 255 255 / 0.35);
+  --yarl__icon_size: 36px;
+  --yarl__navigation_button_padding: 24px 12px;
+}
+.yarl__counter {
+  font-size: var(--text-meta);
+  font-weight: 700;
+}
