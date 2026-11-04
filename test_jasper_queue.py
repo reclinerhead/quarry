@@ -352,3 +352,68 @@ def test_a_job_with_no_readable_photos_fails_without_a_call(tmp_path, caplog):
     assert out.status == "failed" and calls == []
     assert _row(conn, jid)["error"] == "no readable photos"
     assert "photo photos/bad.jpg unreadable" in caplog.text
+
+
+# --- The photo on disk (#83) ----------------------------------------------------
+
+
+def test_run_once_stores_a_png_as_a_jpg_within_the_cap_and_reads_from_it(tmp_path, caplog):
+    conn = _db(tmp_path)
+    data = tmp_path / "data"
+    src = data / "photos" / "2026" / "11" / "c.png"
+    src.parent.mkdir(parents=True)
+    Image.new("RGB", (3000, 2000), (20, 20, 200)).save(src, "PNG")
+    jid = _job(conn)
+    conn.execute("INSERT INTO photos (path, job_id) VALUES ('photos/2026/11/c.png', ?)", (jid,))
+    conn.commit()
+    seen = []
+    with caplog.at_level(logging.INFO, logger="jasper"):
+        out = worker.run_once(conn, data, CFG, NOW, ask=lambda k, b: seen.append(b) or _gateway_answer("Azurite", 0.8, 0.001))
+    assert out.status == "identified"
+    assert conn.execute("SELECT path FROM photos WHERE job_id = ?", (jid,)).fetchone()[0] == "photos/2026/11/c.jpg"
+    assert not src.exists()
+    with Image.open(src.with_suffix(".jpg")) as im:
+        assert (im.format, im.size) == ("JPEG", (identify.STORE_SIDE, 1365))
+    with Image.open(data / worker.thumb_path("photos/2026/11/c.jpg")) as im:
+        assert max(im.size) == identify.THUMB_SIDE
+    with Image.open(io.BytesIO(base64.standard_b64decode(seen[0]["messages"][0]["content"][0]["source"]["data"]))) as im:
+        assert max(im.size) == identify.LONG_SIDE
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(m.startswith(f"job {jid}: photo photos/2026/11/c.png stored as c.jpg (") for m in messages)
+    assert any(m.startswith(f"job {jid} identified: haiku Azurite 0.80") for m in messages)
+
+
+def test_the_idle_pass_rewrites_what_is_over_the_cap_once_and_says_so(tmp_path, caplog):
+    conn = _db(tmp_path)
+    data = tmp_path / "data"
+    _photo(data, "photos/2026/10/big.jpg", (90, 90, 90), size=(3000, 2000))
+    _photo(data, "photos/2026/10/fine.jpg", (90, 90, 90), size=(1280, 960))
+    fine_before = (data / "photos/2026/10/fine.jpg").stat()
+    conn.executemany("INSERT INTO photos (path) VALUES (?)", [("photos/2026/10/big.jpg",), ("photos/2026/10/fine.jpg",)])
+    conn.commit()
+
+    with caplog.at_level(logging.INFO, logger="jasper"):
+        assert worker.tidy_photos(conn, data, should_stop=lambda: False) is True
+    with Image.open(data / "photos/2026/10/big.jpg") as im:
+        assert max(im.size) == identify.STORE_SIDE
+    assert (data / "photos/2026/10/fine.jpg").stat() == fine_before
+    assert [r.getMessage() for r in caplog.records][-1].startswith("photos: 1 re-encoded, ")
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="jasper"):
+        assert worker.tidy_photos(conn, data, should_stop=lambda: False) is True
+    assert not caplog.records  # nothing left to do, nothing said
+
+
+def test_the_idle_pass_stops_for_a_job_and_warns_once_per_unreadable_photo(tmp_path, caplog):
+    conn = _db(tmp_path)
+    data = tmp_path / "data"
+    (data / "photos").mkdir(parents=True)
+    (data / "photos" / "bad.jpg").write_bytes(b"not a picture")
+    _photo(data, "photos/big.jpg", (90, 90, 90), size=(3000, 2000))
+    conn.executemany("INSERT INTO photos (path) VALUES (?)", [("photos/bad.jpg",), ("photos/big.jpg",)])
+    conn.commit()
+    with caplog.at_level(logging.WARNING, logger="jasper"):
+        assert worker.tidy_photos(conn, data, should_stop=iter([False, True]).__next__) is False
+    assert [r.getMessage() for r in caplog.records] == [f"photos: photos/bad.jpg unreadable: {caplog.records[0].getMessage().split(': ', 2)[2]}"]
+    with Image.open(data / "photos/big.jpg") as im:
+        assert max(im.size) == 3000, "the pass stopped before it"

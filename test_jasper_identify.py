@@ -437,3 +437,57 @@ def test_describe_for_the_log_line():
     assert piece.describe() == "haiku Pyrite with Sphalerite on Quartz 0.70"
     assert identify.opinion(FLASH, ok(answer(candidates=[]))).describe() == "flash nothing named"
     assert identify.opinion(FLASH, err(429)).describe() == "flash the gateway rate-limited the request (429): nope"
+
+
+# --- The photo on disk (#83) ----------------------------------------------------
+
+
+def _image(path, size, fmt, orientation=None):
+    from PIL import Image
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    im = Image.new("RGB", size, (200, 30, 30))
+    if orientation:
+        exif = Image.Exif()
+        exif[0x0112] = orientation
+        im.save(path, fmt, exif=exif.tobytes())
+    else:
+        im.save(path, fmt)
+    return path
+
+
+def _open(path):
+    from PIL import Image
+
+    with Image.open(path) as im:
+        return im.format, im.size, bool(im.getexif())
+
+
+def test_a_png_over_the_cap_becomes_a_jpg_within_it_beside_the_original(tmp_path):
+    src = _image(tmp_path / "photos" / "a.png", (4000, 3000), "PNG")
+    dst = identify.normalize_photo(src)
+    assert dst == tmp_path / "photos" / "a.jpg"
+    assert _open(dst) == ("JPEG", (2048, 1536), False)
+    assert src.exists(), "the caller removes the original once the row points at the new file"
+    assert not list(tmp_path.glob("photos/*.part"))
+
+
+def test_a_jpeg_within_the_cap_is_left_alone_byte_for_byte(tmp_path):
+    src = _image(tmp_path / "a.jpg", (1280, 960), "JPEG")
+    before = src.read_bytes()
+    assert identify.normalize_photo(src) is None
+    assert src.read_bytes() == before
+    exact = _image(tmp_path / "b.jpg", (identify.STORE_SIDE, 100), "JPEG")
+    assert identify.normalize_photo(exact) is None
+
+
+def test_a_jpeg_over_the_cap_is_rewritten_in_place(tmp_path):
+    src = _image(tmp_path / "a.jpg", (2500, 1000), "JPEG")
+    assert identify.normalize_photo(src) == src
+    assert _open(src) == ("JPEG", (2048, 819), False)
+
+
+def test_orientation_is_applied_and_the_exif_dropped(tmp_path):
+    src = _image(tmp_path / "a.png", (4000, 3000), "PNG", orientation=6)  # rotated 90°: a portrait shot stored sideways
+    dst = identify.normalize_photo(src)
+    assert _open(dst) == ("JPEG", (1536, 2048), False)

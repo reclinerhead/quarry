@@ -4,8 +4,12 @@ Copied from the Conservatory's fern/worker.py and adapted (#7). `run_once`
 does one job and is the unit the loop repeats. It takes the clock and the ask
 function as arguments so the tests can drive it without the network. The two
 models are asked side by side on two threads, so a job takes as long as the
-slower of them. The thumbnail is written for every processed job, rejected
-ones included, because the confirm screen shows the photo either way.
+slower of them. Each photo is first brought within the stored-size rule (#83:
+a JPEG of at most `identify.STORE_SIDE` px, which the browser's shrink already
+gives for almost every upload), then its thumbnail is written, for every
+processed job, rejected ones included, because the confirm screen shows the
+photo either way. The photos that were on disk before get the same once, when
+the queue is first idle after a start (`tidy_photos`).
 
 With a Mindat key (#18), an identified job's candidates are looked up in
 Mindat before the job is written, on a short leash (#40): a person may be
@@ -47,6 +51,49 @@ def thumb_path(rel: str) -> str:
     return str(p.with_name(p.stem + ".thumb.jpg")).replace("\\", "/")
 
 
+def store_photo(conn: sqlite3.Connection, data_dir: Path, photo: sqlite3.Row, who: str) -> tuple[Path, str, int | None]:
+    """Bring one photo on disk within the stored-size rule (#83): a JPEG of at most
+    `identify.STORE_SIDE` px. Returns the file to read, its path relative to the data
+    directory, and the bytes the rewrite freed (None when the file was already right).
+    The path is the row's unless the file was renamed to .jpg; then the row is updated
+    first and the original removed after, and a line says so."""
+    src = data_dir / photo["path"]
+    before = src.stat().st_size
+    dst = identify.normalize_photo(src)
+    if dst is None:
+        return src, photo["path"], None
+    rel = dst.relative_to(data_dir).as_posix()
+    if rel != photo["path"]:
+        with conn:
+            conn.execute("UPDATE photos SET path = ? WHERE id = ?", (rel, photo["id"]))
+        src.unlink()
+    freed = before - dst.stat().st_size
+    log.info("%s: photo %s stored as %s (%.1f MB freed)", who, photo["path"], dst.name, freed / 1e6)
+    return dst, rel, freed
+
+
+def tidy_photos(conn: sqlite3.Connection, data_dir: Path, should_stop: Callable[[], bool]) -> bool:
+    """The one-time pass over every photo already on disk (#83), run when the queue
+    is idle after a start: each is brought within the stored-size rule, and one line
+    says what that freed. Returns True once the whole table has been walked; a job
+    arriving mid-pass stops it, and the next idle tick starts over (a photo already
+    right costs one header read). A photo that cannot be read is one warning."""
+    rewritten, freed = 0, 0
+    for photo in conn.execute("SELECT id, path FROM photos ORDER BY id").fetchall():
+        if should_stop():
+            return False
+        try:
+            _, _, bytes_freed = store_photo(conn, data_dir, photo, "photos")
+            if bytes_freed is not None:
+                rewritten += 1
+                freed += bytes_freed
+        except Exception as exc:  # noqa: BLE001  (one line per unreadable photo, whatever it was)
+            log.warning("photos: %s unreadable: %s", photo["path"], exc)
+    if rewritten:
+        log.info("photos: %d re-encoded, %.1f MB freed", rewritten, freed / 1e6)
+    return True
+
+
 def run_once(
     conn: sqlite3.Connection,
     data_dir: Path,
@@ -64,9 +111,9 @@ def run_once(
     t_start = time.monotonic()
     images: list[bytes] = []
     for ph in queue.job_photos(conn, job["id"]):
-        src = data_dir / ph["path"]
         try:
-            identify.write_thumbnail(src, data_dir / thumb_path(ph["path"]))
+            src, rel, _ = store_photo(conn, data_dir, ph, f"job {job['id']}")
+            identify.write_thumbnail(src, data_dir / thumb_path(rel))
             if len(images) < identify.MAX_IMAGES:
                 images.append(identify.prepare_image(src))
         except Exception as exc:  # noqa: BLE001  (one line per unreadable photo, whatever it was)
@@ -143,6 +190,7 @@ def run_forever(conn: sqlite3.Connection, data_dir: Path, cfg: identify.Settings
                 mindat_api: mindat.Api | None = None) -> None:
     paused_until: datetime | None = None
     next_catch_up = datetime.now(timezone.utc)
+    photos_tidy = False  # the one-time pass over the photos on disk (#83), done at the first idle
     while should_run():
         now = datetime.now(timezone.utc)
         if paused_until and now < paused_until:
@@ -151,6 +199,8 @@ def run_forever(conn: sqlite3.Connection, data_dir: Path, cfg: identify.Settings
         paused_until = None
         outcome = run_once(conn, data_dir, cfg, now, mindat_api=mindat_api)
         if outcome is None:
+            if not photos_tidy:
+                photos_tidy = tidy_photos(conn, data_dir, should_stop=lambda: queue.has_runnable(conn, datetime.now(timezone.utc)))
             if mindat_api is not None and now >= next_catch_up:
                 next_catch_up = catch_up(conn, mindat_api, now)
             time.sleep(2)
