@@ -50,7 +50,12 @@ MAX_WITH = 3  # other minerals on one piece, as a show label names them (#29)
 MATRIX = "matrix"  # a base of rock nobody names: "Amethyst on matrix"
 MAX_TESTS = 3
 MAX_IMAGES = 5
-LONG_SIDE = 1280
+LONG_SIDE = 1280  # the copy the models see, made in memory
+# The most a photo on disk measures on its long side (#83). The browser's
+# shrink (web/lib/shrink.ts, LONG_SIDE) uses the same number, so the common
+# upload is already the stored copy; normalize_photo is the guarantee behind it.
+STORE_SIDE = 2048
+STORE_QUALITY = 85
 THUMB_SIDE = 320
 
 SCHEMA = {
@@ -491,6 +496,28 @@ def prepare_image(path: Path) -> bytes:
         buf = io.BytesIO()
         im.save(buf, "JPEG", quality=90)
         return buf.getvalue()
+
+
+def normalize_photo(src: Path) -> Path | None:
+    """Make the photo on disk a JPEG of at most STORE_SIDE px on the long side (#83).
+
+    A JPEG already within the cap is left alone, byte for byte, and None comes
+    back. Anything else (a HEIC or PNG the browser could not draw, a JPEG over
+    the cap) is re-encoded with its orientation applied and no EXIF, written
+    through a temp file to <stem>.jpg beside the original, and that path comes
+    back. The original is left for the caller to remove once the row points at
+    the new file, so a crash between the two leaves a stray file, never a row
+    that names a file that is gone."""
+    with Image.open(src) as im:
+        if im.format == "JPEG" and max(im.size) <= STORE_SIDE:
+            return None
+        out = ImageOps.exif_transpose(im).convert("RGB")
+    out.thumbnail((STORE_SIDE, STORE_SIDE))
+    dst = src.with_suffix(".jpg")
+    tmp = dst.with_name(dst.name + ".part")
+    out.save(tmp, "JPEG", quality=STORE_QUALITY)
+    os.replace(tmp, dst)
+    return dst
 
 
 def write_thumbnail(src: Path, dst: Path) -> None:

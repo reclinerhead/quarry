@@ -1,15 +1,17 @@
 "use client";
 
-// Re-encode a phone photo in the browser before upload: at most 1280 px on
-// the long side, JPEG at quality 0.9, orientation applied. That is what
-// Jasper sends the models anyway, and it turns a 4 MB photo into a 300 KB
-// one, which is the difference between working and not working on a weak
-// Wi-Fi. A HEIC the browser cannot decode (most desktop browsers) is decoded
-// in the page first, by libheif compiled to WebAssembly, which only a browser
-// that needs it ever downloads. If that fails too, the original is sent and
-// Jasper re-encodes it on the box.
+// Re-encode a phone photo in the browser before upload: at most 2048 px on
+// the long side, JPEG at quality 0.85, orientation applied. That is the size a
+// photo is stored at (#83: jasper/identify.py's STORE_SIDE is the same number,
+// and Jasper re-encodes anything that arrives over it), and it turns a 4 MB
+// photo into one under a megabyte, which is the difference between working
+// and not working on a weak Wi-Fi. A HEIC the browser cannot decode (most
+// desktop browsers) is decoded in the page first, by libheif compiled to
+// WebAssembly, which only a browser that needs it ever downloads. If that
+// fails too, the original is sent and Jasper re-encodes it on the box.
 
-export const LONG_SIDE = 1280;
+export const LONG_SIDE = 2048;
+const QUALITY = 0.85;
 
 export type Shrunk = { blob: Blob; mime: string; shrunk: boolean };
 
@@ -52,7 +54,7 @@ async function drawToJpeg(file: File): Promise<Shrunk | null> {
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("no 2d context");
       ctx.drawImage(bitmap, 0, 0, w, h);
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", QUALITY));
       if (!blob) throw new Error("toBlob failed");
       return { blob, mime: "image/jpeg", shrunk: true };
     } finally {
