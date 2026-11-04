@@ -40,6 +40,9 @@ DEFAULT_SECOND_OPINION = "google/gemini-3.8-flash"
 CANDIDATE_KINDS = ("mineral", "rock", "other")
 # The shape of a piece as a rock hound bins it (#73); the schema's CHECK on candidates.form and specimens.form.
 FORMS = ("crystal", "cluster", "geode", "druzy", "rough", "tumbled", "slab", "carved")
+# What a model answers for the form when the photos don't say (#77). A real word, not "":
+# Gemini refuses an empty enum value, and the one schema goes to both models.
+NO_FORM = "none"
 # The schema's CHECK on suggested_tests.kind, in the order the user message lists answers.
 TEST_KINDS = ("glass", "steel", "copper", "fingernail", "streak", "vinegar", "magnet", "uv")
 MAX_CANDIDATES = 3
@@ -62,7 +65,7 @@ SCHEMA = {
                     "variety": {"type": "string"},
                     "kind": {"type": "string", "enum": list(CANDIDATE_KINDS)},
                     "made_of": {"type": "string"},
-                    "form": {"type": "string", "enum": [*FORMS, ""]},
+                    "form": {"type": "string", "enum": [*FORMS, NO_FORM]},
                     "with": {"type": "array", "items": {"type": "string"}},
                     "on": {"type": "string"},
                     "confidence": {"type": "number"},
@@ -294,8 +297,8 @@ def _candidate(raw: object, rank: int) -> Candidate:
     made_of = _words(made_of)
     if made_of.casefold() == name.casefold():
         made_of = ""
-    # The form (#73): missing before v6, empty when the photos don't say, and a model's
-    # stray word off the list is not an invalid answer, just no form.
+    # The form (#73): missing before v6, "none" (or "" before v7) when the photos don't
+    # say, and a model's stray word off the list is not an invalid answer, just no form.
     form = _words(raw.get("form", "")).lower() if isinstance(raw.get("form", ""), str) else ""
     return Candidate(
         name=name,

@@ -184,7 +184,11 @@ def test_the_form_is_read_from_the_list_and_goes_in_the_label():
     assert identify.FORMS == ("crystal", "cluster", "geode", "druzy", "rough", "tumbled", "slab", "carved")
 
 
-@pytest.mark.parametrize("over", [{}, {"form": ""}, {"form": "nodule"}, {"form": 3}], ids=["missing (a v5 answer)", "empty", "off the list", "not text"])
+@pytest.mark.parametrize(
+    "over",
+    [{}, {"form": "none"}, {"form": " None "}, {"form": ""}, {"form": "nodule"}, {"form": 3}],
+    ids=["missing (a v5 answer)", "none (v7)", "none, untidy", "empty (v6)", "off the list", "not text"],
+)
 def test_a_form_missing_empty_or_off_the_list_is_none_not_an_invalid_answer(over):
     c = identify.parse_answer(json.dumps(answer(candidates=[cand(**over)]))).candidates[0]
     assert c.form is None and c.label() == "Pyrite"
@@ -195,9 +199,10 @@ def test_a_form_missing_empty_or_off_the_list_is_none_not_an_invalid_answer(over
 
 def test_the_prompt_has_a_version_and_names_every_test_kind():
     version, body = identify.load_prompt()
-    assert version == 6
+    assert version == 7
     assert '"matrix"' in body and "- with:" in body and "- on:" in body and "- made_of:" in body
     assert "- form:" in body and all(f'"{f}"' in body for f in identify.FORMS)  # #73
+    assert f'"{identify.NO_FORM}" when the\n  photos don\'t say' in body and "An empty string\n  when the photos" not in body  # #77
     assert "penny is 19 mm" in body and "no scale in the photos" in body  # #67
     assert "answer differently" in body and "return an empty list" in body and "name each candidate" in body  # #69
     assert not body.startswith("---")
@@ -225,7 +230,27 @@ def test_the_schemas_test_kinds_are_the_tables(tmp_path):
     assert item["properties"]["kind"]["enum"] == list(identify.CANDIDATE_KINDS)
     # Strict structured output: every property is required, with and on included.
     assert set(item["required"]) == set(item["properties"]) >= {"with", "on", "made_of", "form"}
-    assert item["properties"]["form"]["enum"] == [*identify.FORMS, ""]
+    assert item["properties"]["form"]["enum"] == [*identify.FORMS, identify.NO_FORM]
+
+
+def test_no_enum_in_the_schema_holds_an_empty_string():
+    """#77: Gemini's response_schema refuses an empty enum value, and the one schema goes to both models."""
+
+    def enums(node):
+        if isinstance(node, dict):
+            if "enum" in node:
+                yield node["enum"]
+            for v in node.values():
+                yield from enums(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from enums(v)
+
+    found = list(enums(identify.SCHEMA))
+    assert len(found) == 3  # kind, form, test kind
+    for values in found:
+        assert values and all(isinstance(v, str) and v.strip() for v in values)
+    assert identify.NO_FORM not in identify.FORMS
 
 
 # --- the user message ----------------------------------------------------------
