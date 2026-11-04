@@ -5,7 +5,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { shortDay, type Acquired, type Tile } from "./collection";
-import { elementsCard, elementsOf, pieceElements, type ElementsCard, type PieceMineral, type StoneMinerals } from "./elements";
+import { elementsCard, elementsOf, type ElementsCard, type PieceMineral, type StoneMinerals } from "./elements";
 import { cleanAnswers, type Answers } from "./household-tests";
 import { fold, formulaSegments, mineralClassOf, propertyCard, type ChainRecord, type PropertyCard } from "./mindat";
 import { mohsCard, type MohsCard } from "./mohs";
@@ -325,7 +325,6 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
   // Every stone with every mineral on it, for what this one was the first to bring (#42, #48)
   // and, by the main mineral alone, which Mohs slot each fills.
   const pieces = collectionElements(db);
-  const stones = pieces.map((p) => ({ id: p.id, createdAt: p.createdAt, elements: pieceElements(p) }));
   const names = pieces.map((p) => ({ id: p.id, createdAt: p.createdAt, names: p.minerals[0].chainNames }));
   return {
     id: s.id,
@@ -350,7 +349,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     places: places.map((p) => p.location),
     properties,
     whereFound: readWhereFound(db, s.name, s.mindat_id, s.variety),
-    elements: elementsCard(s.id, stones),
+    elements: elementsCard(s.id, pieces),
     mohsSet: mohsCard(s.id, names, properties.mohsRange),
   };
 }

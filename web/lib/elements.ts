@@ -117,13 +117,20 @@ export function pieceElements(stone: StoneMinerals): PeriodicElement[] {
   return out;
 }
 
-/** A stone as the card needs it: when it was added, and its elements. */
-export type StoneElements = { id: number; createdAt: string; elements: PeriodicElement[] };
-
 export type ElementTile = PeriodicElement & { isNew: boolean };
 
+/**
+ * One mineral's share of the card (#76): its name, its formula, its own
+ * elements, and as tiles the ones no earlier group on the card showed. When
+ * it has elements but no tiles, `sameAs` names the earlier group that carries
+ * every one of them (Marcasite after Pyrite), or is null when they are spread
+ * over several.
+ */
+export type ElementGroup = { name: string; formula: Segment[] | null; elements: PeriodicElement[]; tiles: ElementTile[]; sameAs: string | null };
+
 export type ElementsCard = {
-  tiles: ElementTile[];
+  tiles: ElementTile[]; // the whole piece's, each element once, in piece order
+  groups: ElementGroup[]; // the same tiles by mineral, in piece order; the card draws them only when there are two or more
   lit: number; // distinct elements across the whole collection
 };
 
@@ -137,13 +144,30 @@ function before(a: { id: number; createdAt: string }, b: { id: number; createdAt
  * whether it is new with this stone, meaning no stone added before it carries
  * it. That makes "new" a fact about the stone, not about today: the first
  * Fluorite keeps "Fluorine · new" and the second never shows it.
+ *
+ * The same tiles come grouped by mineral (#76), each element under the first
+ * mineral in piece order that carries it, so the sulfur of "Pyrite with
+ * Sphalerite" sits under Pyrite and Sphalerite's group holds zinc alone. A
+ * group left with nothing (Pyrite with Marcasite, both FeS₂) keeps its name
+ * and formula so the card can say its elements are above.
  */
-export function elementsCard(stoneId: number, stones: StoneElements[]): ElementsCard {
+export function elementsCard(stoneId: number, stones: StoneMinerals[]): ElementsCard {
   const self = stones.find((s) => s.id === stoneId);
-  const earlier = new Set(self ? stones.filter((s) => before(s, self)).flatMap((s) => s.elements.map((e) => e.symbol)) : []);
+  const earlier = new Set(self ? stones.filter((s) => before(s, self)).flatMap((s) => pieceElements(s).map((e) => e.symbol)) : []);
+  const tile = (e: PeriodicElement): ElementTile => ({ ...e, isNew: !earlier.has(e.symbol) });
+  const shown = new Set<string>();
+  const groups: ElementGroup[] = [];
+  for (const m of self?.minerals ?? []) {
+    const own = m.elements.filter((e) => !shown.has(e.symbol));
+    for (const e of own) shown.add(e.symbol);
+    const sameAs =
+      m.elements.length && !own.length ? (groups.find((g) => m.elements.every((e) => g.elements.some((o) => o.symbol === e.symbol)))?.name ?? null) : null;
+    groups.push({ name: m.name, formula: m.formula, elements: m.elements, tiles: own.map(tile), sameAs });
+  }
   return {
-    tiles: (self?.elements ?? []).map((e) => ({ ...e, isNew: !earlier.has(e.symbol) })),
-    lit: new Set(stones.flatMap((s) => s.elements.map((e) => e.symbol))).size,
+    tiles: groups.flatMap((g) => g.tiles),
+    groups,
+    lit: new Set(stones.flatMap((s) => pieceElements(s).map((e) => e.symbol))).size,
   };
 }
 
