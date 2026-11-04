@@ -290,10 +290,10 @@ primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
 **Specimen page**:
 1. Breadcrumb.
 2. Title block: catalog dab · the piece's name (60), "matrix" with its info
-   mark · "A kind of Quartz" under a hobby name, then the formula and its
-   plain name ("CaF₂, calcium fluoride") · tags (class, habit, Mohs, UV, "N in
-   your collection"), all for the main mineral · right: Print label (soft),
-   Edit details (soft), Add photos (primary).
+   mark · "A kind of Quartz" under a hobby name · tags (class, habit, Mohs, UV,
+   "N in your collection"), all for the main mineral; the formula is not here,
+   it shows once, in Mineral properties under the mineral's name · right:
+   Print label (soft), Edit details (soft), Add photos (primary).
 3. Photo gallery.
 4. Two columns, same split as the dashboard.
    - Main: **This specimen** (the label card) · **Kitchen-table tests** (with
