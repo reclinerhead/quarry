@@ -93,7 +93,7 @@ pnpm dev
 
 `app/stones/[id]/page.tsx` is one stone, read by `readStone` in `lib/specimens.ts`. It is DESIGN.md §5's specimen page as far as the data goes: Mindat's properties (#23), the elements and the Mohs set (#42), and where it's found (#65) are here; About, handling notes, relatives, the story log and the box label arrive later in Phases 2 and 3.
 
-- **The breadcrumb** ("Collection › Galena").
+- **The breadcrumb** ("Collection › Galena"). Its links keep DESIGN.md's 48 px target through vertical padding pulled back by a matching negative margin (`py-3 -my-3` on a 24 px line), so the finger gets the box but the row lays out as one 17 px line and the page's spacing above and below it reads from the text, not the target (#86).
 - **The title block:**
   - the piece's name at 60 px (40 on a phone), as a show label gives it ("Amethyst on matrix", the "matrix" with its info mark: `components/piece-title.tsx`); the same name is the page's `<title>`;
   - one line with "A kind of Quartz" under a hobby name (`kindOf`) and "Made of Calcite" under a fossil or anything else that is not a mineral (`madeOfLine`, #62, with the made-of info mark), with " · " between when both are there, and nothing when neither is. This line is the only place the Mindat species shows. The formula is not here (#76): it is the main mineral's alone, and it shows once, in the Mineral properties card under that mineral's name;
