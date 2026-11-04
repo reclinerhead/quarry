@@ -196,7 +196,11 @@ one primary button ("Name them"). While Jasper still has rocks and none waits
 for a name, the same box holds them as a plain white card (nothing needs you
 yet): their thumbs (the crystal placeholder for a rock he hasn't started),
 "N rocks waiting for Jasper", Jasper at work under it, and the button's room
-kept empty. When he's done it turns amber in place, with no reload.
+kept empty. When he's done it turns amber in place, with no reload. The add
+page holds its sent rocks in the same strip, at the top under the lead line,
+with two states of its own in the plain card: rocks still sending ("Keep this
+page open until they're sent."), and rocks that couldn't be sent, the reason in
+words with "Send it again" and "Remove" in the button's room.
 
 **Jasper at work**: the one thing that moves. A rock hammer line icon in
 azurite, 1.5em, pivoting at the grip to tap a stone, with two ticks flashing at
@@ -205,7 +209,7 @@ in…", "Giving it a lick…", "Hand lens out…"). The lines are plain words, n
 a term that needs an info mark, and short enough to stay on one line in a
 narrow row. It's decoration beside a status that says where things stand, so
 it's hidden from screen readers. Under reduced motion the hammer rests on the
-stone and the line holds. It sits in the add page's sent rows, the dashboard's
+stone and the line holds. It sits in the add page's sent strip, the dashboard's
 working strip, and under the confirm screen's heading while Jasper has the
 stone ("Jasper is looking…", and "Jasper is looking again…" after a test
 answer). The cursor never says "busy": a disabled control keeps the arrow,

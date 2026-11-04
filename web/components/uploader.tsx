@@ -7,7 +7,7 @@ import { JasperAtWork } from "@/components/jasper-at-work";
 import { exifTakenAt } from "@/lib/exif";
 import { isSettled } from "@/lib/job-state";
 import type { JobView } from "@/lib/jobs";
-import { verdictLine } from "@/lib/pills";
+import { stripLine } from "@/lib/pills";
 import { NoRetry, withRetry } from "@/lib/retry";
 import { decodeHeic, shrinkToJpeg } from "@/lib/shrink";
 
@@ -263,8 +263,6 @@ export function Uploader() {
 
   const sending = rocks.filter((r) => r.state === "queued" || r.state === "sending").length;
   const failed = rocks.filter((r) => r.state === "error").length;
-  const waiting = rocks.filter((r) => r.state === "waiting").length;
-  const toName = rocks.filter((r) => r.state === "settled").length;
 
   let summary: string;
   if (notice) summary = notice;
@@ -272,21 +270,22 @@ export function Uploader() {
   else
     summary = `${count(current.length, "photo")} of this rock, ready to send.${current.length === MAX_PHOTOS ? " That's the most Jasper looks at." : ""}`;
 
-  const sentParts = [
-    sending > 0 && `${sending} sending`,
-    failed > 0 && `${failed} couldn't be sent`,
-    waiting > 0 && `${waiting} waiting for Jasper`,
-    toName > 0 && `${toName} ready to name`,
-  ].filter(Boolean);
-  // Leaving loses a rock still to send or one that couldn't be sent, so the
-  // page says it may be left only once neither is left.
-  let hint = "";
-  if (sending > 0) hint = " Keep this page open until they're sent.";
-  else if (failed === 0 && waiting > 0) hint = " You can leave this page; Jasper keeps going.";
-  const sentLine = `${sentParts.join(", ")}.${hint}`;
-
   return (
     <div className="flex flex-col gap-8">
+      {/* The rocks sent, as one strip at the top in the dashboard's pending
+          strip's shape (#96). It arrives with the first press of "Send this
+          rock", a shift the person's own press makes, and after that its height
+          never changes however many rocks follow, so the buttons, the tips and
+          the rock card sit together under it. */}
+      {rocks.length > 0 ? (
+        <SentStrip
+          rocks={rocks}
+          onNoPreview={noPreview}
+          onSendAgain={() => rocks.filter((r) => r.state === "error").forEach(sendAgain)}
+          onRemove={() => rocks.filter((r) => r.state === "error").forEach(removeRock)}
+        />
+      ) : null}
+
       <section aria-label="Choose photos" className="flex flex-col gap-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <button type="button" onClick={() => pick(cameraRef.current)} className="btn btn-primary btn-lg">
@@ -331,27 +330,6 @@ export function Uploader() {
           </ul>
         </div>
       </section>
-
-      {/* Under the tips, where it's in sight after a send (#31). It arrives with
-          the first press of "Send this rock", and each rock after grows it and
-          moves the rock card down: a shift the person's own press makes. */}
-      {rocks.length > 0 ? (
-        <section aria-labelledby="sent-h" className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <h2 id="sent-h" className="text-section leading-tight">
-              Rocks you&rsquo;ve sent
-            </h2>
-            <p aria-live="polite" className="text-ink-2">
-              {sentLine}
-            </p>
-          </div>
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-3">
-            {rocks.map((r) => (
-              <Row key={r.key} rock={r} onNoPreview={noPreview} onSendAgain={() => sendAgain(r)} onRemove={() => removeRock(r)} />
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
       <section aria-labelledby="rock-h" className="card flex flex-col gap-5 p-5 sm:px-8 sm:py-7">
         <h2 id="rock-h" className="text-section leading-tight">
@@ -446,84 +424,138 @@ function Thumb({ photo, onNoPreview, className }: { photo: Photo; onNoPreview: (
   );
 }
 
-function Row({
-  rock,
+/** "1 rock", "2 rocks". */
+function rocksCount(n: number): string {
+  return `${n} ${n === 1 ? "rock" : "rocks"}`;
+}
+
+/** "1 is still sending and 2 are with Jasper". */
+function listOf(parts: string[]): string {
+  return parts.length < 2 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+// What the strip says follows the most pressing state among the rocks: one
+// that couldn't be sent first, since only this page has its photos; then rocks
+// waiting for a name (amber, DESIGN.md's "needs you"), as on the dashboard;
+// then rocks still sending; then rocks with Jasper. The rest are a sentence
+// after it. The button's room is always kept, so the box is one size.
+function SentStrip({
+  rocks,
   onNoPreview,
   onSendAgain,
   onRemove,
 }: {
-  rock: Rock;
+  rocks: Rock[];
   onNoPreview: (photo: Photo) => void;
   onSendAgain: () => void;
   onRemove: () => void;
 }) {
-  const job = rock.job;
-  const n = rock.photos.length;
-  // Amber means "needs you" (DESIGN.md §1): a rock Jasper is done with waits for a name.
-  const needsYou = rock.state === "settled";
-  const tries = rock.attempt > 1 ? `, try ${rock.attempt} of ${ATTEMPTS}` : "";
-  let status: string;
-  let detail: string | null = null;
-  switch (rock.state) {
-    case "queued":
-      status = "Waiting its turn to send";
-      break;
-    case "sending":
-      status = n > 1 && rock.sent < n ? `Sending photo ${rock.sent + 1} of ${n}${tries}…` : `Sending${tries}…`;
-      break;
-    case "error":
-      status = "Couldn't send it";
-      detail = rock.error ?? null;
-      break;
-    case "waiting":
-      if (job?.status === "identifying") status = "Jasper is looking at it…";
-      else if (job?.status === "failed") {
-        status = "Waiting for Jasper";
-        detail = "Jasper hit a snag and will try again.";
-      } else status = "Waiting for Jasper";
-      break;
-    case "settled":
-      if (job?.status === "failed") {
-        status = "Jasper couldn't look at it";
-        detail = job.error ? `You can still name it yourself. (${job.error})` : "You can still name it yourself.";
-      } else {
-        status = "Ready to name";
-        if (job?.status === "rejected") detail = "Jasper had no guess, so the name is up to you.";
-        else if (job) detail = `${verdictLine(job.plan)}.`;
-      }
-      break;
+  const failed = rocks.filter((r) => r.state === "error");
+  const toName = rocks.filter((r) => r.state === "settled");
+  const sending = rocks.filter((r) => r.state === "queued" || r.state === "sending");
+  const waiting = rocks.filter((r) => r.state === "waiting");
+  const are = (xs: Rock[]) => (xs.length === 1 ? "is" : "are");
+
+  let amber = false;
+  let heading: string;
+  let line: string;
+  let lead: Rock[]; // the rocks the heading is about
+  let action: React.ReactNode = null;
+  if (failed.length > 0) {
+    lead = failed;
+    heading = `${rocksCount(failed.length)} couldn’t be sent`;
+    line = failed[0].error ?? "";
+    action = (
+      <div className="flex flex-wrap gap-3">
+        <button type="button" onClick={onSendAgain} className="btn btn-primary btn-lg">
+          {failed.length === 1 ? "Send it again" : "Send them again"}
+        </button>
+        <button type="button" onClick={onRemove} className="btn btn-soft btn-lg">
+          {failed.length === 1 ? "Remove" : "Remove them"}
+        </button>
+      </div>
+    );
+  } else if (toName.length > 0) {
+    lead = toName;
+    amber = true;
+    heading = `${rocksCount(toName.length)} waiting for a name`;
+    const job = toName[0].job;
+    line = job ? stripLine(job.plan, job.status === "failed", job.suggestedTests[0]?.kind) : "";
+    action = (
+      <Link href="/name" className="btn btn-primary btn-lg">
+        {toName.length === 1 ? "Name it" : "Name them"}
+      </Link>
+    );
+  } else if (sending.length > 0) {
+    lead = sending;
+    heading = `${rocksCount(sending.length)} sending`;
+    const r = sending.find((x) => x.state === "sending");
+    const n = r?.photos.length ?? 0;
+    const tries = r && r.attempt > 1 ? `, try ${r.attempt} of ${ATTEMPTS}` : "";
+    line = !r ? "Waiting its turn to send…" : n > 1 && r.sent < n ? `Sending photo ${r.sent + 1} of ${n}${tries}…` : `Sending${tries}…`;
+  } else {
+    lead = waiting;
+    heading = `${rocksCount(waiting.length)} waiting for Jasper`;
+    line = "";
+  }
+  if (!action) {
+    // The amber strip's button, invisible (so out of the tab order and unread),
+    // keeping its room so a change of state moves nothing.
+    action = (
+      <span aria-hidden className="btn btn-primary btn-lg invisible">
+        Name it
+      </span>
+    );
   }
 
-  const first = rock.photos[0];
+  const others = [
+    lead !== toName && toName.length > 0 && `${toName.length} ${are(toName)} waiting for a name`,
+    lead !== sending && sending.length > 0 && `${sending.length} ${are(sending)} still sending`,
+    lead !== waiting && waiting.length > 0 && `${waiting.length} ${are(waiting)} with Jasper`,
+  ].filter((x): x is string => Boolean(x));
+  if (others.length > 0) line = `${line} Besides ${lead.length === 1 ? "it" : "them"}, ${listOf(others)}.`.trim();
+  // Leaving loses a rock still to send or one that couldn't be sent, so the
+  // page says it may be left only once neither is left.
+  if (sending.length > 0) line = `${line} Keep this page open until ${sending.length === 1 ? "it’s" : "they’re"} sent.`.trim();
+  else if (failed.length === 0 && waiting.length > 0) line = `${line} You can leave this page; Jasper keeps going.`.trim();
+
+  const latest = rocks.slice(-3).reverse(); // the newest in front, where the person just saw it
   return (
-    <li className={`card flex gap-4 p-4 ${needsYou ? "border-warn-line bg-warn" : ""}`}>
-      <Thumb photo={first} onNoPreview={() => onNoPreview(first)} className="size-[104px] flex-none" />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className={`font-bold leading-snug ${needsYou ? "text-warn-ink" : "text-ink"}`}>{status}</p>
-        {detail ? <p className={`text-meta ${needsYou ? "text-warn-ink" : "text-ink-2"}`}>{detail}</p> : null}
-        {/* While Jasper has it, Jasper at work stands in the photo count's line, one line tall like it. */}
-        {rock.state === "waiting" ? (
-          <JasperAtWork seed={rock.jobId ?? 0} className="text-meta text-ink-2" />
-        ) : (
-          <p className={`text-meta ${needsYou ? "text-warn-ink" : "text-ink-3"}`}>{count(n, "photo")}</p>
-        )}
-        <div className="mt-auto flex min-h-12 flex-wrap items-end gap-2 pt-1.5">
-          {rock.state === "error" ? (
-            <>
-              <button type="button" onClick={onSendAgain} className="btn btn-primary px-5">
-                Send it again
-              </button>
-              <button type="button" onClick={onRemove} className="btn btn-soft px-5">
-                Remove
-              </button>
-            </>
-          ) : needsYou && rock.jobId ? (
-            <Link href={`/name/${rock.jobId}`} className="btn btn-primary px-5">
-              {job?.status === "identified" ? "Name it" : "Name it yourself"}
-            </Link>
-          ) : null}
-        </div>
+    <section
+      aria-labelledby="sent-h"
+      className={`flex flex-wrap items-center gap-x-7 gap-y-5 px-5 py-5 sm:px-7 sm:py-[22px] ${amber ? "rounded-card border border-warn-line bg-warn" : "card"}`}
+    >
+      <div className="flex">
+        {latest.map((r, i) => {
+          const p = r.photos[0];
+          return (
+            <span
+              key={r.key}
+              className={`flex size-[72px] flex-none items-center justify-center overflow-hidden rounded-tile border-[3px] border-surface bg-tile-stone ${i > 0 ? "-ml-[18px]" : ""}`}
+            >
+              {p.look === "photo" ? (
+                // eslint-disable-next-line @next/next/no-img-element -- a local blob: URL, nothing for next/image to optimise
+                <img src={p.preview} alt="" onError={() => onNoPreview(p)} className="size-full object-cover" />
+              ) : (
+                <CrystalIcon className="size-8 text-icon-muted" />
+              )}
+            </span>
+          );
+        })}
       </div>
-    </li>
+      <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-1">
+        <h2 id="sent-h" aria-live="polite" className="text-[26px] leading-tight">
+          {heading}
+        </h2>
+        {/* While Jasper has them and nothing else needs the person, Jasper at work, as on the dashboard. */}
+        {lead === waiting ? <JasperAtWork seed={waiting[0].jobId ?? 0} className="text-ink-2" /> : null}
+        {line ? (
+          <p aria-live="polite" className={amber ? "text-warn-ink" : "text-ink-2"}>
+            {line}
+          </p>
+        ) : null}
+      </div>
+      {action}
+    </section>
   );
 }
