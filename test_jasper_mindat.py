@@ -576,9 +576,9 @@ def test_running_out_of_time_stops_quietly_and_the_next_pass_goes_on(tmp_path):
     _mineral(conn, "Agate")
     _link(conn, api)
     clock.t = 0.0
-    assert mindat.idle(conn, api, budget_s=1.5, clock=clock) == (0, 0, 2, 0)  # requests at 0 and 1; at 2 the time is up
+    assert mindat.idle(conn, api, budget_s=1.5, clock=clock) == (0, 0, 2, 0, (0, 0))  # requests at 0 and 1; at 2 the time is up
     assert _detailed(conn) == {51, 960}
-    assert mindat.idle(conn, api, budget_s=1.5, clock=clock) == (0, 0, 1, 0)  # and the time is up during the localities
+    assert mindat.idle(conn, api, budget_s=1.5, clock=clock) == (0, 0, 1, 0, (0, 0))  # and the time is up during the localities
     assert _detailed(conn) == {51, 960, 3337}
 
 
@@ -587,9 +587,9 @@ def test_the_idle_pass_stops_for_a_job_and_keeps_what_it_did(tmp_path):
     api = FakeApi(clock=clock)
     _mineral(conn, "Agate")
     # Linking Agate takes three requests (Agate, Chalcedony, Quartz); a job arrives after two.
-    assert mindat.idle(conn, api, clock=clock, should_stop=lambda: api.requests >= 2) == (0, 0, 0, 0)
+    assert mindat.idle(conn, api, clock=clock, should_stop=lambda: api.requests >= 2) == (0, 0, 0, 0, (0, 0))
     assert api.requests == 2 and _mineral_row(conn, 1)[2] is None
-    assert mindat.idle(conn, api, clock=clock) == (0, 1, 3, 3)  # the chain, its three records, then where each is found
+    assert mindat.idle(conn, api, clock=clock) == (0, 1, 3, 3, (0, 0))  # the chain, its three records, then where each is found
     assert _mineral_row(conn, 1)[2] == 51
 
 
@@ -630,16 +630,19 @@ def test_the_idle_pass_links_fetches_and_says_so(tmp_path, caplog):
     assert worker.catch_up(conn, FakeApi(fail=True), NOW) == NOW + worker.CATCH_UP_AFTER_FAILURE
 
 
-def test_without_a_key_the_idle_pass_never_runs(tmp_path, monkeypatch):
+def test_without_a_key_the_idle_pass_runs_for_wikipedia_alone(tmp_path, monkeypatch):
     conn = _db(tmp_path)
     calls = []
     monkeypatch.setattr(worker.time, "sleep", lambda s: None)
-    monkeypatch.setattr(worker.mindat, "idle", lambda conn, api, should_stop=None: calls.append(api) or (0, 0, 0, 0))
+    monkeypatch.setattr(worker.mindat, "idle", lambda conn, api, should_stop=None, wiki=None: calls.append((api, wiki)) or (0, 0, 0, 0, (0, 0)))
     worker.run_forever(conn, tmp_path, CFG, iter([True, False]).__next__, None)
-    assert calls == []
+    assert calls == []  # nothing to ask without either
+    wiki = object()
+    worker.run_forever(conn, tmp_path, CFG, iter([True, False]).__next__, None, wiki)
+    assert calls == [(None, wiki)]  # the Mindat steps are skipped (#92); Wikipedia needs no key
     api = FakeApi()
-    worker.run_forever(conn, tmp_path, CFG, iter([True, False]).__next__, api)
-    assert calls == [api]
+    worker.run_forever(conn, tmp_path, CFG, iter([True, False]).__next__, api, wiki)
+    assert calls == [(None, wiki), (api, wiki)]
 
 
 # --- where it's found (#65) ---------------------------------------------------------
@@ -751,11 +754,11 @@ def test_counting_stops_quietly_for_the_budget_or_a_job_and_the_next_pass_goes_o
     _fetch(conn, api)
     clock.t = 0.0
     # The localities at 0 and 1, the USA at 2, the states at 3; at 4 the time is up before the counties.
-    assert mindat.idle(conn, api, budget_s=3.5, clock=clock) == (0, 0, 0, 0)
+    assert mindat.idle(conn, api, budget_s=3.5, clock=clock) == (0, 0, 0, 0, (0, 0))
     assert _places(conn, 3337) is None
     asked = api.requests
-    assert mindat.idle(conn, api, clock=clock, should_stop=lambda: api.requests >= asked + 2) == (0, 0, 0, 0)  # a job arrives
+    assert mindat.idle(conn, api, clock=clock, should_stop=lambda: api.requests >= asked + 2) == (0, 0, 0, 0, (0, 0))  # a job arrives
     assert _places(conn, 3337) is None
-    assert mindat.idle(conn, api, clock=clock) == (0, 0, 0, 1)
+    assert mindat.idle(conn, api, clock=clock) == (0, 0, 0, 1, (0, 0))
     assert api.requests - asked == 2 + 3  # the localities were kept for the run
     assert _places(conn, 3337)["usa"] == 32540

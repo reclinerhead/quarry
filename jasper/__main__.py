@@ -22,7 +22,7 @@ import signal
 import sys
 from pathlib import Path
 
-from . import db, identify, mindat, queue, worker
+from . import db, identify, mindat, queue, wikipedia, worker
 
 log = logging.getLogger("jasper")
 
@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
 
-    worker.run_forever(conn, data_dir, cfg, lambda: running, mindat_api)
+    worker.run_forever(conn, data_dir, cfg, lambda: running, mindat_api, wikipedia.Api())
     conn.close()
     return 0
 

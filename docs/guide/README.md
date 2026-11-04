@@ -12,7 +12,7 @@ Spoke to come: the hub's, in Phase 4.
 
 ## The shape, in one paragraph
 
-One SQLite file per household, in WAL mode. Jasper (`jasper/`) creates and migrates it, drains the identification queue, asks the two models about each job through the Vercel AI Gateway, looks their answers up in Mindat, and fetches the whole Mindat record of each mineral the household names; the web app (`web/`) opens the same file with `node:sqlite`, serves every page, and writes the rows that a person's actions create. Photos sit on disk under `QUARRY_DATA/photos/`. Both processes read their configuration from the environment (`.env.example` at the root; on orchid, `/etc/quarry/quarry.env`, per `ops.md`). Nothing calls a model or Mindat but Jasper, so the bill has one owner and the web app has no network to wait on.
+One SQLite file per household, in WAL mode. Jasper (`jasper/`) creates and migrates it, drains the identification queue, asks the two models about each job through the Vercel AI Gateway, looks their answers up in Mindat, fetches the whole Mindat record of each mineral the household names, and fetches Wikipedia's lead for each name; the web app (`web/`) opens the same file with `node:sqlite`, serves every page, and writes the rows that a person's actions create. Photos sit on disk under `QUARRY_DATA/photos/`. Both processes read their configuration from the environment (`.env.example` at the root; on orchid, `/etc/quarry/quarry.env`, per `ops.md`). Nothing calls a model, Mindat or Wikipedia but Jasper, so the bill has one owner and the web app has no network to wait on.
 
 ## Conventions
 

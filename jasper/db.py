@@ -162,6 +162,23 @@ CREATE INDEX IF NOT EXISTS case_stones_order ON case_stones (case_id, position);
 ALTER TABLE specimens ADD COLUMN hero_photo_id INTEGER REFERENCES photos(id) ON DELETE SET NULL;
 """,
     ),
+    # 10 (#92): Wikipedia's lead paragraphs for each name the household uses (jasper/wikipedia.py).
+    (
+        10,
+        """
+-- One term asked of Wikipedia: a mineral's name, or a stone's variety as written
+-- or before its first comma, folded as mindat_terms folds. The page columns are
+-- NULL when Wikipedia has no article for it, so a name is asked once. Deleting
+-- a row asks again on the next idle pass.
+CREATE TABLE IF NOT EXISTS wikipedia_pages (
+  term       TEXT    PRIMARY KEY,
+  title      TEXT,                                 -- the article's title, where a redirect landed
+  url        TEXT,                                 -- the article
+  summary    TEXT,                                 -- the lead paragraphs, plain text, a blank line between
+  fetched_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+""",
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else BASELINE_VERSION

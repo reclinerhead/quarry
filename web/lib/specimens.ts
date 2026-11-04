@@ -8,6 +8,7 @@ import { type AtShow, type ShowCase } from "./cases";
 import { shortDay, type Acquired, type Tile } from "./collection";
 import { elementsCard, elementsOf, type ElementsCard, type PieceMineral, type StoneMinerals } from "./elements";
 import { cleanAnswers, type Answers } from "./household-tests";
+import { aboutCard, aboutTerms, type AboutCard, type AboutRow } from "./about";
 import { fold, formulaSegments, mineralClassOf, propertyCard, type ChainRecord, type PropertyCard } from "./mindat";
 import { mohsCard, type MohsCard } from "./mohs";
 import { chainOf, MAX_DEPTH } from "./names";
@@ -212,6 +213,7 @@ export type StoneView = {
   namedBy: number | null; // the job whose naming made the stone, for "How it was named"
   morePhotosNamed: number; // later photos named "same stone as the last one"
   places: string[]; // every place a stone lives, most stones first, for the location field
+  about: AboutCard; // "About [mineral]" (#92): Wikipedia's lead for the variety's name, else the mineral's
   properties: PropertyCard; // the Mineral properties card, from the mineral's Mindat record (#23)
   whereFound: FoundCard; // "Where it's found", from Mindat's counts on the variety's record or the mineral's (#65)
   elements: ElementsCard; // "What it's made of" (#42)
@@ -281,6 +283,27 @@ function readWhereFound(db: DatabaseSync, name: string, mindatId: number | null,
     // A mineral not linked yet waits too: its chain may be the one with places.
     waiting || (mindatId === null && !miss),
     miss,
+  );
+}
+
+/**
+ * "About [mineral]" (#92): each of the stone's terms, as Jasper asks them
+ * (`wikipedia.wanted`), looked up in `wikipedia_pages` for `aboutCard`. A term
+ * not there yet is one Jasper hasn't asked; a row with no title is a name
+ * Wikipedia has no article for. Before Jasper has run step 10 the table doesn't
+ * exist, and every term reads as not asked.
+ */
+function readAbout(db: DatabaseSync, name: string, variety: string | null): AboutCard {
+  const terms = aboutTerms(name, variety);
+  const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'wikipedia_pages'").get();
+  if (!table) return aboutCard(terms.map(() => undefined));
+  const page = db.prepare("SELECT title, url, summary, fetched_at FROM wikipedia_pages WHERE term = ?");
+  return aboutCard(
+    terms.map((t): AboutRow => {
+      const row = page.get(t) as { title: string | null; url: string | null; summary: string | null; fetched_at: string } | undefined;
+      if (row === undefined) return undefined;
+      return row.title && row.url && row.summary ? { title: row.title, url: row.url, summary: row.summary, fetchedAt: row.fetched_at } : null;
+    }),
   );
 }
 
@@ -365,6 +388,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     namedBy: confirmations[0]?.job_id ?? null,
     morePhotosNamed: Math.max(0, confirmations.length - 1),
     places: places.map((p) => p.location),
+    about: readAbout(db, s.name, s.variety),
     properties,
     whereFound: readWhereFound(db, s.name, s.mindat_id, s.variety),
     elements: elementsCard(s.id, pieces),

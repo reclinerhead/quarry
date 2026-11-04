@@ -32,7 +32,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import identify, llm, mindat, queue
+from . import identify, llm, mindat, queue, wikipedia
 
 log = logging.getLogger("jasper")
 
@@ -167,15 +167,17 @@ def _log_line(job_id: int, outcome: identify.Outcome, row: sqlite3.Row, seconds:
     return level, f"job {job_id} {verdict}: {' · '.join(parts)}"
 
 
-def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api, now: datetime) -> datetime:
-    """The idle Mindat pass: the waiting candidates, then the named minerals, their
-    records, and where those are found. Returns when to try next. Running out of time
-    is not a failure: the rest waits a minute, not ten."""
+def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api | None, now: datetime, wiki_api: wikipedia.Api | None = None) -> datetime:
+    """The idle pass: the waiting candidates, then the named minerals, their records,
+    where those are found, then Wikipedia's lead for each name (#92). Returns when to
+    try next. Running out of time is not a failure: the rest waits a minute, not ten."""
     try:
         # A job arriving mid-pass ends it at the next request; the rest waits a minute.
-        filled, linked, fetched, placed = mindat.idle(conn, mindat_api, should_stop=lambda: queue.has_runnable(conn, datetime.now(timezone.utc)))
+        filled, linked, fetched, placed, (asked, misses) = mindat.idle(
+            conn, mindat_api, should_stop=lambda: queue.has_runnable(conn, datetime.now(timezone.utc)), wiki=wiki_api
+        )
     except mindat.Unreachable as e:
-        log.warning("mindat catch-up stopped: %s; next try in %d minutes", e, CATCH_UP_AFTER_FAILURE.seconds // 60)
+        log.warning("catch-up stopped: %s; next try in %d minutes", e, CATCH_UP_AFTER_FAILURE.seconds // 60)
         return now + CATCH_UP_AFTER_FAILURE
     if filled:
         log.info("mindat caught up on %d waiting candidate(s)", filled)
@@ -183,11 +185,13 @@ def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api, now: datetime) ->
         log.info("mindat linked %d mineral(s), fetched %d record(s)", linked, fetched)
     if placed:
         log.info("mindat counted where %d record(s) are found", placed)
+    if asked:
+        log.info("wikipedia fetched %d page(s), %d with no article", asked, misses)
     return now + CATCH_UP_EVERY
 
 
 def run_forever(conn: sqlite3.Connection, data_dir: Path, cfg: identify.Settings, should_run: Callable[[], bool],
-                mindat_api: mindat.Api | None = None) -> None:
+                mindat_api: mindat.Api | None = None, wiki_api: wikipedia.Api | None = None) -> None:
     paused_until: datetime | None = None
     next_catch_up = datetime.now(timezone.utc)
     photos_tidy = False  # the one-time pass over the photos on disk (#83), done at the first idle
@@ -201,8 +205,8 @@ def run_forever(conn: sqlite3.Connection, data_dir: Path, cfg: identify.Settings
         if outcome is None:
             if not photos_tidy:
                 photos_tidy = tidy_photos(conn, data_dir, should_stop=lambda: queue.has_runnable(conn, datetime.now(timezone.utc)))
-            if mindat_api is not None and now >= next_catch_up:
-                next_catch_up = catch_up(conn, mindat_api, now)
+            if (mindat_api is not None or wiki_api is not None) and now >= next_catch_up:
+                next_catch_up = catch_up(conn, mindat_api, now, wiki_api)
             time.sleep(2)
         elif outcome.status == "quota":
             paused_until = now + QUOTA_PAUSE
