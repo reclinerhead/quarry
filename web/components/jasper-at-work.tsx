@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { RockHammerIcon } from "@/components/icons";
 
 // Jasper at work (#31): the tapping hammer and a rock hound's line that changes
-// every few seconds, while Jasper has a rock. On the add page's sent rows and
+// every few seconds, while Jasper has a rock. On the add page’s sent strip and
 // the dashboard's working strip. Decoration only: the status beside it says
 // where things stand, so it is hidden from screen readers and sits in no live
 // region. Plain words only, since a line that keeps changing can't carry an
