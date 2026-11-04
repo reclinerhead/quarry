@@ -117,7 +117,7 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
         </p>
       </header>
 
-      <Gallery photos={stone.photos} name={name} />
+      <Gallery id={stone.id} photos={stone.photos} name={name} />
 
       <div className="flex flex-wrap items-start gap-8">
         <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-7">

@@ -263,9 +263,15 @@ off the specimen), 22 px radius, with a dark caption pill naming the source
 and date ("Your photo · whole stone · Oct 31, 2026"). Beside it, "More photos
 of this stone": a 2-across grid of 170 px thumbnail buttons (selected = 4 px
 azurite border, `aria-pressed`) that swap the hero, plus a dashed "Add a
-photo" tile. Under that, a tip about the coin-for-scale and shop-tag photos,
-and the Wikipedia reference image as a small row. The owner's photos always
-outrank the reference image.
+photo" tile. The main photo, the one the stone is known by on its card and
+in every list, wears a small "Main photo" pill in its thumbnail's lower-left
+corner, in the caption pill's recipe, and the hero's caption ends "· Main
+photo" while it is showing. Under the grid, one soft 48 px button, "Use this
+as the main photo", while another photo is selected; its row keeps its
+height when the button is gone, so choosing never moves the page. Under
+that, a tip about the coin-for-scale and shop-tag photos, and the Wikipedia
+reference image as a small row. The owner's photos always outrank the
+reference image.
 
 ## 5. Page anatomy
 

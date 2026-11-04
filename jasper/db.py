@@ -152,6 +152,16 @@ CREATE TABLE IF NOT EXISTS case_stones (
 CREATE INDEX IF NOT EXISTS case_stones_order ON case_stones (case_id, position);
 """,
     ),
+    # 9 (#84): the photo a stone is known by, on its card, in the lists and first in its gallery.
+    (
+        9,
+        """
+-- NULL means the newest photo, as before; the web app orders a stone's photos
+-- main first, then newest. Goes with the photo, so a deleted photo leaves the
+-- stone on its newest again.
+ALTER TABLE specimens ADD COLUMN hero_photo_id INTEGER REFERENCES photos(id) ON DELETE SET NULL;
+""",
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else BASELINE_VERSION

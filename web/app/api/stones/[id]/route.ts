@@ -4,7 +4,8 @@
 // it replaces them all), madeOf (what an object that is not a mineral is made
 // of, #62), form (the shape of the piece, #73, one of FORMS), foundAt,
 // acquired (found, bought, gifted, traded), acquiredOn (yyyy-mm-dd), location,
-// notes, tests. An empty string clears a field.
+// notes, tests, heroPhotoId (the photo the stone is known by, #84: one of its
+// own photos, or null for the newest). An empty string clears a field.
 //
 // DELETE /api/stones/:id: remove the stone for good. Its photos go from the
 // table and from disk with their thumbnails, and so do the jobs that brought
@@ -87,7 +88,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const parts = partsOf(body.parts);
   if (parts === null) return Response.json({ error: `parts must be { with: up to ${MAX_PARTS} names, on: a name or null }` }, { status: 400 });
   const madeOf = text(body.madeOf, 80);
-  if (sets.length === 0 && parts === undefined && madeOf === undefined) return Response.json({ error: "nothing to change" }, { status: 400 });
+  const hero = body.heroPhotoId;
+  if (hero !== undefined && hero !== null && !(Number.isInteger(hero) && (hero as number) > 0))
+    return Response.json({ error: "heroPhotoId must be a photo id or null" }, { status: 400 });
+  if (sets.length === 0 && parts === undefined && madeOf === undefined && hero === undefined)
+    return Response.json({ error: "nothing to change" }, { status: 400 });
 
   let db;
   try {
@@ -97,8 +102,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
   try {
     if (!db.prepare("SELECT 1 FROM specimens WHERE id = ?").get(id)) return Response.json({ error: "no such stone" }, { status: 404 });
+    if (typeof hero === "number" && !db.prepare("SELECT 1 FROM photos WHERE id = ? AND specimen_id = ?").get(hero, id))
+      return Response.json({ error: "not a photo of this stone" }, { status: 400 });
     db.exec("BEGIN IMMEDIATE");
     if (sets.length > 0) db.prepare(`UPDATE specimens SET ${sets.join(", ")} WHERE id = ?`).run(...values, id);
+    if (hero !== undefined) db.prepare("UPDATE specimens SET hero_photo_id = ? WHERE id = ?").run(hero as number | null, id);
     if (parts !== undefined) pruneMinerals(db, writeParts(db, id, parts));
     if (madeOf !== undefined) pruneMinerals(db, writeMadeOf(db, id, madeOf));
     db.exec("COMMIT");
