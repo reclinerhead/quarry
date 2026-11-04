@@ -157,10 +157,30 @@ def test_a_version_7_database_takes_step_8_and_gets_the_show_cases(tmp_path, mon
     old.close()
     monkeypatch.undo()
     conn = db.connect(path)
-    assert db.current_version(conn) == 8
+    assert db.current_version(conn) == db.LATEST_VERSION
     tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"cases", "case_stones"} <= tables
     assert tuple(conn.execute("SELECT location FROM specimens").fetchone()) == ("Glass case",)
+
+
+def test_a_version_8_database_takes_step_9_with_its_rows(tmp_path, monkeypatch):
+    """#84: the photo a stone is known by, on specimens, NULL (the newest) until someone chooses."""
+    path = tmp_path / "q.db"
+    monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS[:7])
+    old = db.connect(path)
+    assert db.current_version(old) == 8
+    mineral = old.execute("INSERT INTO minerals (name) VALUES ('Galena')").lastrowid
+    stone = old.execute("INSERT INTO specimens (mineral_id) VALUES (?)", (mineral,)).lastrowid
+    photo = old.execute("INSERT INTO photos (path, specimen_id) VALUES ('photos/2026/11/a.jpg', ?)", (stone,)).lastrowid
+    old.commit()
+    old.close()
+    monkeypatch.undo()
+    conn = db.connect(path)
+    assert db.current_version(conn) == db.LATEST_VERSION
+    assert conn.execute("SELECT hero_photo_id FROM specimens WHERE id = ?", (stone,)).fetchone()[0] is None
+    conn.execute("UPDATE specimens SET hero_photo_id = ? WHERE id = ?", (photo, stone))
+    conn.execute("DELETE FROM photos WHERE id = ?", (photo,))
+    assert conn.execute("SELECT hero_photo_id FROM specimens WHERE id = ?", (stone,)).fetchone()[0] is None  # ON DELETE SET NULL
 
 
 def test_a_stone_is_in_one_case_at_a_time_and_outlives_its_case(tmp_path):

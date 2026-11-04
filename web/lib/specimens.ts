@@ -15,8 +15,15 @@ import { thumbPathFor } from "./photos";
 import { isForm, isMatrix, MATRIX, type Form, type PartRole, type StoneKind } from "./pills";
 import { foundCard, parsePlaces, type FoundCard } from "./places";
 
-/** The newest photo first: by when it was taken, else when it was uploaded, then id. */
-const NEWEST_PHOTO = "COALESCE(p.taken_at, p.uploaded_at) DESC, p.id DESC";
+/**
+ * The photo a stone is known by first (#84: `specimens.hero_photo_id`, chosen
+ * on its page), then the newest: by when it was taken, else when it was
+ * uploaded, then id. One order for the card, the lists, the show cases and the
+ * gallery, so they agree by construction; with nothing chosen it is newest
+ * first, as before.
+ */
+const MAIN_PHOTO_FIRST =
+  "(p.id = (SELECT h.hero_photo_id FROM specimens h WHERE h.id = p.specimen_id)) DESC, COALESCE(p.taken_at, p.uploaded_at) DESC, p.id DESC";
 
 /** A stone's other minerals as the screens show them: a base of plain matrix is named "matrix". */
 export type StonePart = { role: PartRole; name: string };
@@ -116,7 +123,7 @@ export function collectionElements(db: DatabaseSync): PieceElements[] {
   const rows = db
     .prepare(
       `SELECT sp.id, sp.mineral_id, m.name, m.kind, sp.variety, sp.created_at,
-              (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${NEWEST_PHOTO} LIMIT 1) AS path
+              (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${MAIN_PHOTO_FIRST} LIMIT 1) AS path
          FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id`,
     )
     .all() as Array<{ id: number; mineral_id: number; name: string; kind: StoneKind; variety: string | null; created_at: string; path: string | null }>;
@@ -148,7 +155,7 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
   const rows = db
     .prepare(
       `SELECT sp.id, sp.mineral_id, m.name, m.kind, sp.variety, mo.name AS made_of, sp.form, sp.found_at, sp.acquired, sp.location, sp.created_at,
-              (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${NEWEST_PHOTO} LIMIT 1) AS path
+              (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${MAIN_PHOTO_FIRST} LIMIT 1) AS path
          FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id LEFT JOIN minerals mo ON mo.id = sp.made_of_id`,
     )
     .all() as Array<{
@@ -199,7 +206,8 @@ export type StoneView = {
   tests: Answers;
   createdAt: string;
   added: string;
-  photos: Array<{ id: number; url: string; thumbUrl: string; takenAt: string | null }>;
+  photos: Array<{ id: number; url: string; thumbUrl: string; takenAt: string | null; main: boolean }>; // the main photo first (#84)
+  heroPhotoId: number | null; // the photo chosen as the main one, null while it is simply the newest
   sameMineral: number; // stones of this mineral in the collection, this one included
   namedBy: number | null; // the job whose naming made the stone, for "How it was named"
   morePhotosNamed: number; // later photos named "same stone as the last one"
@@ -290,7 +298,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
   const s = db
     .prepare(
       `SELECT sp.id, sp.mineral_id, m.name, m.kind, m.mindat_id, sp.variety, mo.name AS made_of, sp.form, sp.found_at, sp.acquired, sp.acquired_on,
-              sp.location, sp.notes, sp.tests, sp.created_at
+              sp.location, sp.notes, sp.tests, sp.created_at, sp.hero_photo_id
          FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id LEFT JOIN minerals mo ON mo.id = sp.made_of_id WHERE sp.id = ?`,
     )
     .get(id) as
@@ -310,11 +318,12 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
         notes: string | null;
         tests: string;
         created_at: string;
+        hero_photo_id: number | null;
       }
     | undefined;
   if (!s) return null;
   const photos = db
-    .prepare(`SELECT p.id, p.path, p.taken_at FROM photos p WHERE p.specimen_id = ? ORDER BY ${NEWEST_PHOTO}`)
+    .prepare(`SELECT p.id, p.path, p.taken_at FROM photos p WHERE p.specimen_id = ? ORDER BY ${MAIN_PHOTO_FIRST}`)
     .all(id) as Array<{ id: number; path: string; taken_at: string | null }>;
   const confirmations = db
     .prepare("SELECT job_id FROM confirmations WHERE specimen_id = ? ORDER BY confirmed_at, rowid")
@@ -344,7 +353,14 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     tests: cleanAnswers(s.tests),
     createdAt: s.created_at,
     added: shortDay(s.created_at),
-    photos: photos.map((p) => ({ id: p.id, url: `/media/${p.path}`, thumbUrl: `/media/${thumbPathFor(p.path)}`, takenAt: p.taken_at })),
+    photos: photos.map((p, i) => ({
+      id: p.id,
+      url: `/media/${p.path}`,
+      thumbUrl: `/media/${thumbPathFor(p.path)}`,
+      takenAt: p.taken_at,
+      main: s.hero_photo_id === null ? i === 0 : p.id === s.hero_photo_id,
+    })),
+    heroPhotoId: s.hero_photo_id,
     sameMineral: same,
     namedBy: confirmations[0]?.job_id ?? null,
     morePhotosNamed: Math.max(0, confirmations.length - 1),
@@ -372,7 +388,7 @@ export function readCases(db: DatabaseSync): ShowCase[] {
   const rows = db
     .prepare(
       `SELECT cs.case_id, sp.id, m.name, m.kind, sp.variety,
-              (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${NEWEST_PHOTO} LIMIT 1) AS path
+              (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${MAIN_PHOTO_FIRST} LIMIT 1) AS path
          FROM case_stones cs JOIN specimens sp ON sp.id = cs.specimen_id JOIN minerals m ON m.id = sp.mineral_id
         ORDER BY cs.case_id, cs.position, sp.id`,
     )
