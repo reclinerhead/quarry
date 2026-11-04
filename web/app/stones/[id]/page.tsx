@@ -9,7 +9,7 @@ import { Term } from "@/components/term";
 import { TestsEditor } from "@/components/tests-editor";
 import { WhyNote } from "@/components/why-note";
 import { fullDay, KIND_LABEL } from "@/lib/collection";
-import { elementsLine } from "@/lib/elements";
+import { elementsLine, type ElementTile } from "@/lib/elements";
 import type { GlossaryKey } from "@/lib/glossary";
 import { readJob, withReadDb, type JobView } from "@/lib/jobs";
 import { mohsLabel, type PropertyKey } from "@/lib/mindat";
@@ -252,7 +252,9 @@ const TERM: Record<PropertyKey, GlossaryKey> = {
  * DESIGN.md §5's Mineral properties card (#23): Mindat's cells in the canvas's
  * order, each label with its info mark, none drawn without a value. With no
  * cells, one line in the card's place says why: a rock, a name Mindat doesn't
- * have, or a record Jasper hasn't fetched yet.
+ * have, or a record Jasper hasn't fetched yet. The meta line names the mineral
+ * the card is about (#76), the main one, so on "Pyrite with Sphalerite on
+ * Quartz" the formula reads as pyrite's and not the piece's.
  */
 function MineralProperties({ stone, name }: { stone: StoneView; name: string }) {
   const p = stone.properties;
@@ -262,23 +264,27 @@ function MineralProperties({ stone, name }: { stone: StoneView; name: string }) 
         <h2 id="props-h" className="text-section leading-tight">
           Mineral properties
         </h2>
-        {p.mindatId !== null ? (
-          // A flex row, so on a phone the hint wraps whole under the link's 48 px target.
-          <p className="flex flex-wrap items-center text-meta text-ink-2">
-            From
+        {/* A flex row, so on a phone the hint wraps whole under the link's 48 px target. */}
+        <p className="flex flex-wrap items-center text-meta text-ink-2">
+          <span>
+            <b className="text-ink">{name}</b>
+            <Term k="mineral" bare />
+            {p.mindatId !== null ? ", from" : null}
+          </span>
+          {p.mindatId !== null ? (
             <a href={`https://www.mindat.org/min-${p.mindatId}.html`} target="_blank" rel="noreferrer" className="text-link">
               Mindat
             </a>
-            {p.state === "cells" ? (
-              <span>
-                <span aria-hidden className="max-sm:hidden">
-                  {"· "}
-                </span>
-                tap <b className="text-azurite">i</b> to learn what a word means
+          ) : null}
+          {p.state === "cells" ? (
+            <span>
+              <span aria-hidden className="max-sm:hidden">
+                {"· "}
               </span>
-            ) : null}
-          </p>
-        ) : null}
+              tap <b className="text-azurite">i</b> to learn what a word means
+            </span>
+          ) : null}
+        </p>
       </div>
       {p.state === "cells" ? (
         <dl className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-3">
@@ -399,6 +405,9 @@ function NoRecord({ stone, name, missing, none }: { stone: StoneView; name: stri
  * mineral on the piece (#48), the main one's first, as tiles, solid with
  * "· new" when this stone was the first to bring one, then the line that says
  * so and counts the household's lit elements, and the way to the table.
+ * With two or more minerals on the piece the tiles come in a group per
+ * mineral (#76), each under the mineral's name and formula, so a reader can
+ * see which of them brought the elements the title's formula doesn't name.
  */
 function MadeOf({ stone, name }: { stone: StoneView; name: string }) {
   const card = stone.elements;
@@ -410,15 +419,30 @@ function MadeOf({ stone, name }: { stone: StoneView; name: string }) {
       </h2>
       {card.tiles.length ? (
         <>
-          <ul aria-label="Elements" className="element-tiles">
-            {card.tiles.map((t) => (
-              <li key={t.symbol} className={t.isNew ? "element-tile element-tile-new" : "element-tile"}>
-                <span className="text-tag font-bold tabular-nums">{t.number}</span>
-                <span className="font-display text-[36px] font-bold leading-[1.1]">{t.symbol}</span>
-                <span className="text-meta">{t.isNew ? `${t.name} · new` : t.name}</span>
-              </li>
-            ))}
-          </ul>
+          {card.groups.length > 1 ? (
+            card.groups.map((g) => (
+              <section key={g.name} aria-label={g.name} className="flex flex-col gap-2">
+                <p className="text-meta font-bold text-ink-2">
+                  {g.name}
+                  {g.formula ? (
+                    <>
+                      {" · "}
+                      <span className="font-label text-ink">
+                        <Formula segments={g.formula} />
+                      </span>
+                    </>
+                  ) : null}
+                </p>
+                {g.tiles.length ? (
+                  <ElementTiles tiles={g.tiles} label={`${g.name}’s elements`} />
+                ) : g.elements.length ? (
+                  <p className="text-ink-2">{g.sameAs ? `The same elements as ${g.sameAs}.` : "Its elements are all above."}</p>
+                ) : null}
+              </section>
+            ))
+          ) : (
+            <ElementTiles tiles={card.tiles} label="Elements" />
+          )}
           <p className="text-ink-2">{elementsLine(card)}</p>
           <Link href="/periodic-table" className="text-link self-start">
             Open your periodic table
@@ -428,6 +452,21 @@ function MadeOf({ stone, name }: { stone: StoneView; name: string }) {
         <NoRecord stone={stone} name={name} missing="formula" none="elements" />
       )}
     </section>
+  );
+}
+
+/** The element tiles (DESIGN.md §4): atomic number, symbol, name, solid with "· new" when this stone brought the element. */
+function ElementTiles({ tiles, label }: { tiles: ElementTile[]; label: string }) {
+  return (
+    <ul aria-label={label} className="element-tiles">
+      {tiles.map((t) => (
+        <li key={t.symbol} className={t.isNew ? "element-tile element-tile-new" : "element-tile"}>
+          <span className="text-tag font-bold tabular-nums">{t.number}</span>
+          <span className="font-display text-[36px] font-bold leading-[1.1]">{t.symbol}</span>
+          <span className="text-meta">{t.isNew ? `${t.name} · new` : t.name}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

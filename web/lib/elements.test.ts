@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { cellOf, ELEMENTS, elementsCard, elementsLine, elementsOf, parseElements, periodicTable, pieceElements, type StoneElements, type StoneMinerals } from "./elements";
+import { cellOf, ELEMENTS, elementsCard, elementsLine, elementsOf, parseElements, periodicTable, pieceElements, type StoneMinerals } from "./elements";
+import type { Segment } from "./mindat";
 
 const sym = (es: { symbol: string }[]) => es.map((e) => e.symbol);
 const el = (...symbols: string[]) => symbols.map((s) => ELEMENTS.find((e) => e.symbol === s)!);
+const mineral = (name: string, ...symbols: string[]) => ({ name, elements: el(...symbols), formula: null });
+/** A stone of one mineral. */
+const one = (id: number, createdAt: string, name: string, ...symbols: string[]): StoneMinerals => ({ id, createdAt, minerals: [mineral(name, ...symbols)] });
 
 describe("ELEMENTS", () => {
   it("numbers all 118 in order", () => {
@@ -50,9 +54,9 @@ describe("elementsOf", () => {
 });
 
 // Three stones in the order they were added: a Calcite, then a Fluorite, then a Quartz.
-const CALCITE: StoneElements = { id: 1, createdAt: "2026-10-01T10:00:00Z", elements: el("Ca", "C", "O") };
-const FLUORITE: StoneElements = { id: 2, createdAt: "2026-10-05T10:00:00Z", elements: el("Ca", "F") };
-const QUARTZ: StoneElements = { id: 3, createdAt: "2026-10-09T10:00:00Z", elements: el("Si", "O") };
+const CALCITE = one(1, "2026-10-01T10:00:00Z", "Calcite", "Ca", "C", "O");
+const FLUORITE = one(2, "2026-10-05T10:00:00Z", "Fluorite", "Ca", "F");
+const QUARTZ = one(3, "2026-10-09T10:00:00Z", "Quartz", "Si", "O");
 const STONES = [QUARTZ, CALCITE, FLUORITE];
 
 describe("elementsCard", () => {
@@ -68,17 +72,28 @@ describe("elementsCard", () => {
   });
 
   it("breaks a tie on the date by id, and has no tiles for a stone with no elements", () => {
-    const a: StoneElements = { id: 7, createdAt: "2026-10-01T10:00:00Z", elements: el("Au") };
-    const b: StoneElements = { id: 8, createdAt: "2026-10-01T10:00:00Z", elements: el("Au") };
+    const a = one(7, "2026-10-01T10:00:00Z", "Gold", "Au");
+    const b = one(8, "2026-10-01T10:00:00Z", "Gold", "Au");
     expect(elementsCard(7, [b, a]).tiles[0].isNew).toBe(true);
     expect(elementsCard(8, [b, a]).tiles[0].isNew).toBe(false);
-    expect(elementsCard(9, [a, b, { id: 9, createdAt: "2026-10-02T10:00:00Z", elements: [] }])).toEqual({ tiles: [], lit: 1 });
+    const granite = one(9, "2026-10-02T10:00:00Z", "Granite");
+    expect(elementsCard(9, [a, b, granite])).toEqual({ tiles: [], groups: [{ name: "Granite", formula: null, elements: [], tiles: [], sameAs: null }], lit: 1 });
+    expect(elementsCard(10, [a, b])).toEqual({ tiles: [], groups: [], lit: 1 });
+  });
+
+  it("puts a one-mineral stone's tiles in a single group, with its formula", () => {
+    const FES2: Segment[] = [{ text: "FeS", pos: null }, { text: "2", pos: "sub" }];
+    const pyrite: StoneMinerals = { id: 1, createdAt: "2026-10-01T10:00:00Z", minerals: [{ ...mineral("Pyrite", "Fe", "S"), formula: FES2 }] };
+    const card = elementsCard(1, [pyrite]);
+    expect(card.groups.map((g) => [g.name, g.formula, sym(g.tiles)])).toEqual([["Pyrite", FES2, ["Fe", "S"]]]);
+    expect(card.groups[0].tiles).toEqual(card.tiles);
   });
 });
 
 describe("elementsLine", () => {
   const card = (news: Array<[string, boolean]>, lit: number) => ({
     tiles: news.map(([s, isNew]) => ({ ...ELEMENTS.find((e) => e.symbol === s)!, isNew })),
+    groups: [],
     lit,
   });
 
@@ -128,15 +143,14 @@ describe("cellOf", () => {
 });
 
 // A Calcite, a Fluorite, then a Pyrite with Sphalerite on Quartz.
-const mineral = (name: string, ...symbols: string[]) => ({ name, elements: el(...symbols), formula: null });
-const P_CALCITE: StoneMinerals = { id: 1, createdAt: "2026-10-01T10:00:00Z", minerals: [mineral("Calcite", "Ca", "C", "O")] };
-const P_FLUORITE: StoneMinerals = { id: 2, createdAt: "2026-10-05T10:00:00Z", minerals: [mineral("Fluorite", "Ca", "F")] };
+const P_CALCITE = one(1, "2026-10-01T10:00:00Z", "Calcite", "Ca", "C", "O");
+const P_FLUORITE = one(2, "2026-10-05T10:00:00Z", "Fluorite", "Ca", "F");
 const P_PYRITE: StoneMinerals = {
   id: 3,
   createdAt: "2026-10-09T10:00:00Z",
   minerals: [mineral("Pyrite", "Fe", "S"), mineral("Sphalerite", "Zn", "S"), mineral("Quartz", "Si", "O")],
 };
-const P_GRANITE: StoneMinerals = { id: 4, createdAt: "2026-10-10T10:00:00Z", minerals: [mineral("Granite")] };
+const P_GRANITE = one(4, "2026-10-10T10:00:00Z", "Granite");
 const PIECES = [P_GRANITE, P_PYRITE, P_CALCITE, P_FLUORITE];
 
 describe("pieceElements", () => {
@@ -168,8 +182,49 @@ describe("periodicTable", () => {
   });
 
   it("marks a companion's element new on the stone page when no earlier stone carried it", () => {
-    const stones = PIECES.map((p) => ({ id: p.id, createdAt: p.createdAt, elements: pieceElements(p) }));
-    expect(elementsCard(3, stones).tiles.map((t) => [t.symbol, t.isNew])).toEqual([["Fe", true], ["S", true], ["Zn", true], ["Si", true], ["O", false]]);
-    expect(elementsCard(3, stones).lit).toBe(8);
+    expect(elementsCard(3, PIECES).tiles.map((t) => [t.symbol, t.isNew])).toEqual([["Fe", true], ["S", true], ["Zn", true], ["Si", true], ["O", false]]);
+    expect(elementsCard(3, PIECES).lit).toBe(8);
+  });
+});
+
+describe("elementsCard's groups (#76)", () => {
+  it("groups the piece's tiles by mineral in piece order, each element under the first mineral that carries it", () => {
+    const card = elementsCard(3, PIECES);
+    expect(card.groups.map((g) => [g.name, sym(g.tiles)])).toEqual([["Pyrite", ["Fe", "S"]], ["Sphalerite", ["Zn"]], ["Quartz", ["Si", "O"]]]);
+    expect(card.groups.flatMap((g) => g.tiles)).toEqual(card.tiles);
+    expect(card.groups.flatMap((g) => g.tiles.map((t) => [t.symbol, t.isNew]))).toEqual([["Fe", true], ["S", true], ["Zn", true], ["Si", true], ["O", false]]);
+    expect(card.lit).toBe(8);
+  });
+
+  it("keeps a group whose elements all appeared above, with its formula and no tiles", () => {
+    const FES2: Segment[] = [{ text: "FeS", pos: null }, { text: "2", pos: "sub" }];
+    const twins: StoneMinerals = {
+      id: 5,
+      createdAt: "2026-10-11T10:00:00Z",
+      minerals: [{ ...mineral("Pyrite", "Fe", "S"), formula: FES2 }, { ...mineral("Marcasite", "Fe", "S"), formula: FES2 }],
+    };
+    const card = elementsCard(5, [...PIECES, twins]);
+    expect(card.groups.map((g) => [g.name, g.formula, sym(g.elements), sym(g.tiles), g.sameAs])).toEqual([
+      ["Pyrite", FES2, ["Fe", "S"], ["Fe", "S"], null],
+      ["Marcasite", FES2, ["Fe", "S"], [], "Pyrite"],
+    ]);
+    expect(card.tiles.map((t) => [t.symbol, t.isNew])).toEqual([["Fe", false], ["S", false]]);
+  });
+
+  it("names no single group when a mineral's elements are spread over several above", () => {
+    const spread: StoneMinerals = {
+      id: 7,
+      createdAt: "2026-10-13T10:00:00Z",
+      minerals: [mineral("Pyrite", "Fe", "S"), mineral("Copper", "Cu"), mineral("Chalcopyrite", "Cu", "Fe", "S")],
+    };
+    const card = elementsCard(7, [...PIECES, spread]);
+    expect(card.groups.map((g) => [g.name, sym(g.tiles), g.sameAs])).toEqual([["Pyrite", ["Fe", "S"], null], ["Copper", ["Cu"], null], ["Chalcopyrite", [], null]]);
+  });
+
+  it("gives a companion with no fetched record, or a rock, a group with no formula and no tiles", () => {
+    const waiting: StoneMinerals = { id: 6, createdAt: "2026-10-12T10:00:00Z", minerals: [mineral("Fluorite", "Ca", "F"), mineral("Galena"), mineral("Granite")] };
+    const card = elementsCard(6, [...PIECES, waiting]);
+    expect(card.groups.map((g) => [g.name, g.formula, sym(g.tiles), g.sameAs])).toEqual([["Fluorite", null, ["Ca", "F"], null], ["Galena", null, [], null], ["Granite", null, [], null]]);
+    expect(sym(card.tiles)).toEqual(["Ca", "F"]);
   });
 });

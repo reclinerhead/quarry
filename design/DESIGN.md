@@ -298,7 +298,8 @@ primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
 4. Two columns, same split as the dashboard.
    - Main: **This specimen** (the label card) · **Kitchen-table tests** (with
      the card check) · **About [mineral]** (Wikipedia summary, source line with
-     fetch date, article link) · **Mineral properties** (Mindat cells: Formula,
+     fetch date, article link) · **Mineral properties** (the meta line names the
+     main mineral the cells are about, "Pyrite ⓘ, from Mindat"; Mindat cells: Formula,
      Mohs hardness, Crystal system, Luster, Streak, Cleavage, Specific gravity,
      Fluorescence, each with an info mark, then the note block) · **Where it's
      found** (Mindat's places in the USA, with its locality info mark: one line
@@ -307,7 +308,9 @@ primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
      every place on Mindat") · **Taking care of it** (handling notes) · **Related stones you already have** (same class,
      same habit, same trait).
    - Side: How it was named (candidate pills + "Change the name") · What it's
-     made of (element tiles + link to the periodic table) · On your Mohs scale
+     made of (element tiles + link to the periodic table; with two or more
+     minerals on the piece, a group per mineral under "Sphalerite · ZnS", each
+     element once, under the first mineral that carries it) · On your Mohs scale
      · Its story so far (timeline) · Box label (preview + Print labels).
 
 **Periodic table page** (`/periodic-table`), designed at laptop width:
