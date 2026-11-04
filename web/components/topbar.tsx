@@ -7,8 +7,8 @@ import { CameraIcon, GemMark } from "@/components/icons";
 
 // The top bar from design/DESIGN.md §5: gem mark and wordmark, nav pills, the
 // search, the primary "Add a rock", then the strata band. Only pages that
-// exist get a nav pill (Collection, Periodic table); Minerals, Labels and Gem
-// Show join as their phases land.
+// exist get a nav pill (Collection, Periodic table, Show cases); Minerals,
+// Labels and Gem Show join as their phases land.
 //
 // Below lg the bar is two rows: the wordmark with Add, then the nav with the
 // search, which drops under the pills on a phone once there are two (#48).
@@ -33,6 +33,9 @@ export function TopBar() {
               </Link>
               <Link href="/periodic-table" aria-current={pathname === "/periodic-table" ? "page" : undefined} className="nav-pill px-4 sm:px-5">
                 Periodic table
+              </Link>
+              <Link href="/show" aria-current={pathname === "/show" || pathname.startsWith("/show/") ? "page" : undefined} className="nav-pill px-4 sm:px-5">
+                Show cases
               </Link>
             </nav>
 

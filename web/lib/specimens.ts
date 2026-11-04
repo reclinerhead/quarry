@@ -4,6 +4,7 @@
 // here as a plain object.
 
 import type { DatabaseSync } from "node:sqlite";
+import { type AtShow, type ShowCase } from "./cases";
 import { shortDay, type Acquired, type Tile } from "./collection";
 import { elementsCard, elementsOf, type ElementsCard, type PieceMineral, type StoneMinerals } from "./elements";
 import { cleanAnswers, type Answers } from "./household-tests";
@@ -207,6 +208,7 @@ export type StoneView = {
   whereFound: FoundCard; // "Where it's found", from Mindat's counts on the variety's record or the mineral's (#65)
   elements: ElementsCard; // "What it's made of" (#42)
   mohsSet: MohsCard; // "On your Mohs scale" (#42)
+  atShow: AtShow; // "At the show" (#81): the cases, and which this stone is in
 };
 
 /**
@@ -351,7 +353,60 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     whereFound: readWhereFound(db, s.name, s.mindat_id, s.variety),
     elements: elementsCard(s.id, pieces),
     mohsSet: mohsCard(s.id, names, properties.mohsRange),
+    atShow: stoneCase(db, s.id),
   };
+}
+
+// --- Show cases (#81) ------------------------------------------------------------
+
+/** Whether Jasper has run step 8 yet: a web deploy ahead of Jasper's reads as if there were no cases, and the routes answer 503. */
+export function hasCases(db: DatabaseSync): boolean {
+  return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'case_stones'").get() !== undefined;
+}
+
+/** Every case in its order, each with its stones in reading order, as the planner draws them. */
+export function readCases(db: DatabaseSync): ShowCase[] {
+  if (!hasCases(db)) return [];
+  const cases = db.prepare("SELECT id, name, note FROM cases ORDER BY position, id").all() as Array<{ id: number; name: string; note: string | null }>;
+  const parts = partsByStone(db);
+  const rows = db
+    .prepare(
+      `SELECT cs.case_id, sp.id, m.name, m.kind, sp.variety,
+              (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${NEWEST_PHOTO} LIMIT 1) AS path
+         FROM case_stones cs JOIN specimens sp ON sp.id = cs.specimen_id JOIN minerals m ON m.id = sp.mineral_id
+        ORDER BY cs.case_id, cs.position, sp.id`,
+    )
+    .all() as Array<{ case_id: number; id: number; name: string; kind: StoneKind; variety: string | null; path: string | null }>;
+  const stones = new Map<number, ShowCase["stones"]>();
+  for (const r of rows)
+    stones.set(r.case_id, [
+      ...(stones.get(r.case_id) ?? []),
+      { id: r.id, name: r.name, kind: r.kind, variety: r.variety, parts: (parts.get(r.id) ?? []).map(partOf), thumbUrl: r.path ? `/media/${thumbPathFor(r.path)}` : null },
+    ]);
+  return cases.map((c) => ({ id: c.id, name: c.name, note: c.note, stones: stones.get(c.id) ?? [] }));
+}
+
+/** One case's stone ids in order, for the route that rewrites them; null when there is no such case. */
+export function caseStoneIds(db: DatabaseSync, caseId: number): number[] | null {
+  if (!db.prepare("SELECT 1 FROM cases WHERE id = ?").get(caseId)) return null;
+  return (db.prepare("SELECT specimen_id FROM case_stones WHERE case_id = ? ORDER BY position, specimen_id").all(caseId) as Array<{ specimen_id: number }>).map(
+    (r) => r.specimen_id,
+  );
+}
+
+/** The stone page's "At the show" (#81): every case by name, and the one this stone is in with its place. */
+export function stoneCase(db: DatabaseSync, specimenId: number): AtShow {
+  if (!hasCases(db)) return { cases: [], current: null };
+  const cases = db.prepare("SELECT id, name FROM cases ORDER BY position, id").all() as Array<{ id: number; name: string }>;
+  const row = db
+    .prepare(
+      `SELECT c.id, c.name,
+              (SELECT COUNT(*) FROM case_stones o WHERE o.case_id = c.id AND (o.position < cs.position OR (o.position = cs.position AND o.specimen_id <= cs.specimen_id))) AS position,
+              (SELECT COUNT(*) FROM case_stones o WHERE o.case_id = c.id) AS total
+         FROM case_stones cs JOIN cases c ON c.id = cs.case_id WHERE cs.specimen_id = ?`,
+    )
+    .get(specimenId) as { id: number; name: string; position: number; total: number } | undefined;
+  return { cases: cases.map((c) => ({ id: c.id, name: c.name })), current: row ? { id: row.id, name: row.name, position: row.position, total: row.total } : null };
 }
 
 // --- Writing a stone's minerals (#29) ------------------------------------------
