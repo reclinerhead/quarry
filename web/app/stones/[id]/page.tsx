@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AreaList } from "@/components/area-list";
 import { Formula } from "@/components/formula";
+import { CaseSelect } from "@/components/case-select";
 import { Gallery } from "@/components/gallery";
 import { CheckIcon } from "@/components/icons";
 import { RemoveStone, StoneEditor } from "@/components/stone-editor";
@@ -25,8 +26,8 @@ import { readStone, type StoneView } from "@/lib/specimens";
 // has data: the breadcrumb, the title block (with Mindat's tags, #23), the photo gallery, then two columns. Main: "This specimen" (the
 // editable specimen label), "Kitchen-table tests", "Mineral properties" and
 // "Where it's found" (#65).
-// Side: "How it was named", "What it's made of", "On your Mohs scale" (#42)
-// and Remove. About, handling notes, relatives, the story log and the box
+// Side: "How it was named", "At the show" (#81), "What it's made of", "On your
+// Mohs scale" (#42) and Remove. About, handling notes, relatives, the story log and the box
 // label arrive later in Phases 2 and 3.
 export const dynamic = "force-dynamic";
 
@@ -142,6 +143,12 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
               How it was named
             </h2>
             {naming?.confirmation ? <HowNamed job={naming} morePhotos={stone.morePhotosNamed} /> : <p className="text-ink-2">No record of its naming.</p>}
+          </section>
+          <section aria-labelledby="show-h" className="card flex flex-col gap-3 p-card">
+            <h2 id="show-h" className="text-h3 leading-tight">
+              At the show
+            </h2>
+            <CaseSelect stoneId={stone.id} atShow={stone.atShow} />
           </section>
           <MadeOf stone={stone} name={mineral} />
           <MohsSet stone={stone} name={mineral} />

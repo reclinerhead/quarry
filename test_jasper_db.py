@@ -141,8 +141,47 @@ def test_a_version_6_database_takes_step_7_with_its_records(tmp_path, monkeypatc
     old.close()
     monkeypatch.undo()
     conn = db.connect(path)
-    assert db.current_version(conn) == 7
+    assert db.current_version(conn) == db.LATEST_VERSION
     assert tuple(conn.execute("SELECT name, detail, places, places_at FROM mindat_records").fetchone()) == ("Agate", "{}", None, None)
+
+
+def test_a_version_7_database_takes_step_8_and_gets_the_show_cases(tmp_path, monkeypatch):
+    """#81: the cases a household plans for the show, and the stones in each; everything before it kept."""
+    path = tmp_path / "q.db"
+    monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS[:6])
+    old = db.connect(path)
+    assert db.current_version(old) == 7
+    mineral = old.execute("INSERT INTO minerals (name) VALUES ('Fluorite')").lastrowid
+    old.execute("INSERT INTO specimens (mineral_id, location) VALUES (?, 'Glass case')", (mineral,))
+    old.commit()
+    old.close()
+    monkeypatch.undo()
+    conn = db.connect(path)
+    assert db.current_version(conn) == 8
+    tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"cases", "case_stones"} <= tables
+    assert tuple(conn.execute("SELECT location FROM specimens").fetchone()) == ("Glass case",)
+
+
+def test_a_stone_is_in_one_case_at_a_time_and_outlives_its_case(tmp_path):
+    """#81: the UNIQUE on case_stones.specimen_id; a removed case keeps its stones; a removed stone leaves its case."""
+    conn = db.connect(tmp_path / "q.db")
+    mineral = conn.execute("INSERT INTO minerals (name) VALUES ('Agate')").lastrowid
+    stone = conn.execute("INSERT INTO specimens (mineral_id) VALUES (?)", (mineral,)).lastrowid
+    other = conn.execute("INSERT INTO specimens (mineral_id) VALUES (?)", (mineral,)).lastrowid
+    booth = conn.execute("INSERT INTO cases (name, position) VALUES ('Booth 12', 1)").lastrowid
+    shelf = conn.execute("INSERT INTO cases (name, position) VALUES ('Michigan agates', 2)").lastrowid
+    conn.execute("INSERT INTO case_stones (case_id, specimen_id, position) VALUES (?, ?, 1)", (booth, stone))
+    conn.execute("INSERT INTO case_stones (case_id, specimen_id, position) VALUES (?, ?, 2)", (booth, other))
+    with pytest.raises(sqlite3.IntegrityError):  # one case at a time
+        conn.execute("INSERT INTO case_stones (case_id, specimen_id, position) VALUES (?, ?, 1)", (shelf, stone))
+    with pytest.raises(sqlite3.IntegrityError):  # only a stone in the collection
+        conn.execute("INSERT INTO case_stones (case_id, specimen_id, position) VALUES (?, 999, 1)", (shelf,))
+    conn.execute("DELETE FROM specimens WHERE id = ?", (other,))
+    assert conn.execute("SELECT COUNT(*) FROM case_stones").fetchone()[0] == 1
+    conn.execute("DELETE FROM cases WHERE id = ?", (booth,))
+    assert conn.execute("SELECT COUNT(*) FROM case_stones").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM specimens").fetchone()[0] == 1
 
 
 def test_a_stones_parts_need_a_mineral_unless_it_sits_on_matrix(tmp_path):

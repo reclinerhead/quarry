@@ -355,6 +355,104 @@
   .field input::placeholder {
     color: var(--color-ink-3);
   }
+
+  /* Show cases (#81). The shelf is the inside of a case: the page's ground,
+     with the stones on it as case tiles. A case tile is the stone's
+     thumbnail, which picks it up (a button; selected is the gallery's 4 px
+     azurite border and aria-pressed) with its number in the case on the
+     corner, over a paper label (DESIGN.md §4's box-label paper) carrying its
+     name, which is the link to its page. A dragged tile fades; the dashed slot is where it
+     would land; the shelf under it takes the hover border. */
+  .case-shelf {
+    gap: 14px;
+    padding: 14px;
+    border-radius: var(--radius-tile);
+    border: 1px solid var(--color-line);
+    background: var(--color-ground);
+    transition: border-color 120ms ease;
+  }
+  .case-shelf[data-over] {
+    border-color: var(--color-line-strong);
+  }
+  .case-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  .case-tile[data-dragging] {
+    opacity: 0.4;
+  }
+  .case-tile-pick {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 130px;
+    overflow: hidden;
+    border-radius: var(--radius-thumb);
+    border: 4px solid transparent;
+    cursor: pointer;
+    transition: border-color 120ms ease;
+  }
+  .case-tile-pick:hover {
+    border-color: var(--color-line-strong);
+  }
+  .case-tile-pick[aria-pressed="true"],
+  .case-tile-pick[aria-pressed="true"]:hover {
+    border-color: var(--color-azurite);
+  }
+  .case-tile-pick img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  /* The stone's number in the case, on the photo's corner as the catalog dab
+     sits on a card's (DESIGN.md §4), in Zilla and ink: catalog red is for
+     catalog numbers only. */
+  .case-tile-n {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    border-radius: var(--radius-dab);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-label);
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-size: 21px;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .case-paper {
+    display: flex;
+    align-items: center;
+    min-height: var(--size-target);
+    padding: 6px 10px;
+    overflow-wrap: break-word;
+    border-radius: 4px;
+    border: 1px solid var(--color-line-2);
+    background: var(--color-label);
+    color: var(--color-ink);
+    font-weight: 700;
+    line-height: 1.25;
+    text-decoration: none;
+    transition: border-color 120ms ease;
+  }
+  .case-paper:hover {
+    color: var(--color-ink);
+    border-color: var(--color-line-strong);
+  }
+  .case-slot {
+    min-height: 184px; /* a tile: the photo, the gap and the paper */
+    border-radius: var(--radius-thumb);
+    border: 2px dashed var(--color-line-strong);
+  }
 }
 
 /* App-only base rules. In the base layer on purpose: an unlayered rule would

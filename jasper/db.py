@@ -124,6 +124,34 @@ ALTER TABLE mindat_records ADD COLUMN places TEXT;
 ALTER TABLE mindat_records ADD COLUMN places_at TEXT;  -- when they were counted; counted again after 30 days
 """,
     ),
+    # 8 (#81): the show cases a household plans for the club's rock show, and the
+    # stones in each, in order. Written by the web app; Jasper only creates them.
+    (
+        8,
+        """
+-- One display case at the show: a plan, not where a stone lives
+-- (specimens.location is untouched by it).
+CREATE TABLE IF NOT EXISTS cases (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT    NOT NULL,                 -- "Booth 12", "Michigan agates"
+  note       TEXT,                             -- "left of the geodes, by the door"
+  position   INTEGER NOT NULL,                 -- the order the page shows the cases in
+  created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- The stones in a case, in reading order. A stone is in at most one case:
+-- putting it in another moves it. A removed stone leaves its case; a removed
+-- case leaves its stones in the collection.
+CREATE TABLE IF NOT EXISTS case_stones (
+  case_id     INTEGER NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  specimen_id INTEGER NOT NULL UNIQUE REFERENCES specimens(id) ON DELETE CASCADE,
+  position    INTEGER NOT NULL,
+  PRIMARY KEY (case_id, specimen_id)
+);
+
+CREATE INDEX IF NOT EXISTS case_stones_order ON case_stones (case_id, position);
+""",
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else BASELINE_VERSION

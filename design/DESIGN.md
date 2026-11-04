@@ -240,6 +240,19 @@ found, bought, gifted, traded, cleaned, moved, given away.
 paper). QR placeholder plus Courier lines: catalog number (red), name, formula,
 "Loc:" and "Coll:" with blanks.
 
+**Case tile** (show cases): a stone as it sits in a display case. The
+stone's thumbnail, 130 px, 12 px radius, as a `<button>` that picks it up
+(selected = 4 px azurite border, `aria-pressed`; hover `line-strong`), with
+its **number in the case** on the photo's top-left corner the way the
+catalog dab sits (`label` fill, 1 px `line-2`, 6 px radius, 32 px, Zilla
+21/600 in ink: catalog red stays for catalog numbers). Under it a **paper
+label**: the box-label paper (`label` fill, 1 px `line-2`, 4 px radius),
+48 px tall, with the stone's name (700, wraps on words, never cut), which is
+the link to the stone's page: tap the rock to move it, tap its label to
+read about it. A stone with no photo gets the collection's tinted tile.
+While dragged the tile fades to 40%. Tiles sit in an auto-fill grid of at
+least 160 px (128 on a phone, two across).
+
 **Breadcrumb**: Collection › Class › Mineral › Catalog number
 (Collection › Halides › Fluorite › Q-0047), 17 px, ink-2 700 links, current
 page in ink.
@@ -258,7 +271,7 @@ outrank the reference image.
 
 **Top bar** (both pages, white, hairline bottom border, then the strata band):
 faceted-gem mark + "The Quarry" in Zilla 30/700 · nav pills (Collection,
-Minerals, Periodic table, Labels, Gem Show; active = `sand-2` fill,
+Minerals, Periodic table, Show cases, Labels, Gem Show; active = `sand-2` fill,
 `aria-current`) · search (pill, hand-lens icon, "Search your rocks") ·
 primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
 
@@ -307,11 +320,52 @@ primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
      USA" as hairline rows linking to Mindat, eight and "and N more", then "See
      every place on Mindat") · **Taking care of it** (handling notes) · **Related stones you already have** (same class,
      same habit, same trait).
-   - Side: How it was named (candidate pills + "Change the name") · What it's
+   - Side: How it was named (candidate pills + "Change the name") · At the
+     show (a "Show case" select, §4, "Not in a case" or a case by name; under
+     it "In Booth 12, stone 7 of 12." and "Arrange the case") · What it's
      made of (element tiles + link to the periodic table; with two or more
      minerals on the piece, a group per mineral under "Sphalerite · ZnS", each
      element once, under the first mineral that carries it) · On your Mohs scale
      · Its story so far (timeline) · Box label (preview + Print labels).
+
+**Show cases page** (`/show`): the display cases a household sets up at the
+club's rock show, and what goes in each. "Show cases", not "Gem Show": the
+Gem Show pill is Phase 4's hub.
+1. Title "Show cases" (34) and a lead line: plan the cases before the show;
+   at the hall, open the same page on a phone and set the stones out in the
+   order of their numbers. Under it, one status line (`aria-live`), its room
+   always kept.
+2. One card per case, drawn as the case: the name as the sign (Zilla 30),
+   "12 stones" with its note, "Add stones" (primary) at the right. Then the
+   **shelf**: a `ground` well inside the card (14 px radius, `line` border)
+   holding the **case tiles** (§4) in an auto-fill grid (min 160 px, 128 on
+   a phone, where they go two across). An empty shelf keeps a tile row's height and says
+   "Nothing in it yet."
+3. Under each shelf the **move row**, 48 px and always there: "Tap a stone
+   to move it" (", or drag it where it goes" on a mouse), or, with a stone
+   picked up, soft pills Move earlier · Move later · Take out, and a "Move
+   to" select of the other cases when there are two or more. This tap path
+   is the contract; on a mouse or trackpad (`hover: hover` and
+   `pointer: fine`) the tiles also drag, within a case and onto another,
+   with a dashed slot (`line-strong`, a tile's height) where the stone
+   would land and the shelf's border going `line-strong`. A touch screen
+   never drags.
+4. The card's footer: Rename (opens the name and note fields in place),
+   Move up / Move down (the cases' order), and at the right "Remove this
+   case" → "Yes, remove it" with "Keep it", the question in a reserved line.
+   Removing a case never removes a stone.
+5. **Add a case** last: a name field offered the next free "Case N", and a
+   soft button. With no cases, a dashed card of one case's height above it
+   says the first will appear there.
+
+**Add stones page** (`/show/[id]/add`): breadcrumb Show cases › Booth 12 ›
+Add stones; title "Add stones to Booth 12"; a search pill and, beside it,
+the one primary action, "Add 4 stones to Booth 12", live with the count (its
+room holds "Tick the stones you want in Booth 12." while none is). Then the
+collection as side-panel rows (§4) in a card, a 48 px checkbox first; a
+stone already in this case has no checkbox; where a stone is reads as a
+line under its name ("Already in Booth 12", "In Booth 3 · would move here"),
+not a column at the right, which would squeeze the name on a phone.
 
 **Periodic table page** (`/periodic-table`), designed at laptop width:
 1. Title "Your periodic table" with its info mark, the count line ("14 of the
