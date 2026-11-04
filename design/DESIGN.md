@@ -268,8 +268,16 @@ in every list, wears a small "Main photo" pill in its thumbnail's lower-left
 corner, in the caption pill's recipe, and the hero's caption ends "· Main
 photo" while it is showing. Under the grid, one soft 48 px button, "Use this
 as the main photo", while another photo is selected; its row keeps its
-height when the button is gone, so choosing never moves the page. Under
-that, a tip about the coin-for-scale and shop-tag photos, and the Wikipedia
+height when the button is gone, so choosing never moves the page. Opposite
+the caption, bottom-right of the well (top-right on a phone, whose 360 px
+well may wrap the caption to two lines), "See it full size": a pill in the
+caption's colours with the expand icon (four corner arrows), 48 px; it and a
+tap on the hero open the photo in a lightbox over the page, the viewport
+its size, the backdrop the photo well at 0.96, the controls surface white,
+"2 of 5" in the corner in the caption's weight, pinch and scroll to zoom,
+arrows and swipe between the stone's photos; closing lands on the page
+where it was, with the last photo shown now in the well. Under the grid, a
+tip about the coin-for-scale and shop-tag photos, and the Wikipedia
 reference image as a small row. The owner's photos always outrank the
 reference image.
 
