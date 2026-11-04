@@ -22,8 +22,7 @@ import { HOME_STATE } from "@/lib/places";
 import { readStone, type StoneView } from "@/lib/specimens";
 
 // /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 2
-// has data: the breadcrumb, the title block (with the formula and Mindat's
-// tags, #23), the photo gallery, then two columns. Main: "This specimen" (the
+// has data: the breadcrumb, the title block (with Mindat's tags, #23), the photo gallery, then two columns. Main: "This specimen" (the
 // editable specimen label), "Kitchen-table tests", "Mineral properties" and
 // "Where it's found" (#65).
 // Side: "How it was named", "What it's made of", "On your Mohs scale" (#42)
@@ -51,7 +50,9 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
   const mineral = stoneName(stone.name); // the main mineral, which the property card and tags follow
   const kind = kindOf(stone);
   const props = stone.properties;
-  // The line under the title: "A kind of Quartz", "Made of Calcite" (#62) and the formula, with " · " between.
+  // The line under the title: "A kind of Quartz" and "Made of Calcite" (#62), with " · " between.
+  // The formula is not here (#76): it is the main mineral's, and the Mineral properties card
+  // shows it under that mineral's name.
   const underTitle = [
     kind,
     stone.madeOf ? (
@@ -59,12 +60,6 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
         {madeOfLine({ name: stone.madeOf })}
         <Term k="madeOf" bare />
       </>
-    ) : null,
-    props.formula ? (
-      <span className="font-label font-bold text-ink">
-        <span className="sr-only">Formula: </span>
-        <Formula segments={props.formula} />
-      </span>
     ) : null,
   ].filter((x) => x !== null);
 
