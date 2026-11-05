@@ -155,7 +155,7 @@ export function StoneCard({ tile, tint }: { tile: Tile; tint: string }) {
         <span className="font-display text-h3 font-semibold leading-tight">{pieceName(tile)}</span>
         {kind && <span className="text-[17px] text-ink-2">{kind}</span>}
         <span className="text-meta text-ink-3">{metaLine(tile)}</span>
-        <span className="mt-2.5 flex flex-wrap gap-2">
+        <span className="mt-auto flex flex-wrap gap-2 pt-2.5">
           <span className="tag">{KIND_LABEL[tile.kind]}</span>
           {tile.form && <span className="tag">{FORM_LABEL[tile.form]}</span>}
           {tile.mineralClass && <span className="tag">{tile.mineralClass}</span>}

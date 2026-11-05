@@ -145,7 +145,8 @@ photo or tile. 20 px above the title on the specimen page.
 
 **Specimen card** (collection grid): photo or tinted tile 220 px tall with the
 catalog dab, then name (Zilla 24/600), the "A kind of …" or description line
-(ink-2, 17), "Where it lives · added Month D" (ink-3, 16), then a row of tags
+(ink-2, 17), "Where it lives · added Month D" (ink-3, 16), then, at the foot of
+the card so neighbours share a baseline, a row of tags
 (Mohs, kind, mineral class, UV). The whole card is one `<a>`.
 
 **Relative card** (specimen page): the same at 130 px photo height and 16 px

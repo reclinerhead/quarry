@@ -110,7 +110,7 @@
   --shadow-hover: 0 6px 18px rgb(60 45 30 / 0.12);
 
   /* Layout */
-  --container-page: 1360px;
+  --container-page: 1500px;     /* three specimen cards with a three-tag row on one line beside the side column; four would need 1540 */
   --container-sidebar: 400px;
 
   /* Motion: only Jasper at work moves (DESIGN.md §4), and never under
