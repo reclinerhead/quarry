@@ -219,7 +219,9 @@ since the progress cursor reads as a hung browser.
 azurite with a check. Other candidates = outlined, 64 px tall, the piece's
 name in Zilla 24 with "A kind of …" under a hobby name. Corners are half the
 one-line height (32 px; 24 on the 48 px "How it was named" rows), so a long
-name wraps into a rounded card rather than an oval. Each carries a plain
+name wraps into a rounded card rather than an oval. The name has first claim
+on the pill's width; on a phone, where the tags can't fit beside it, they drop
+under the name rather than squeezing it. Each carries a plain
 word, never a percentage. A mineral only one opinion saw sits under the lead
 pill as a chip, off by default ("Jasper also saw Sphalerite (one opinion).
 Add it?"); ticking it adds it to the pill's name, so the pill always says
@@ -227,7 +229,17 @@ what a tap saves. "probably" goes on the lead pill when Jasper's two opinions ag
 with an `azurite-soft` tag and a 2 px azurite border. "could be" goes on each
 pill when they differ, and "could also be" on the rest, both as sand tags.
 Phase 0 (#1) settled this: two models agreeing were right about 9 times in 10,
-and a model's own confidence meant much less.
+and a model's own confidence meant much less. On the naming screen the pills
+sit in a **well**: the page's `ground` inside the white card, 14 px radius,
+1 px `line` border, 16 px padding, headed "Jasper's suggestions" in the meta
+style, holding the pills with their "Why?", notes and chips. White pills on
+limestone read as things to press; on white they read as rows, the same
+shape as the fields under them. The well is the card's one thing to do, so
+"Name it" beside the typed-name field is a soft button while there are pills
+(primary belongs to the one main action, a tap on a pill) and primary only on
+the no-guess screen. What goes with the name (variety, made of, form) is one
+"Details to save with the name (optional)" group under the name field, behind
+a hairline.
 
 **Element tile**: atomic number, symbol (Zilla 36/700), name. Already lit =
 `azurite-soft`. New with this specimen = solid azurite, "· new".
