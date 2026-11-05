@@ -356,6 +356,17 @@
     color: var(--color-ink-3);
   }
 
+  /* A well (#106): the page's ground inside a white card, holding the
+     controls that are the point of the card (the namer's suggestions), so
+     white pills on it read as things to press where white on white read as
+     rows. The test rows and the case shelf below are the same idea. */
+  .well {
+    padding: 16px;
+    border-radius: var(--radius-tile);
+    border: 1px solid var(--color-line);
+    background: var(--color-ground);
+  }
+
   /* Show cases (#81). The shelf is the inside of a case: the page's ground,
      with the stones on it as case tiles. A case tile is the stone's
      thumbnail, which picks it up (a button; selected is the gallery's 4 px

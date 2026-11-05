@@ -43,7 +43,10 @@ import type { StonePart } from "@/lib/specimens";
 // differ on it, both guesses as chips, as the variety has. Since #71 each pill
 // has "Why?" under it, which opens what the models saw. Since #73 a pill
 // carries the piece's form as a tag ("geode", "tumbled"), and a Form chip row
-// under the fields, prefilled from the lead pill, is what a tap saves.
+// under the fields, prefilled from the lead pill, is what a tap saves. Since
+// #106 the pills sit in a limestone well under the heading, the name field
+// follows, and the fields are one "Details" group under it, so the choice
+// reads as the choice and the rest as paperwork.
 
 type Props = {
   initialJob: JobView;
@@ -346,9 +349,10 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
     return (
       <>
         {head(<>Jasper is looking&hellip;</>, snag() ?? "Usually a few seconds. Jasper’s suggestions appear here.", true)}
-        <div aria-hidden className="flex flex-col gap-3">
+        <div aria-hidden className="well flex flex-col gap-3">
+          <p className="text-meta font-bold text-ink-2">Jasper&rsquo;s suggestions</p>
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-16 rounded-pill border border-line bg-ground" />
+            <div key={i} className="h-16 rounded-[32px] border border-line bg-surface" />
           ))}
         </div>
       </>
@@ -377,114 +381,80 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
         {none ? nameField(true) : null}
 
         {plan.pills.length > 0 ? (
-          <div role="group" aria-label="Jasper’s suggestions" className="flex flex-col gap-3">
-            {plan.pills.map((p) => {
-              const key = `${p.pick.model}-${p.pick.rank}`.replace(/[^a-z0-9]+/gi, "-");
-              // What a tap saves, so the pill always says it: its parts and the maybes ticked.
-              const parts = savedParts(p, ticked);
-              return (
-                <div key={key} className="flex flex-col gap-1.5">
-                  <PillButton
-                    pill={p}
-                    name={pieceName({ ...p, parts })}
-                    describedBy={p.misfit ? `misfit-${key}` : undefined}
-                    disabled={busy || asking}
-                    onPick={() => confirm({ pick: p.pick, maybe: ticked })}
-                  />
-                  {/* Flush under its pill: the 48 px target starts at the pill's edge, with no gap above it. */}
-                  {p.reasons.length > 0 ? (
-                    <div className="-mt-1.5 pl-4">
-                      <WhyNote reasons={p.reasons} opinions={p.models.length} />
-                    </div>
-                  ) : null}
-                  {p.misfit ? misfitNote(p.misfit, `misfit-${key}`) : null}
-                  {p.maybe.length > 0 ? maybeChips(p) : null}
-                </div>
-              );
-            })}
+          // The well (#106): the suggestions on limestone, so white pills read as things to press and the fields below as the paperwork.
+          <div className="well flex flex-col gap-3">
+            <p id="suggestions-h" className="text-meta font-bold text-ink-2">
+              Jasper&rsquo;s suggestions
+            </p>
+            <div role="group" aria-labelledby="suggestions-h" className="flex flex-col gap-3">
+              {plan.pills.map((p) => {
+                const key = `${p.pick.model}-${p.pick.rank}`.replace(/[^a-z0-9]+/gi, "-");
+                // What a tap saves, so the pill always says it: its parts and the maybes ticked.
+                const parts = savedParts(p, ticked);
+                return (
+                  <div key={key} className="flex flex-col gap-1.5">
+                    <PillButton
+                      pill={p}
+                      name={pieceName({ ...p, parts })}
+                      describedBy={p.misfit ? `misfit-${key}` : undefined}
+                      disabled={busy || asking}
+                      onPick={() => confirm({ pick: p.pick, maybe: ticked })}
+                    />
+                    {/* Flush under its pill: the 48 px target starts at the pill's edge, with no gap above it. */}
+                    {p.reasons.length > 0 ? (
+                      <div className="-mt-1.5 pl-4">
+                        <WhyNote reasons={p.reasons} opinions={p.models.length} />
+                      </div>
+                    ) : null}
+                    {p.misfit ? misfitNote(p.misfit, `misfit-${key}`) : null}
+                    {p.maybe.length > 0 ? maybeChips(p) : null}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center">
-            <label htmlFor="variety" className="font-bold">
-              Variety or shop name <span className="font-normal text-ink-2">(optional)</span>
-            </label>
-            <Term k="variety" bare />
-          </div>
-          <div className="field flex items-center">
-            <input
-              id="variety"
-              type="text"
-              value={variety}
-              onChange={(e) => setVariety(e.target.value)}
-              maxLength={80}
-              placeholder="Amethyst, or Blue Lace Agate"
-              autoComplete="off"
-            />
-          </div>
-          {doubt ? (
-            <div className="flex flex-col gap-2 pt-1">
-              <p id="guesses-h" className="text-meta text-ink-2">
-                Jasper&rsquo;s two guesses
-              </p>
-              <ul aria-labelledby="guesses-h" className="flex flex-wrap gap-2">
-                {doubt.guesses.map((g) => {
-                  const on = variety === stoneName(g);
-                  return (
-                    <li key={g}>
-                      <button
-                        type="button"
-                        disabled={busy || asking}
-                        aria-pressed={on}
-                        onClick={() => setVariety(on ? "" : stoneName(g))}
-                        className="chip"
-                      >
-                        {on ? <CheckIcon className="size-4" /> : null}
-                        {stoneName(g)}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : null}
-        </div>
+        {!none ? nameField(false) : null}
 
-        {asksMadeOf ? (
+        {/* The paperwork (#106): what goes with the name, under the name, behind a rule. */}
+        <div className="flex flex-col gap-5 border-t border-line pt-5">
+          <p className="text-meta font-bold text-ink-2">
+            Details to save with the name <span className="font-normal">(optional)</span>
+          </p>
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center">
-              <label htmlFor="made-of" className="font-bold">
-                Made of <span className="font-normal text-ink-2">(optional)</span>
+              <label htmlFor="variety" className="font-bold">
+                Variety or shop name
               </label>
-              <Term k="madeOf" bare />
+              <Term k="variety" bare />
             </div>
             <div className="field flex items-center">
               <input
-                id="made-of"
+                id="variety"
                 type="text"
-                value={madeOf}
-                onChange={(e) => setMadeOf(e.target.value)}
+                value={variety}
+                onChange={(e) => setVariety(e.target.value)}
                 maxLength={80}
-                placeholder="Calcite, or Quartz"
+                placeholder="Amethyst, or Blue Lace Agate"
                 autoComplete="off"
               />
             </div>
-            {madeOfDoubt ? (
+            {doubt ? (
               <div className="flex flex-col gap-2 pt-1">
-                <p id="made-of-guesses-h" className="text-meta text-ink-2">
+                <p id="guesses-h" className="text-meta text-ink-2">
                   Jasper&rsquo;s two guesses
                 </p>
-                <ul aria-labelledby="made-of-guesses-h" className="flex flex-wrap gap-2">
-                  {madeOfDoubt.guesses.map((g) => {
-                    const on = madeOf === stoneName(g);
+                <ul aria-labelledby="guesses-h" className="flex flex-wrap gap-2">
+                  {doubt.guesses.map((g) => {
+                    const on = variety === stoneName(g);
                     return (
                       <li key={g}>
                         <button
                           type="button"
                           disabled={busy || asking}
                           aria-pressed={on}
-                          onClick={() => setMadeOf(on ? "" : stoneName(g))}
+                          onClick={() => setVariety(on ? "" : stoneName(g))}
                           className="chip"
                         >
                           {on ? <CheckIcon className="size-4" /> : null}
@@ -497,11 +467,57 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
               </div>
             ) : null}
           </div>
-        ) : null}
 
-        {plan.pills.length > 0 ? formChips() : null}
+          {asksMadeOf ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center">
+                <label htmlFor="made-of" className="font-bold">
+                  Made of
+                </label>
+                <Term k="madeOf" bare />
+              </div>
+              <div className="field flex items-center">
+                <input
+                  id="made-of"
+                  type="text"
+                  value={madeOf}
+                  onChange={(e) => setMadeOf(e.target.value)}
+                  maxLength={80}
+                  placeholder="Calcite, or Quartz"
+                  autoComplete="off"
+                />
+              </div>
+              {madeOfDoubt ? (
+                <div className="flex flex-col gap-2 pt-1">
+                  <p id="made-of-guesses-h" className="text-meta text-ink-2">
+                    Jasper&rsquo;s two guesses
+                  </p>
+                  <ul aria-labelledby="made-of-guesses-h" className="flex flex-wrap gap-2">
+                    {madeOfDoubt.guesses.map((g) => {
+                      const on = madeOf === stoneName(g);
+                      return (
+                        <li key={g}>
+                          <button
+                            type="button"
+                            disabled={busy || asking}
+                            aria-pressed={on}
+                            onClick={() => setMadeOf(on ? "" : stoneName(g))}
+                            className="chip"
+                          >
+                            {on ? <CheckIcon className="size-4" /> : null}
+                            {stoneName(g)}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
-        {!none ? nameField(false) : null}
+          {plan.pills.length > 0 ? formChips() : null}
+        </div>
 
         <div className="flex flex-col gap-4 border-t border-line pt-5">
           <button type="button" aria-expanded={showTests} disabled={asking} onClick={() => setShowTests((v) => !v)} className="btn btn-soft self-start">
@@ -543,7 +559,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
         </>
       );
     }
-    if (plan.verdict === "probably") return <>{opinions} agree. Tap it if it looks right, or name it yourself.</>;
+    if (plan.verdict === "probably") return <>{opinions} agree. Tap the name that fits, or type your own below.</>;
     const test = job.suggestedTests[0];
     // A test tells two minerals apart; two readings of a fossil it can only tell what it is made of.
     const bothStones = !plan.pills.slice(0, 2).some((p) => p.kind === "other");
@@ -660,7 +676,8 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
               autoComplete="off"
             />
           </div>
-          <button type="submit" disabled={busy || asking} className="btn btn-primary btn-lg">
+          {/* Primary only on the no-guess screen (#106): with pills, the main action is a tap on one. */}
+          <button type="submit" disabled={busy || asking} className={`btn btn-lg ${first ? "btn-primary" : "btn-soft"}`}>
             Name it
           </button>
         </div>
@@ -770,14 +787,16 @@ function PillButton({ pill, name, describedBy, disabled, onPick }: { pill: Pill;
       aria-label={`${name}${kind ? `, ${kind.toLowerCase()}` : ""}${made ? `, ${made.toLowerCase()}` : ""}${pill.form ? `, ${FORM_LABEL[pill.form].toLowerCase()}` : ""}: ${pill.word}`}
       aria-describedby={describedBy}
       // 32 px corners: a pill on one line, and a rounded card, not an oval, when a long name wraps.
-      className={`flex min-h-16 w-full items-center justify-between gap-4 rounded-[32px] border bg-surface py-2.5 pl-6 pr-3 text-left transition-colors hover:border-line-strong hover:bg-sand disabled:opacity-60 ${lead ? "border-2 border-azurite" : "border-line-2"}`}
+      // The name has first claim on the width (a 12 rem basis); where the tags can't fit beside
+      // that, on a phone, they drop under it, rather than squeezing the name to a syllable a line.
+      className={`flex min-h-16 w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-[32px] border bg-surface py-2.5 pl-6 pr-3 text-left transition-colors hover:border-line-strong hover:bg-sand disabled:opacity-60 ${lead ? "border-2 border-azurite" : "border-line-2"}`}
     >
-      <span className="min-w-0">
+      <span className="min-w-0 flex-[1_1_12rem]">
         <span className="block text-balance break-words font-display text-h3 font-semibold leading-tight">{name}</span>
         {kind ? <span className="block text-[17px] text-ink-2">{kind}</span> : null}
         {made ? <span className="block text-[17px] text-ink-2">{made}</span> : null}
       </span>
-      <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+      <span className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">
         {pill.form ? <span className="rounded-pill bg-sand px-3 py-1 text-tag font-bold text-tag-ink">{FORM_LABEL[pill.form].toLowerCase()}</span> : null}
         <span className={`rounded-pill px-3 py-1 text-tag font-bold ${lead ? "bg-azurite-soft text-azurite-note" : "bg-sand text-tag-ink"}`}>{pill.word}</span>
       </span>

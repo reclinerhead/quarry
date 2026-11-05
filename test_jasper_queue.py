@@ -388,7 +388,11 @@ def test_the_idle_pass_rewrites_what_is_over_the_cap_once_and_says_so(tmp_path, 
     data = tmp_path / "data"
     _photo(data, "photos/2026/10/big.jpg", (90, 90, 90), size=(3000, 2000))
     _photo(data, "photos/2026/10/fine.jpg", (90, 90, 90), size=(1280, 960))
-    fine_before = (data / "photos/2026/10/fine.jpg").stat()
+    fine = data / "photos/2026/10/fine.jpg"
+    # Untouched means the same bytes at the same time: not the whole stat result, whose
+    # access time moves when the pass reads the file to measure it.
+    untouched = lambda: (fine.stat().st_mtime_ns, fine.stat().st_size)
+    fine_before = untouched()
     conn.executemany("INSERT INTO photos (path) VALUES (?)", [("photos/2026/10/big.jpg",), ("photos/2026/10/fine.jpg",)])
     conn.commit()
 
@@ -396,7 +400,7 @@ def test_the_idle_pass_rewrites_what_is_over_the_cap_once_and_says_so(tmp_path, 
         assert worker.tidy_photos(conn, data, should_stop=lambda: False) is True
     with Image.open(data / "photos/2026/10/big.jpg") as im:
         assert max(im.size) == identify.STORE_SIDE
-    assert (data / "photos/2026/10/fine.jpg").stat() == fine_before
+    assert untouched() == fine_before
     assert [r.getMessage() for r in caplog.records][-1].startswith("photos: 1 re-encoded, ")
     caplog.clear()
     with caplog.at_level(logging.INFO, logger="jasper"):
