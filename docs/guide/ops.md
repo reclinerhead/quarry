@@ -61,7 +61,7 @@ A station has no name on its LAN: its address is whatever the router handed it, 
 
 **The bookmark rule.** Bookmarks and home-screen icons at a station point at the front door's address for that station, `https://quarry.toddtech.llc/<station>`, never at the IP, and **Todd sets them** on deployment day. A person who bookmarks after landing has bookmarked the IP again. The link only works from that house's Wi-Fi (a private address is unreachable from anywhere else, so the icon from a car fails to connect) and lands on plain HTTP on the LAN, like the Aviary's; the "Not secure" label is the one the IP bookmark showed.
 
-**The Vercel project** is `frontdoor/`'s own: Root Directory `frontdoor`, an Ignored Build Step that skips any merge not touching that folder, the Aviary's Upstash database connected, the domain and its CNAME. The steps, in order, are in `frontdoor/README.md`. Nothing on a box deploys to Vercel; the boxes pull from GitHub as described below, and the watcher ignores `frontdoor/` as it ignores the docs.
+**The Vercel project** is `frontdoor/`'s own: Root Directory `frontdoor`, an Ignored Build Step that skips any merge not touching that folder, the Aviary's Upstash database connected, and the domain, whose DNS record Vercel makes itself because `toddtech.llc` is on Vercel's nameservers. The steps, in order, are in `frontdoor/README.md`, including the one that bit on day one: the import deploys before the database is connected, and a function's environment is fixed at build, so a second deploy is part of the setup. Nothing on a box deploys to Vercel; the boxes pull from GitHub as described below, and the watcher ignores `frontdoor/` as it ignores the docs.
 
 ## Deploys
 

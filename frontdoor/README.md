@@ -37,18 +37,23 @@ Vercel (the boxes pull from GitHub themselves, `docs/guide/ops.md`).
    on push.
 2. **Root Directory: `frontdoor`.** The Next.js preset is detected. Leave
    "Include source files outside the Root Directory" off.
-3. **Skip builds for unrelated commits.** Project → Settings → Git →
-   Ignored Build Step: Behavior **Custom**, command
+3. **Skip builds for unrelated commits.** Project → Settings → Build and
+   Deployment → Ignored Build Step: Behavior **Custom**, command
 
    ```
    git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- .
    ```
 
+   The trailing ` .` is the point: it limits the diff to this folder.
+   Without it the command diffs the whole repository and never skips.
    Exit 0 means skip, so a merge touching only `web/`, `jasper/` or the
    docs deploys nothing. Diffing against the last deployed commit rather
    than `HEAD^` keeps a push of several commits from skipping a
    `frontdoor/` change that isn't the newest one; if that commit isn't in
-   Vercel's clone, the diff errors and the build runs anyway.
+   Vercel's clone, the diff errors and the build runs anyway. The step also
+   runs on a **Redeploy** of an already-deployed commit, where the diff is
+   empty, and cancels it; to ship a settings or storage change without a
+   new commit, deploy from the CLI instead (Local, below).
 4. **Storage: connect the Aviary's existing Upstash database.** Project →
    Storage → the Upstash for Redis database the Aviary's front door
    project already uses → Connect to this project (a Marketplace database
@@ -60,10 +65,20 @@ Vercel (the boxes pull from GitHub themselves, `docs/guide/ops.md`).
    `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` pair pasted by
    hand from the Upstash console. Do not create a second database: the
    records this door reads are the ones the Aviary's door writes.
+
+   A function gets its environment when it is built, and the import in
+   step 1 builds at once, before the database is connected, so that first
+   deployment answers 503 "store unavailable" on every station route.
+   After connecting the database, deploy again (step 6).
 5. **Domain `quarry.toddtech.llc`:** Project → Settings → Domains → Add.
-   Vercel prints the CNAME to create at the DNS host for `toddtech.llc`,
-   beside the Aviary's `aviary` record.
-6. Deploy (the first import does). Then `https://quarry.toddtech.llc/`
+   `toddtech.llc` is registered at Vercel on Vercel's nameservers, so
+   adding the domain creates the DNS record itself and there is nothing to
+   add at a DNS host. (A domain hosted elsewhere would need the CNAME
+   Vercel prints.) The name resolves within a minute.
+6. **Deploy again, now that the store is connected.** From a checkout
+   linked to the project (`vercel link`, once, from the repo root; the
+   Root Directory setting applies), `vercel deploy --prod`. Not Redeploy
+   in the dashboard: step 3 cancels it. Then `https://quarry.toddtech.llc/`
    shows the landing page, `/nothing` the "not a station" page, and
    `/kestrel` answers:
 
@@ -89,6 +104,12 @@ pnpm exec tsc --noEmit
 pnpm lint
 pnpm dev          # KV_REST_API_URL + KV_REST_API_READ_ONLY_TOKEN in .env.local to read the store
 ```
+
+The Vercel CLI is the Linux one under nvm (`npm install -g vercel`), not
+the Windows copy WSL finds on `/mnt/c`. `vercel link` from the repo root
+writes a gitignored `.vercel/`; `vercel deploy --prod` from there ships
+the working tree (not a commit) as a production deployment, which is how
+a settings change reaches production without a push.
 
 Without the store variables every station route answers 503 "store
 unavailable"; the landing page and the validators need nothing.
