@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Lightbox from "yet-another-react-lightbox";
@@ -59,7 +60,7 @@ export function Gallery({ id, photos, name }: { id: number; photos: Photo[]; nam
     setBusy(true);
     setError(null);
     try {
-      const r = await fetch(`/api/stones/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroPhotoId: hero.id }) });
+      const r = await fetch(`${BASE_PATH}/api/stones/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ heroPhotoId: hero.id }) });
       const data = (await r.json()) as { error?: string };
       if (!r.ok) throw new Error(data.error ?? `server ${r.status}`);
       setChosenId(hero.id);

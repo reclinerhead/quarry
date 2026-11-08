@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState, useSyncExternalStore } from "react";
@@ -82,7 +83,7 @@ export function CasePlanner({ cases, nextName }: { cases: ShowCase[]; nextName: 
         c.id === caseId ? { ...c, stones: ids.map((id) => was.find((s) => s.id === id)!) } : { ...c, stones: c.stones.filter((s) => !ids.includes(s.id)) },
       ),
     );
-    void send(`/api/cases/${caseId}/stones`, "PUT", { ids }, done);
+    void send(`${BASE_PATH}/api/cases/${caseId}/stones`, "PUT", { ids }, done);
   }
 
   function move(c: ShowCase, how: "earlier" | "later" | "out") {
@@ -129,12 +130,12 @@ export function CasePlanner({ cases, nextName }: { cases: ShowCase[]; nextName: 
   }
 
   async function addCase(name: string) {
-    await send("/api/cases", "POST", { name }, `${name} is set up. Add stones to it.`);
+    await send(`${BASE_PATH}/api/cases`, "POST", { name }, `${name} is set up. Add stones to it.`);
   }
 
   async function rename(c: ShowCase, name: string, note: string) {
     setLocal(local.map((k) => (k.id === c.id ? { ...k, name, note: note || null } : k)));
-    await send(`/api/cases/${c.id}`, "PATCH", { name, note }, `${name} is renamed.`);
+    await send(`${BASE_PATH}/api/cases/${c.id}`, "PATCH", { name, note }, `${name} is renamed.`);
   }
 
   async function shift(c: ShowCase, by: -1 | 1) {
@@ -144,12 +145,12 @@ export function CasePlanner({ cases, nextName }: { cases: ShowCase[]; nextName: 
     const next = [...local];
     [next[i], next[j]] = [next[j], next[i]];
     setLocal(next);
-    await send(`/api/cases/${c.id}`, "PATCH", { position: j + 1 }, `${c.name} is now case ${j + 1}.`);
+    await send(`${BASE_PATH}/api/cases/${c.id}`, "PATCH", { position: j + 1 }, `${c.name} is now case ${j + 1}.`);
   }
 
   async function remove(c: ShowCase) {
     setLocal(local.filter((k) => k.id !== c.id));
-    await send(`/api/cases/${c.id}`, "DELETE", {}, `${c.name} is removed. Its stones are still in your collection.`);
+    await send(`${BASE_PATH}/api/cases/${c.id}`, "DELETE", {}, `${c.name} is removed. Its stones are still in your collection.`);
   }
 
   return (

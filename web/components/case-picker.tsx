@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { CrystalIcon } from "@/components/icons";
@@ -37,7 +38,7 @@ export function CasePicker({ caseId, caseName, rows }: { caseId: number; caseNam
     // In the collection's order, not the order they were ticked in: the planner sets the order.
     const inOrder = rows.filter((r) => checked.includes(r.id)).map((r) => r.id);
     try {
-      const r = await fetch(`/api/cases/${caseId}/stones`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ add: inOrder }) });
+      const r = await fetch(`${BASE_PATH}/api/cases/${caseId}/stones`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ add: inOrder }) });
       const data = (await r.json()) as { error?: string };
       if (!r.ok) throw new Error(data.error ?? `server ${r.status}`);
       router.push(`/show#case-${caseId}`);

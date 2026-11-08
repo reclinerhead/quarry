@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { CameraIcon, CoinIcon, CrystalIcon, PhotosIcon, SunIcon, TagIcon } from "@/components/icons";
@@ -186,7 +187,7 @@ export function Uploader() {
           const form = new FormData();
           form.append("file", new File([blob], p.file.name, { type: mime }));
           if (takenAt) form.append("takenAt", takenAt);
-          const r = await fetch("/api/photos", { method: "POST", body: form, signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
+          const r = await fetch(`${BASE_PATH}/api/photos`, { method: "POST", body: form, signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
           status = r.status;
           refuseOrThrow(r);
           return (await r.json()) as { photoId: number };
@@ -206,7 +207,7 @@ export function Uploader() {
         async (attempt) => {
           patch(rockKey, { attempt });
           status = null;
-          const r = await fetch("/api/jobs", {
+          const r = await fetch(`${BASE_PATH}/api/jobs`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ photoIds, notes: note }),
@@ -236,7 +237,7 @@ export function Uploader() {
       await Promise.all(
         ids.map(async (id) => {
           try {
-            const r = await fetch(`/api/jobs/${id}`, { cache: "no-store" });
+            const r = await fetch(`${BASE_PATH}/api/jobs/${id}`, { cache: "no-store" });
             if (!r.ok) return;
             const job = (await r.json()) as JobView;
             if (stopped) return;

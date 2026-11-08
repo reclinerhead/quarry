@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -97,7 +98,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
     let stopped = false;
     const tick = async () => {
       try {
-        const r = await fetch(`/api/jobs/${job.id}`, { cache: "no-store" });
+        const r = await fetch(`${BASE_PATH}/api/jobs/${job.id}`, { cache: "no-store" });
         if (!r.ok || stopped) return;
         const fresh = (await r.json()) as JobView;
         if (!stopped) setJob(fresh);
@@ -119,7 +120,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
     const t = setTimeout(
       async () => {
         try {
-          const r = await fetch(`/api/minerals?q=${encodeURIComponent(typed)}`, { cache: "no-store" });
+          const r = await fetch(`${BASE_PATH}/api/minerals?q=${encodeURIComponent(typed)}`, { cache: "no-store" });
           if (r.ok && !stopped) setHits((await r.json()) as MineralHit[]);
         } catch {
           /* no suggestions */
@@ -151,7 +152,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
 
   async function confirm(body: Record<string, unknown>) {
     const data = await send<Named>(
-      `/api/jobs/${job.id}/confirm`,
+      `${BASE_PATH}/api/jobs/${job.id}/confirm`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -169,7 +170,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
   async function setHow(how: ConfirmHow) {
     if (!named || named.how === how) return;
     const data = await send<{ how: ConfirmHow }>(
-      `/api/jobs/${job.id}/confirm`,
+      `${BASE_PATH}/api/jobs/${job.id}/confirm`,
       { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ how }) },
       "That wasn’t saved",
     );
@@ -180,7 +181,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
   }
 
   async function change() {
-    const data = await send<{ ok: true }>(`/api/jobs/${job.id}/confirm`, { method: "DELETE" }, "The name couldn’t be taken off");
+    const data = await send<{ ok: true }>(`${BASE_PATH}/api/jobs/${job.id}/confirm`, { method: "DELETE" }, "The name couldn’t be taken off");
     if (data) {
       setNamed(null);
       router.refresh();
@@ -192,7 +193,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
       setArmedDismiss(true);
       return;
     }
-    const data = await send<{ nextJobId: number | null }>(`/api/jobs/${job.id}/dismiss`, { method: "POST" }, "The photo couldn’t be removed");
+    const data = await send<{ nextJobId: number | null }>(`${BASE_PATH}/api/jobs/${job.id}/dismiss`, { method: "POST" }, "The photo couldn’t be removed");
     if (data) {
       router.push(data.nextJobId ? `/name/${data.nextJobId}` : "/name");
       router.refresh();
@@ -201,7 +202,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
 
   async function ask(answers: Answers, note: string) {
     const data = await send<{ tests: Answers }>(
-      `/api/jobs/${job.id}/tests`,
+      `${BASE_PATH}/api/jobs/${job.id}/tests`,
       { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tests: answers, notes: note }) },
       "Jasper couldn’t be asked again",
     );
@@ -224,9 +225,9 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
       const form = new FormData();
       form.append("file", new File([blob], file.name, { type: mime }));
       if (takenAt) form.append("takenAt", takenAt);
-      const r = await fetch(`/api/jobs/${job.id}/photos`, { method: "POST", body: form });
+      const r = await fetch(`${BASE_PATH}/api/jobs/${job.id}/photos`, { method: "POST", body: form });
       if (!r.ok) throw new Error(((await r.json()) as { error?: string }).error ?? `server ${r.status}`);
-      const fresh = await fetch(`/api/jobs/${job.id}`, { cache: "no-store" });
+      const fresh = await fetch(`${BASE_PATH}/api/jobs/${job.id}`, { cache: "no-store" });
       if (fresh.ok) {
         const j = (await fresh.json()) as JobView;
         setJob(j);
