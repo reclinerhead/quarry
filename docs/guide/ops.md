@@ -45,7 +45,23 @@ sudo cp ~/aviary/Servers/Caddyfile.station /etc/caddy/Caddyfile && sudo systemct
 
 No script in this repo writes `/etc/caddy/` on any box. Orchid's install script syncs orchid's file after showing the diff and asking; the station's install script only checks the door and tells you what is missing.
 
-**The bookmark rule.** A station's LAN address is whatever the router handed it. Bookmarks and home-screen icons at a station point at the front door's address for that station, never at the IP (#102). A person who bookmarks after landing has bookmarked the IP.
+## The front door
+
+A station has no name on its LAN: its address is whatever the router handed it, so a bookmark to `http://192.168.1.120/quarry` breaks at the next lease. The bookmark is a stable public address that redirects to the box's current one: **`https://quarry.toddtech.llc/<station>`**, a small Vercel project of route handlers under `frontdoor/` (#102), the Quarry's copy of the Aviary's `aviary.toddtech.llc/<station>` (copied, not shared, the house rule).
+
+| Route | Answer |
+| --- | --- |
+| `/<station>[/path]` | `302` to `http://<the box's last-known LAN address>/quarry[/path]`, query string carried, `Cache-Control: no-store`. An unknown name or a station that has never reported gets a plain 404 page, no redirect. |
+| `/<station>/status` | When the box last checked in, its address, its Wi-Fi interface and the Aviary's build on it: the one page that answers "is her box up" from a desk, and the text message that replaces a lost bookmark. |
+| `/` | A landing page that lists nothing. |
+
+**It reads the Aviary's store and writes nothing.** The stations already report themselves to the Aviary's front door (`station-checkin` posts the Wi-Fi interface's private address to `aviary.toddtech.llc/api/checkin` on boot, every fifteen minutes and on every new lease; reclinerhead/aviary `docs/guide/flyway.md` § The front door). That door keeps one JSON record per station in an Upstash Redis database, and this project is a second, read-only client of the same database: the Aviary's Vercel project and this one share the database through the Marketplace integration, and this one is given the read-only token. So there is no check-in route here, no roster, no token, no new unit on a station and no new credential anywhere; enrolling a station in this door is nothing, because a station that reports to the Aviary's is on it. The record's shape and key (`station:<id>`) are the Aviary's to change. Should the Aviary's check-in ever stop, this door keeps answering with the last address it saw, which stays right until the router changes it.
+
+**302 and `no-store`, never 301.** A cached permanent redirect would bake the LAN address into the browser, the exact failure the door exists to end. The redirect goes to the last-known address regardless of the record's age: a station whose internet is down is in a house whose internet is down, and the address is still the best guess. The target is built from a validated IPv4 and a fixed `/quarry` prefix, each path segment percent-encoded, dot and empty segments refused, so a crafted link can never send a person off the station's own origin (`frontdoor/lib/frontdoor.ts`, tested in `frontdoor.test.ts`).
+
+**The bookmark rule.** Bookmarks and home-screen icons at a station point at the front door's address for that station, `https://quarry.toddtech.llc/<station>`, never at the IP, and **Todd sets them** on deployment day. A person who bookmarks after landing has bookmarked the IP again. The link only works from that house's Wi-Fi (a private address is unreachable from anywhere else, so the icon from a car fails to connect) and lands on plain HTTP on the LAN, like the Aviary's; the "Not secure" label is the one the IP bookmark showed.
+
+**The Vercel project** is `frontdoor/`'s own: Root Directory `frontdoor`, an Ignored Build Step that skips any merge not touching that folder, the Aviary's Upstash database connected, the domain and its CNAME. The steps, in order, are in `frontdoor/README.md`. Nothing on a box deploys to Vercel; the boxes pull from GitHub as described below, and the watcher ignores `frontdoor/` as it ignores the docs.
 
 ## Deploys
 
@@ -57,7 +73,7 @@ The watcher, `quarry-autodeploy`, polls the configured branch every 60 s over an
 | `web/`, or `design/tokens.css` | `pnpm install` and `pnpm build`, then restarts `quarry-web` **only if the build passed**. A failed build is a loud journal line, and the old build keeps serving. `globals.css` imports the tokens, which is why they count. |
 | `Servers/autodeploy.sh` | Hands over to the new copy. |
 | A unit or `Caddyfile.quarry` | Logs that the next run of the box's install script applies it. |
-| Anything else | Nothing (docs, tests, the spikes, the design brief). |
+| Anything else | Nothing (docs, tests, the spikes, the design brief, `frontdoor/`, which deploys to Vercel and never to a box). |
 
 **Which branch.** `QUARRY_DEPLOY_BRANCH` in the env file, default `main`. The watcher's first journal line says which: `watching origin/main` on orchid, `watching origin/quarry-station-stable` on a station.
 
@@ -139,7 +155,7 @@ job 7 identified: haiku Galena 0.82 (5.8 s) · flash Galena 0.90 (4.1 s) · $0.0
 - On start it names both models and the prompt version.
 - A photo costs about 0.4¢ for both models together: four came to 1.6¢ in #9's check. The gateway's dashboard has the bill, per key, so a station's spend reads apart from the house's.
 
-**From a phone on the house Wi-Fi**, `https://quarry.lan` should show the collection. The first visit needs the house root certificate installed: the same one the Aviary's and the Conservatory's doors use. **From a phone on a station's Wi-Fi**, the front door's address for that station (#102) lands on `http://<the box>/quarry`, plain http on the LAN, like the Aviary's.
+**From a phone on the house Wi-Fi**, `https://quarry.lan` should show the collection. The first visit needs the house root certificate installed: the same one the Aviary's and the Conservatory's doors use. **From a phone on a station's Wi-Fi**, `https://quarry.toddtech.llc/<station>` lands on `http://<the box>/quarry`, plain http on the LAN, like the Aviary's; `https://quarry.toddtech.llc/<station>/status` says when the box last reported and from which address, from anywhere (The front door, above).
 
 **Reaching a station**: `ssh birdhouse`, `ssh kestrel`, over the tailnet. A station is tagged and reaches nothing on the tailnet itself. `sudo` there asks for a password, so a root step is a script you run in that session, never something run for you. The box's own bring-up (the OS, Caddy, the Aviary) is `toddtech-infrastructure/servers/Birdhouse.md`; this guide covers the Quarry on it.
 
