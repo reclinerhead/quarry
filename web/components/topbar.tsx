@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -105,7 +106,7 @@ function SearchForm({ value, onChange, onSubmit }: { value: string; onChange?: (
   return (
     <form
       role="search"
-      action="/"
+      action={`${BASE_PATH}/`}
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit?.();

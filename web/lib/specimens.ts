@@ -3,6 +3,7 @@
 // null prototype, so everything that crosses to a client component is built
 // here as a plain object.
 
+import { BASE_PATH } from "./base-path";
 import type { DatabaseSync } from "node:sqlite";
 import { type AtShow, type ShowCase } from "./cases";
 import { shortDay, type Acquired, type Tile } from "./collection";
@@ -138,7 +139,7 @@ export function collectionElements(db: DatabaseSync): PieceElements[] {
       parts: own.map(partOf),
       createdAt: r.created_at,
       added: shortDay(r.created_at),
-      thumbUrl: r.path ? `/media/${thumbPathFor(r.path)}` : null,
+      thumbUrl: r.path ? `${BASE_PATH}/media/${thumbPathFor(r.path)}` : null,
       minerals: [mineralOn(r.name, r.mineral_id), ...own.filter((p) => p.mineral_id !== null && p.name !== null).map((p) => mineralOn(p.name!, p.mineral_id!))],
     };
   });
@@ -187,7 +188,7 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
     location: r.location,
     createdAt: r.created_at,
     added: shortDay(r.created_at),
-    thumbUrl: r.path ? `/media/${thumbPathFor(r.path)}` : null,
+    thumbUrl: r.path ? `${BASE_PATH}/media/${thumbPathFor(r.path)}` : null,
   }));
 }
 
@@ -378,8 +379,8 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     added: shortDay(s.created_at),
     photos: photos.map((p, i) => ({
       id: p.id,
-      url: `/media/${p.path}`,
-      thumbUrl: `/media/${thumbPathFor(p.path)}`,
+      url: `${BASE_PATH}/media/${p.path}`,
+      thumbUrl: `${BASE_PATH}/media/${thumbPathFor(p.path)}`,
       takenAt: p.taken_at,
       main: s.hero_photo_id === null ? i === 0 : p.id === s.hero_photo_id,
     })),
@@ -421,7 +422,7 @@ export function readCases(db: DatabaseSync): ShowCase[] {
   for (const r of rows)
     stones.set(r.case_id, [
       ...(stones.get(r.case_id) ?? []),
-      { id: r.id, name: r.name, kind: r.kind, variety: r.variety, parts: (parts.get(r.id) ?? []).map(partOf), thumbUrl: r.path ? `/media/${thumbPathFor(r.path)}` : null },
+      { id: r.id, name: r.name, kind: r.kind, variety: r.variety, parts: (parts.get(r.id) ?? []).map(partOf), thumbUrl: r.path ? `${BASE_PATH}/media/${thumbPathFor(r.path)}` : null },
     ]);
   return cases.map((c) => ({ id: c.id, name: c.name, note: c.note, stones: stones.get(c.id) ?? [] }));
 }

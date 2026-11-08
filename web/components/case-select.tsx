@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
@@ -21,7 +22,7 @@ export function CaseSelect({ stoneId, atShow }: { stoneId: number; atShow: AtSho
 
   async function choose(value: string) {
     const toId = Number(value);
-    const url = toId ? `/api/cases/${toId}/stones` : current ? `/api/cases/${current.id}/stones` : null;
+    const url = toId ? `${BASE_PATH}/api/cases/${toId}/stones` : current ? `${BASE_PATH}/api/cases/${current.id}/stones` : null;
     if (!url) return;
     setBusy(true);
     setError(null);

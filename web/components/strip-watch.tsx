@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { isSettled } from "@/lib/job-state";
@@ -24,7 +25,7 @@ export function StripWatch({ ids }: { ids: number[] }) {
       const done = await Promise.all(
         jobIds.map(async (id) => {
           try {
-            const r = await fetch(`/api/jobs/${id}`, { cache: "no-store" });
+            const r = await fetch(`${BASE_PATH}/api/jobs/${id}`, { cache: "no-store" });
             if (r.status === 404) return true;
             if (!r.ok) return false;
             return isSettled((await r.json()) as JobView);

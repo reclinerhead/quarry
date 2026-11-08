@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { TestRow } from "@/components/tests-panel";
@@ -53,7 +54,7 @@ export function TestsEditor({ id, initial }: { id: number; initial: Answers }) {
     setBusy(true);
     setStatus(null);
     try {
-      const r = await fetch(`/api/stones/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ tests: answers }) });
+      const r = await fetch(`${BASE_PATH}/api/stones/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ tests: answers }) });
       const data = (await r.json()) as { error?: string };
       if (!r.ok) throw new Error(data.error ?? `server ${r.status}`);
       setSaved(answers);

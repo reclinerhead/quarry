@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { CheckIcon } from "@/components/icons";
@@ -123,7 +124,7 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
     let stopped = false;
     const t = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/minerals?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+        const r = await fetch(`${BASE_PATH}/api/minerals?q=${encodeURIComponent(query)}`, { cache: "no-store" });
         if (r.ok && !stopped) setHits((await r.json()) as MineralHit[]);
       } catch {
         /* no suggestions */
@@ -160,7 +161,7 @@ export function StoneEditor({ id, facts, places }: { id: number; facts: StoneFac
     const pending = withText.trim() && !isMatrix(withText) ? [withText.trim()] : []; // typed but not added: Save adds it
     const body = { ...rest, parts: { with: [...withs.filter((w) => w.kept).map((w) => w.name), ...pending], on: on.trim() || null } };
     try {
-      const r = await fetch(`/api/stones/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch(`${BASE_PATH}/api/stones/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const data = (await r.json()) as { error?: string };
       if (!r.ok) throw new Error(data.error ?? `server ${r.status}`);
       setEditing(false);
@@ -463,7 +464,7 @@ export function RemoveStone({ id, photoCount }: { id: number; photoCount: number
     setBusy(true);
     setError(null);
     try {
-      const r = await fetch(`/api/stones/${id}`, { method: "DELETE" });
+      const r = await fetch(`${BASE_PATH}/api/stones/${id}`, { method: "DELETE" });
       const data = (await r.json()) as { error?: string };
       if (!r.ok) throw new Error(data.error ?? `server ${r.status}`);
       router.push("/");

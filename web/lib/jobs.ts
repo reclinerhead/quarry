@@ -1,6 +1,7 @@
 // Reading jobs for the confirm screen, the pending strip and the jobs API.
 // Server only, except nextWaitingJob, which is pure.
 
+import { BASE_PATH } from "./base-path";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -158,7 +159,7 @@ export function readJob(db: DatabaseSync, jobId: number): JobView | null {
     notes: job.notes,
     tests: answers,
     labelText: job.label_text,
-    photos: photos.map((p) => ({ id: p.id, url: `/media/${p.path}`, thumbUrl: `/media/${thumbPathFor(p.path)}`, takenAt: p.taken_at })),
+    photos: photos.map((p) => ({ id: p.id, url: `${BASE_PATH}/media/${p.path}`, thumbUrl: `${BASE_PATH}/media/${thumbPathFor(p.path)}`, takenAt: p.taken_at })),
     plan: planPills(candidates, identifier, answers),
     suggestedTests: suggestedOrder(tests, identifier).map(({ kind, how, expected }) => ({ kind, how, expected })),
     confirmation: conf
@@ -212,7 +213,7 @@ export function waitingStrip(db: DatabaseSync): { count: number; thumbs: string[
   if (ids.length === 0) return { count: 0, thumbs: [], first: null };
   const thumbs = ids.slice(0, 3).flatMap((id) => {
     const p = db.prepare("SELECT path FROM photos WHERE job_id = ? ORDER BY id LIMIT 1").get(id) as { path: string } | undefined;
-    return p ? [`/media/${thumbPathFor(p.path)}`] : [];
+    return p ? [`${BASE_PATH}/media/${thumbPathFor(p.path)}`] : [];
   });
   return { count: ids.length, thumbs, first: readJob(db, ids[0]) };
 }
@@ -228,7 +229,7 @@ export function workingStrip(db: DatabaseSync): { ids: number[]; thumbs: Array<s
   const thumbs = ids.slice(0, 3).map((id) => {
     const p = db.prepare("SELECT path FROM photos WHERE job_id = ? ORDER BY id LIMIT 1").get(id) as { path: string } | undefined;
     const thumb = p ? thumbPathFor(p.path) : null;
-    return thumb && existsSync(path.join(dataDir(), thumb)) ? `/media/${thumb}` : null;
+    return thumb && existsSync(path.join(dataDir(), thumb)) ? `${BASE_PATH}/media/${thumb}` : null;
   });
   return { ids, thumbs };
 }
