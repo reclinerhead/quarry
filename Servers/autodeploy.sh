@@ -2,8 +2,10 @@
 # =============================================================================
 # The Quarry -- Servers/autodeploy.sh (issue #10)
 #
-# The deploy watcher: a long-lived loop that checks origin/main every
-# QUARRY_DEPLOY_INTERVAL_S and brings this box current when it moves.
+# The deploy watcher: a long-lived loop that checks the configured deploy
+# branch (QUARRY_DEPLOY_BRANCH, default main; a station rides
+# quarry-station-stable, #101) every QUARRY_DEPLOY_INTERVAL_S and brings this
+# box current when it moves.
 # Merging a PR IS the deploy; nobody SSHes anywhere. It is the Conservatory's
 # autodeploy.sh (itself the Aviary's pattern), one copy per repo, adapted to
 # this app: one Python worker and one Next app.
@@ -24,8 +26,8 @@
 #                                 imports it.
 #   - Servers/autodeploy.sh    -> hand over to the new copy
 #   Anything else (docs, tests, the spikes, the other Servers/ files) costs
-#   nothing; a change to a unit or to Caddyfile.quarry takes a re-run of
-#   install-orchid.sh.
+#   nothing; a change to a unit or to Caddyfile.quarry takes a re-run of the
+#   box's install script (install-orchid.sh or install-station.sh).
 #
 # Pull-based over anonymous https: the repo is public, so no key of any kind
 # lives on the box. If the repo is ever made private, the fetch fails and
@@ -42,15 +44,27 @@
 # becomes root-owned. --reset-env gives the demoted step the owner's HOME, so
 # `bash -l` finds the profile where nvm's node and pnpm live.
 #
-# Config (env on the unit):
+# Config (env on the unit; the unit reads /etc/quarry/quarry.env, so the
+# knobs arrive the way everything else does):
 #   QUARRY_REPO               checkout path, default /home/todd/quarry
 #   QUARRY_DEPLOY_USER        checkout owner, default todd
 #   QUARRY_DEPLOY_INTERVAL_S  poll cadence, default 60
+#   QUARRY_DEPLOY_BRANCH      the branch this box deploys from, default main
+#                             (orchid never sets it). A station sets
+#                             quarry-station-stable, the release channel
+#                             (#101): fast-forward-only, never committed to,
+#                             moved to main's tip once nightly by the
+#                             promote-stations Action, so a house two hours
+#                             away builds in the small hours and absorbs at
+#                             most a day of changes. The checkout must sit ON
+#                             the configured branch; anywhere else reads as
+#                             pinned (the branch guard below).
 #
 # Hand runs: `autodeploy.sh --once` is a single tick, no loop. The sanctioned
 # way to pin the box on unmerged work is to check out a branch: the branch
-# guard pauses deploys while the checkout is off main and resumes them the
-# moment it is back.
+# guard pauses deploys while the checkout is off the configured branch and
+# resumes them the moment it is back. A station checkout sitting on main is a
+# half-finished channel flip and pauses the same way.
 #
 # Deliberately NOT `set -e`: the loop must survive a failed fetch, build or
 # restart; every step checks and logs its own failure, and the next tick
@@ -63,7 +77,7 @@ REPO="${QUARRY_REPO:-/home/todd/quarry}"
 SELF="$REPO/Servers/autodeploy.sh"
 OWNER="${QUARRY_DEPLOY_USER:-todd}"
 INTERVAL="${QUARRY_DEPLOY_INTERVAL_S:-60}"
-BRANCH=main
+BRANCH="${QUARRY_DEPLOY_BRANCH:-main}"
 
 fetch_down=0
 off_branch=0
@@ -169,7 +183,9 @@ tick() {
     if grep -qE "^(web/|design/tokens\.css$)" <<<"$changed"; then deploy_web; fi
     if grep -q "^Servers/autodeploy.sh$" <<<"$changed"; then self_changed=1; fi
     if grep -qE "^Servers/(.+\.service|Caddyfile\.quarry)$" <<<"$changed"; then
-        log "a unit or Caddyfile.quarry changed -- takes effect on the next: sudo bash $REPO/Servers/install-orchid.sh"
+        local installer=install-orchid.sh
+        [ "$BRANCH" != main ] && installer=install-station.sh
+        log "a unit or Caddyfile.quarry changed -- takes effect on the next: sudo bash $REPO/Servers/$installer"
     fi
     log "deploy complete at ${remote:0:9}"
 }

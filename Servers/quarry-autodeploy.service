@@ -1,7 +1,12 @@
-# The Quarry's deploy watcher on orchid (issue #10): Servers/autodeploy.sh in
-# the checkout it deploys. Root on purpose (restarts without a sudo password);
+# The Quarry's deploy watcher (issue #10): Servers/autodeploy.sh in the
+# checkout it deploys. Root on purpose (restarts without a sudo password);
 # every git, pip and pnpm step is demoted to todd inside the script. Beside
 # the Aviary's and the Conservatory's watchers, never shared with them.
+#
+# It reads the same environment file as the other two units so the deploy
+# branch (QUARRY_DEPLOY_BRANCH, #101) arrives the way everything else does:
+# orchid's file has no such line and the script's default is main; a station's
+# says quarry-station-stable. The file is root-readable and so is this unit.
 
 [Unit]
 Description=The Quarry -- deploy watcher (merges to main deploy themselves)
@@ -9,6 +14,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+EnvironmentFile=/etc/quarry/quarry.env
 ExecStart=/home/todd/quarry/Servers/autodeploy.sh
 Restart=on-failure
 RestartSec=10
