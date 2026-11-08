@@ -6,7 +6,7 @@ The living description of how the Quarry is built and why. The root [README](../
 | --- | --- | --- |
 | [`jasper.md`](jasper.md) | Jasper, the Python worker: the database and its schema, the queue, the gateway call, the prompt, and what each answer means for a job | Touching anything under `jasper/`, or the schema |
 | [`web.md`](web.md) | The Next.js app: routes, how it reads the database, the visual language | Touching anything under `web/` |
-| [`ops.md`](ops.md) | What runs on orchid: the units, the door, the deploy watcher, checks, backups and rolling back | Touching anything under `Servers/`, or adding an environment variable |
+| [`ops.md`](ops.md) | What runs on orchid and on a station: the units, the doors, the deploy watcher and the release channel, checks, backups and rolling back | Touching anything under `Servers/` or `.github/workflows/`, or adding an environment variable |
 
 Spoke to come: the hub's, in Phase 4.
 

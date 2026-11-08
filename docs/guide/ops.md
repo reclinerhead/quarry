@@ -1,8 +1,13 @@
-# Running it at the house
+# Running it at the house, and at a station
 
-What runs where, how to check it, and how to put it back. Everything the box executes lives in `Servers/`. Nothing in this spoke is a paste block: each job on the box is a script you run and read. The field stations wait for Phase 4. Today the Quarry runs on **orchid**, beside the Aviary and the Conservatory, for phones on the house Wi-Fi.
+What runs where, how to check it, and how to put it back. Everything the box executes lives in `Servers/`. Nothing in this spoke is a paste block: each job on the box is a script you run and read. The Quarry runs in two shapes:
 
-## What runs on orchid
+- **At the house, on orchid**, beside the Aviary and the Conservatory, for phones on the house Wi-Fi, as **`https://quarry.lan`**. It follows `main`: merging a PR is the deploy.
+- **At a station** (birdhouse, kestrel), a Dell Wyse 5070 already in a relative's house running the Aviary, as **`http://<the box>/quarry`** on the box's one origin. It follows the release channel, `quarry-station-stable`: main with a delay, moved once nightly. Its door is the Aviary's Caddy, its key is its own, and it is two hours from a keyboard, so everything here that touches a station is built to need nobody at one.
+
+The middle is the same on every box: the same three units, the same ports, the same data directory, the same environment file, the same watcher. The ends differ, keys and door, and each box has its own install script for them.
+
+## What runs, on every box
 
 | Unit | Runs | As | From | Port |
 | --- | --- | --- | --- | --- |
@@ -10,94 +15,114 @@ What runs where, how to check it, and how to put it back. Everything the box exe
 | `jasper` | `python -m jasper`, the identification worker | todd | `~/quarry`, venv `.venv/` (uv, Python 3.13) | |
 | `quarry-autodeploy` | `Servers/autodeploy.sh`, the deploy watcher | root (steps demoted to todd) | `~/quarry` | |
 
-The other ports on orchid are 3000 (the Aviary), 3010 (the Conservatory) and 3100 (Ingenia). The web unit listens on 127.0.0.1 only. Caddy fronts it as **`https://quarry.lan`** (`Servers/Caddyfile.quarry`), so the door is the one way in:
+3020 is the Quarry's port everywhere. The other ports on orchid are 3000 (the Aviary), 3010 (the Conservatory) and 3100 (Ingenia); on a station, 3000 (the Aviary) and 3010 (the Conservatory, in spring). The web unit listens on 127.0.0.1 only, and Caddy is the one way in.
+
+**The data lives outside the checkout**, in `/home/todd/quarry-data/`: the one SQLite file and the photo tree (`photos/yyyy/mm/`, with Jasper's thumbnails beside the originals). A deploy can never reach it.
+
+**The environment file.** All three units read `/etc/quarry/quarry.env`:
+
+- It is root-owned, mode 0600. systemd reads it before dropping to todd.
+- It holds `QUARRY_DB`, `QUARRY_DATA` and `AI_GATEWAY_API_KEY`, and optionally the two model slugs and `MINDAT_API_KEY`.
+- On a station it also holds `QUARRY_DEPLOY_BRANCH=quarry-station-stable`, which tells the watcher which branch to follow. Orchid's file has no such line, and the watcher's default is `main`.
+- The keys are in that file and nowhere else. Jasper will not start without the gateway key; without the Mindat key it matches candidates by name only. The web unit never calls a model.
+
+**One value is not in that file**: `NEXT_PUBLIC_BASE_PATH`, the path the web app is served under (`/quarry` on a station, unset on orchid; `web.md`). It is read at build time, so it lives in `web/.env.local`, owned by todd, beside the build. The root-only env file would be the wrong place: the build runs as todd, who cannot read it.
+
+## The door
+
+**On orchid**, Caddy fronts the app as `https://quarry.lan` (`Servers/Caddyfile.quarry`):
 
 - **The block** is one site block, which orchid's Caddyfile imports.
 - **`lan_tls`** is the house snippet. It brings the house's private root, HSTS and compression.
 - **The name** is a Pi-hole Local DNS record on pearl, pointing at orchid (`192.168.1.148`). The Launchpad's Quarry tile already points there.
 
-**The data lives outside the checkout**, in `/home/todd/quarry-data/`: the one SQLite file and the photo tree (`photos/yyyy/mm/`, with Jasper's thumbnails beside the originals). A deploy can never reach it.
-
-**The environment file.** Both units read their paths and the key from `/etc/quarry/quarry.env`:
-
-- It is root-owned, mode 0600. systemd reads it before dropping to todd.
-- It holds `QUARRY_DB`, `QUARRY_DATA` and `AI_GATEWAY_API_KEY`, and optionally the two model slugs and `MINDAT_API_KEY`.
-- The keys are in that file and nowhere else. Jasper will not start without the gateway key; without the Mindat key it matches candidates by name only. The web unit never calls a model or Mindat.
-
-**Which gateway key** is chosen at bring-up. The install script offers two:
-
-- **The Conservatory's key:** one bill for the house's apps.
-- **A key of the Quarry's own:** its spend shows apart in the gateway's dashboard.
-
-The Aviary's and the Conservatory's units, Caddy blocks and watchers are never touched. The Quarry has its own files, its own watcher and its own port.
-
-## Bring-up, and after a change to the units or the door
-
-The first time, as todd:
+**On a station**, there are no names: Caddy answers on `:80` whatever the visitor typed and the Aviary owns the file. The Aviary's `Servers/Caddyfile.station` carries a `handle /quarry*` route to `127.0.0.1:3020` (reclinerhead/aviary#684), written into the file rather than imported, so a missing Quarry can never take the Aviary down with it: a route to a silent port is a 502 on that path and nothing else. `handle`, not `handle_path`, because the app is built for the prefix (#100). The file is synced by hand on each station, the Aviary's posture for every Caddy change:
 
 ```
-git clone https://github.com/reclinerhead/quarry.git ~/quarry && sudo bash ~/quarry/Servers/install-orchid.sh
+caddy validate --config ~/aviary/Servers/Caddyfile.station --adapter caddyfile
+sudo cp ~/aviary/Servers/Caddyfile.station /etc/caddy/Caddyfile && sudo systemctl reload caddy
 ```
 
-After that, `sudo bash ~/quarry/Servers/install-orchid.sh`. It is idempotent, and it ends by listing what is left. In order, it:
+No script in this repo writes `/etc/caddy/` on any box. Orchid's install script syncs orchid's file after showing the diff and asking; the station's install script only checks the door and tells you what is missing.
 
-1. **Checks** node under nvm, pnpm on the login PATH, uv, and that port 3020 is free.
-2. **Makes** the data directory, and the environment file from `Servers/quarry.env.example` if it is missing.
-3. **Asks for the keys** when the file has none: the gateway key (the choice above), then the Mindat key, which Enter skips. A file from before Mindat gets an empty `MINDAT_API_KEY=` line added rather than a stop. Keys are written with shell builtins, so they are never echoed and never on a command line. Re-running the script is how a Mindat key reaches orchid.
-4. **Builds** Jasper's venv.
-5. **Creates or migrates the database** through `jasper.db`, so the web app has one before Jasper's first job.
-6. **Builds the web app.**
-7. **Installs and starts the units**, with the `node-path.conf` drop-in. Node lives under nvm, which systemd does not load, so the drop-in pins `PATH` to the versioned bin. Re-run the script after an nvm upgrade. Jasper starts only once the key is in the file.
-8. **Opens the door,** as below.
-
-**The door is the one step that reaches into another repo.** Orchid's Caddy config is the Aviary's:
-
-- **Its copies.** `project-squirrel/Servers/Caddyfile-orchid` is the canonical copy, and `/etc/caddy/Caddyfile` is the live one.
-- **The import.** The canonical copy needs this line at its end, beside the Conservatory's:
-
-  ```
-  import /home/todd/quarry/Servers/Caddyfile.quarry
-  ```
-
-  The line goes in by a PR there. The Aviary's watcher then pulls it onto orchid.
-- **The sync.** On the next run, the install script sees the line in the Aviary's checkout but not in the live file. It shows the diff and asks before copying the whole file into place.
-- **The reload.** It parses the new config with `caddy adapt` first and keeps a `.before-quarry` copy. Caddy itself refuses a reload it cannot load and keeps serving the old config.
-- **Later changes.** After a later change to `Caddyfile.quarry`, the script reloads Caddy on its next run. It compares the file with the copy it last loaded, kept in `/etc/quarry/`.
+**The bookmark rule.** A station's LAN address is whatever the router handed it. Bookmarks and home-screen icons at a station point at the front door's address for that station, never at the IP (#102). A person who bookmarks after landing has bookmarked the IP.
 
 ## Deploys
 
-Merging a PR is the deploy. `quarry-autodeploy` polls origin/main every 60 s over anonymous https. The repo is public, so there is no key on the box. When main moves, it pulls `--ff-only` and acts on what changed:
+The watcher, `quarry-autodeploy`, polls the configured branch every 60 s over anonymous https. The repo is public, so there is no key on any box. When the branch moves, it pulls `--ff-only` and acts on what changed:
 
 | Changed | It does |
 | --- | --- |
 | `jasper/` | Installs if `jasper/requirements.txt` changed (uv into the venv), then restarts `jasper`. A schema migration runs as Jasper starts, before the web app's new build serves. |
 | `web/`, or `design/tokens.css` | `pnpm install` and `pnpm build`, then restarts `quarry-web` **only if the build passed**. A failed build is a loud journal line, and the old build keeps serving. `globals.css` imports the tokens, which is why they count. |
 | `Servers/autodeploy.sh` | Hands over to the new copy. |
-| A unit or `Caddyfile.quarry` | Logs that the next run of the install script applies it. |
+| A unit or `Caddyfile.quarry` | Logs that the next run of the box's install script applies it. |
 | Anything else | Nothing (docs, tests, the spikes, the design brief). |
 
-How it behaves:
+**Which branch.** `QUARRY_DEPLOY_BRANCH` in the env file, default `main`. The watcher's first journal line says which: `watching origin/main` on orchid, `watching origin/quarry-station-stable` on a station.
+
+**The release channel.** `quarry-station-stable` is not a fork. It is fast-forward-only, never committed to, always an ancestor of main. `.github/workflows/promote-stations.yml` moves it to main's tip once nightly at 07:20 UTC (02:20 or 03:20 Eastern, twenty minutes after the Aviary's promotion, so two builds never start in the same minute on a J5005). If the branch cannot fast-forward, something was committed to it directly, and the run fails red rather than papering over it. The emergency path, when a fix cannot wait for tonight: merge it to main, then `gh workflow run promote-stations.yml` (or Actions, Promote stations, Run workflow, from a phone). The stations deploy within a minute. The branch was created once from main's tip:
+
+```
+git fetch origin && git push origin origin/main:refs/heads/quarry-station-stable
+```
+
+How the watcher behaves, on every box:
 
 - **Quiet ticks log nothing,** so `journalctl -u quarry-autodeploy` reads as a deploy history and silence is healthy.
 - **A dirty checkout** (tracked changes) is skipped loudly until cleaned.
-- **Checking out a branch** on the box pauses deploys, and checking out main resumes them.
+- **Checking out a branch** on the box pauses deploys, and checking the configured branch back out resumes them. Pinned means off the *configured* branch: a station checkout sitting on `main` is a half-finished channel flip and pauses the same way.
 - **By hand:** `Servers/deploy-web.sh` deploys the web app in the one valid order (pull, install, build, restart). `autodeploy.sh --once` is a single tick.
 
-**Two things a merge never does:**
+**Two things a deploy never does:**
 
-- **Change Caddy.** The install script applies a change to `Caddyfile.quarry`.
-- **Change the environment file.** A variable added to the example reaches the box only by hand: add the line to `/etc/quarry/quarry.env` with `sudoedit`, then restart both units. They read the file only when they start.
+- **Change Caddy.** Orchid's install script applies a change to `Caddyfile.quarry`; a station's Caddyfile is the Aviary's, synced by hand.
+- **Change the environment file.** A variable added to the example reaches the box only by hand: add the line to `/etc/quarry/quarry.env` with `sudoedit`, then restart the units. They read the file only when they start.
+
+## Bring-up, and after a change to the units or the door
+
+Each box has one install script. Both are idempotent, run with sudo, and end by listing what is left. The first time, as todd, clone and run:
+
+```
+git clone https://github.com/reclinerhead/quarry.git ~/quarry && sudo bash ~/quarry/Servers/install-orchid.sh
+```
+
+or on a station:
+
+```
+git clone https://github.com/reclinerhead/quarry.git ~/quarry && sudo bash ~/quarry/Servers/install-station.sh
+```
+
+**What they share**, the middle: the data directory; the env file from `Servers/quarry.env.example` when missing; the keys, asked for when the file has none, written with shell builtins so they are never echoed and never on a command line; Jasper's venv; the database, created or migrated through `jasper.db` so the web app has one before Jasper's first job; the web build; the three units, enabled and started. Re-running the script is how a key reaches a box later, and how a changed unit is applied.
+
+**`install-orchid.sh`**, the house's ends:
+
+- **Node under nvm.** systemd does not load nvm, so the script writes the `node-path.conf` drop-in pinning the web unit's `PATH` to the versioned bin. Re-run it after an nvm upgrade.
+- **The gateway key** is a choice: the Conservatory's key (one bill for the house's apps) or a key of the Quarry's own.
+- **The door.** Orchid's Caddy config is the Aviary's: `project-squirrel/Servers/Caddyfile-orchid` is the canonical copy, `/etc/caddy/Caddyfile` the live one. The canonical copy carries `import /home/todd/quarry/Servers/Caddyfile.quarry`, put there by a PR in that repo and pulled onto orchid by the Aviary's watcher. When the script sees the line in the Aviary's checkout but not in the live file, it shows the diff, asks, parses the new config with `caddy adapt`, keeps a `.before-quarry` copy and reloads. After a later change to `Caddyfile.quarry` it reloads Caddy on its next run, comparing the file with the copy it last loaded (kept in `/etc/quarry/`).
+- **DNS**: checks pearl's record for `quarry.lan` when `dig` is installed.
+
+**`install-station.sh`**, the station's ends:
+
+- **Node wherever todd's login shell finds it**: `/usr/bin/node` from NodeSource on a station, so no drop-in is written, and a stale one from an earlier nvm is removed. A box with nvm gets the drop-in as orchid does. No nvm is not an error.
+- **The channel.** A checkout on `main` is moved to `quarry-station-stable` (fetched first), so the box is never half-flipped. `QUARRY_DEPLOY_BRANCH=quarry-station-stable` is written into the env file, added if a hand-written file lacks it. The watcher is restarted so it reads it.
+- **One key per station**, pasted, with its own spend limit in the gateway's dashboard, so a runaway on one box cannot spend another's budget. There is no house key to offer. The Mindat key may be shared between boxes.
+- **`web/.env.local`** with `NEXT_PUBLIC_BASE_PATH=/quarry`, written only if absent, so a hand edit survives.
+- **The door is checked, never written.** `curl http://127.0.0.1/quarry` through the station's Caddy: 200 means open; anything else, and the script says whether the Aviary's checkout already has the route (then the sync above is the missing step) or does not yet (then reclinerhead/aviary#684 is), and stops short of `/etc/caddy`.
+- **The Aviary's units, env file, watcher and checkout** are read for the preflight and never touched.
 
 ## Checking it
 
 `bash ~/quarry/Servers/check.sh` prints:
 
-- the checkout and the build id;
+- the role (house or station), the checkout and the build id; on a station, the channel's tip as last fetched and when;
 - each unit's state;
-- the answer on `:3020`;
-- the answer at the door, checked through this box's Caddy without DNS, since orchid's standby Pi-hole is not kept in step with pearl's;
-- pearl's record for `quarry.lan`, when `dig` is installed;
+- the answer on `:3020` (at `/quarry` on a station, where the root is a 404 by design);
+- the answer at the door: on orchid `https://quarry.lan` through this box's Caddy without DNS (orchid's standby Pi-hole is not kept in step with pearl's); on a station `http://127.0.0.1/quarry`;
+- on orchid, pearl's record for `quarry.lan`, when `dig` is installed;
 - the watcher's last lines, and Jasper's.
+
+The script runs without sudo, so it cannot read the env file; it reads the role off the checkout's branch, which the install script keeps in step with the env file. Run with sudo, it reads the file.
 
 **Jasper's journal** has one line per job, with what each model said, how long each took, what the job cost, and the Mindat part when Mindat was asked:
 
@@ -110,11 +135,13 @@ job 7 identified: haiku Galena 0.82 (5.8 s) · flash Galena 0.90 (4.1 s) · $0.0
 
 - A model that did not answer makes it a WARNING.
 - A job that failed for good, such as a bad key, is an ERROR.
-- A spent gateway budget pauses Jasper for ten minutes and says until when.
+- A spent gateway budget pauses Jasper for ten minutes and says until when. On a station, whose key has a monthly budget of its own, this is the line that says the budget tripped.
 - On start it names both models and the prompt version.
-- A photo costs about 0.4¢ for both models together: four came to 1.6¢ in #9's check. The gateway's dashboard has the bill.
+- A photo costs about 0.4¢ for both models together: four came to 1.6¢ in #9's check. The gateway's dashboard has the bill, per key, so a station's spend reads apart from the house's.
 
-**From a phone on the house Wi-Fi**, `https://quarry.lan` should show the collection. The first visit needs the house root certificate installed: the same one the Aviary's and the Conservatory's doors use.
+**From a phone on the house Wi-Fi**, `https://quarry.lan` should show the collection. The first visit needs the house root certificate installed: the same one the Aviary's and the Conservatory's doors use. **From a phone on a station's Wi-Fi**, the front door's address for that station (#102) lands on `http://<the box>/quarry`, plain http on the LAN, like the Aviary's.
+
+**Reaching a station**: `ssh birdhouse`, `ssh kestrel`, over the tailnet. A station is tagged and reaches nothing on the tailnet itself. `sudo` there asks for a password, so a root step is a script you run in that session, never something run for you. The box's own bring-up (the OS, Caddy, the Aviary) is `toddtech-infrastructure/servers/Birdhouse.md`; this guide covers the Quarry on it.
 
 ## Backups
 
@@ -123,17 +150,19 @@ The database is a WAL file with a writer that holds it open, so `cp` gives you a
 - It writes `~/backups/quarry-<date>.db`.
 - It prints a quick_check and the row counts.
 
-The photos and their thumbnails are plain files: copy `quarry-data/photos/` beside the backup. Off the box, monthly, and before any migration step.
+The photos and their thumbnails are plain files: copy `quarry-data/photos/` beside the backup. Off the box, monthly, and before any migration step. A station's backup stays on the box until Phase 4's courier exists; the Aviary's bird records there are in the same position.
 
 ## Rolling back
 
 - **A bad merge of code:** fix forward.
-  - Revert the merge on main, and the watcher deploys the revert within a minute.
+  - Revert the merge on main, and orchid's watcher deploys the revert within a minute. The stations get it at the next nightly promotion, or at once with `gh workflow run promote-stations.yml`.
   - A web build that fails never restarts the unit, so a type error CI could not see leaves the previous build serving.
 - **A unit that will not start:** `journalctl -u <unit> -n 50`. The usual causes:
   - **an empty or wrong key** (Jasper). It exits 2 and systemd does not retry, so fix the file and restart it;
-  - **a node path that moved under nvm** (the web app). Re-run the install script;
-  - **a missing environment file.**
+  - **a node path that moved under nvm** (the web app, on orchid). Re-run the install script;
+  - **a missing environment file.** The watcher needs it too.
+- **A station that deploys nothing:** its checkout is off `quarry-station-stable` (`check.sh` shows the branch), or the channel has not moved. The watcher's journal says which.
 - **Data:** restore the newest backup to `QUARRY_DB` with both units stopped (`sudo systemctl stop jasper quarry-web`), and expect to lose what was recorded since. A restore is for a lost or corrupt file, never for a change of mind.
-- **The door:** `/etc/caddy/Caddyfile.before-quarry` is the live file from before the install script first synced it.
+- **The door:** on orchid, `/etc/caddy/Caddyfile.before-quarry` is the live file from before the install script first synced it. On a station, the Aviary's previous `Caddyfile.station`.
+- **A leaked station key:** delete it in the gateway's dashboard (that box stops identifying, the others do not), create a new one, `sudoedit /etc/quarry/quarry.env` on the box and `sudo systemctl restart jasper`.
 - **Everything off:** `sudo systemctl disable --now quarry-web jasper quarry-autodeploy`. The Aviary and the Conservatory do not notice.

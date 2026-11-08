@@ -1,0 +1,59 @@
+# The station release channel's nightly promotion (issue #101), the Aviary's
+# promote-stations.yml with the Quarry's names.
+#
+# quarry-station-stable is the branch every remote station's quarry-autodeploy
+# watcher follows (QUARRY_DEPLOY_BRANCH in /etc/quarry/quarry.env). It is NOT
+# a fork: fast-forward-only, never committed to directly, always an ancestor
+# of main -- main with a delay. This job moves it to main's tip once nightly,
+# so a house two hours away builds while everyone sleeps and a station absorbs
+# at most one day of changes per deploy.
+#
+# Runs HERE, not on a box, on purpose: promotion is a push, and no box holds a
+# write credential of any kind (the watcher pulls over anonymous https). The
+# GITHUB_TOKEN this job uses is minted per run, repo-scoped, and gone when the
+# job ends.
+#
+# --ff-only is the tripwire: if the branch can't fast-forward, something
+# committed to it directly, and this job FAILS LOUDLY (red run + email) rather
+# than papering over it. Fix the branch; never force.
+#
+# The emergency path (a fix can't wait for tonight): merge the fix to main,
+# then run this workflow by hand -- Actions -> "Promote stations" -> Run
+# workflow (the GitHub phone app works), or:
+#   gh workflow run promote-stations.yml
+# The station watchers deploy within a minute of the fast-forward.
+#
+# The branch is created once, by hand, from main's tip:
+#   git fetch origin && git push origin origin/main:refs/heads/quarry-station-stable
+
+name: Promote stations
+
+on:
+  schedule:
+    # Actions cron is UTC only: 07:20 UTC = 02:20 EST / 03:20 EDT -- the small
+    # hours at both houses year-round. Twenty minutes after the Aviary's 07:00,
+    # so two builds never start in the same minute on a J5005.
+    - cron: "20 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: promote-stations
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: a shallow clone can't prove ancestry for --ff-only.
+      # This step also fails loudly if quarry-station-stable doesn't exist.
+      - uses: actions/checkout@v4
+        with:
+          ref: quarry-station-stable
+          fetch-depth: 0
+      - name: Fast-forward quarry-station-stable to main
+        run: |
+          git fetch origin main
+          git merge --ff-only origin/main
+          git push origin quarry-station-stable
