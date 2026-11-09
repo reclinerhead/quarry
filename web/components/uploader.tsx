@@ -465,7 +465,7 @@ function SentStrip({
     heading = `${rocksCount(failed.length)} couldn’t be sent`;
     line = failed[0].error ?? "";
     action = (
-      <div className="flex flex-wrap gap-3">
+      <div className="order-2 ml-auto flex flex-wrap gap-3 md:order-3 md:ml-0">
         <button type="button" onClick={onSendAgain} className="btn btn-primary btn-lg">
           {failed.length === 1 ? "Send it again" : "Send them again"}
         </button>
@@ -481,7 +481,7 @@ function SentStrip({
     const job = toName[0].job;
     line = job ? stripLine(job.plan, job.status === "failed", job.suggestedTests[0]?.kind) : "";
     action = (
-      <Link href="/name" className="btn btn-primary btn-lg">
+      <Link href="/name" className="btn btn-primary btn-lg order-2 ml-auto md:order-3 md:ml-0">
         {toName.length === 1 ? "Name it" : "Name them"}
       </Link>
     );
@@ -501,7 +501,7 @@ function SentStrip({
     // The amber strip's button, invisible (so out of the tab order and unread),
     // keeping its room so a change of state moves nothing.
     action = (
-      <span aria-hidden className="btn btn-primary btn-lg invisible">
+      <span aria-hidden className="btn btn-primary btn-lg invisible order-2 ml-auto md:order-3 md:ml-0">
         Name it
       </span>
     );
@@ -522,7 +522,7 @@ function SentStrip({
   return (
     <section
       aria-labelledby="sent-h"
-      className={`flex flex-wrap items-center gap-x-7 gap-y-5 px-5 py-5 sm:px-7 sm:py-[22px] ${amber ? "rounded-card border border-warn-line bg-warn" : "card"}`}
+      className={`flex flex-wrap items-center gap-x-5 gap-y-3.5 px-4 py-4 sm:gap-x-7 sm:gap-y-5 sm:px-7 sm:py-[22px] ${amber ? "rounded-card border border-warn-line bg-warn" : "card"}`}
     >
       <div className="flex">
         {latest.map((r, i) => {
@@ -542,7 +542,7 @@ function SentStrip({
           );
         })}
       </div>
-      <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-1">
+      <div className="order-3 flex min-w-0 basis-full flex-col gap-1 md:order-2 md:flex-1">
         <h2 id="sent-h" aria-live="polite" className="text-[26px] leading-tight">
           {heading}
         </h2>

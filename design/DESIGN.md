@@ -197,7 +197,10 @@ one primary button ("Name them"). While Jasper still has rocks and none waits
 for a name, the same box holds them as a plain white card (nothing needs you
 yet): their thumbs (the crystal placeholder for a rock he hasn't started),
 "N rocks waiting for Jasper", Jasper at work under it, and the button's room
-kept empty. When he's done it turns amber in place, with no reload. The add
+kept empty. When he's done it turns amber in place, with no reload. Below
+~770 px the strip is two rows: the thumbs with the button at their right,
+then the heading and its line under them, so the kept room costs no height on
+a phone. The add
 page holds its sent rocks in the same strip, at the top under the lead line,
 with two states of its own in the plain card: rocks still sending ("Keep this
 page open until they're sent."), and rocks that couldn't be sent, the reason in
@@ -304,7 +307,10 @@ reference image.
 faceted-gem mark + "The Quarry" in Zilla 30/700 · nav pills (Collection,
 Minerals, Periodic table, Show cases, Labels, Gem Show; active = `sand-2` fill,
 `aria-current`) · search (pill, hand-lens icon, "Search your rocks") ·
-primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens.
+primary "Add a rock" with a camera icon. Wraps to two rows on narrow screens:
+the wordmark with Add, then the nav with the search under it. On a phone the
+three nav pills are 16 px with 10 px sides, bleeding into the gutter so their
+text sits on the page's edge, and stay on one line down to 360 px.
 
 **Dashboard**, top to bottom:
 1. Date, then a greeting that says what changed ("Good evening. Two new stones

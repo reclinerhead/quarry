@@ -54,7 +54,7 @@ export function Collection({ tiles }: { tiles: Tile[] }) {
   }
 
   return (
-    <section aria-labelledby="collection-h" className="flex min-w-0 flex-col gap-[22px]">
+    <section aria-labelledby="collection-h" className="flex min-w-0 flex-col gap-4 sm:gap-[22px]">
       <div className="flex flex-wrap items-end justify-between gap-x-5 gap-y-3">
         <div className="flex flex-col gap-0.5">
           <h2 id="collection-h" className="text-h2 leading-tight">

@@ -33,7 +33,7 @@ export default async function AddToCasePage({ params }: { params: Promise<{ id: 
   if (!data) notFound();
 
   return (
-    <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-8 px-4 pb-16 pt-6 sm:px-10 sm:pb-[72px] sm:pt-8">
+    <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-6 px-4 pb-16 pt-5 sm:gap-8 sm:px-10 sm:pb-[72px] sm:pt-8">
       <nav aria-label="Breadcrumb" className="text-[17px]">
         <ol className="flex flex-wrap items-center gap-2">
           <li>

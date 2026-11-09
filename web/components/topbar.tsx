@@ -13,13 +13,17 @@ import { CameraIcon, GemMark } from "@/components/icons";
 //
 // Below lg the bar is two rows: the wordmark with Add, then the nav with the
 // search, which drops under the pills on a phone once there are two (#48).
-// From lg it is the canvas's one row.
+// From lg it is the canvas's one row. On a phone (below sm) the three pills
+// are 16 px with 10 px sides and the row bleeds 10 px into each gutter, so
+// their text lines up with the page's edge and all three stay on one line
+// down to a 360 px phone; the rows sit closer too. The bar is 213 px there,
+// not 277 (#116).
 export function TopBar() {
   const pathname = usePathname();
   return (
     <header>
       <div className="border-b border-line bg-surface">
-        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-3 gap-y-3 px-4 py-4 sm:gap-x-7 sm:px-10 sm:py-[18px]">
+        <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-3 gap-y-2.5 px-4 py-3 sm:gap-x-7 sm:gap-y-3 sm:px-10 sm:py-[18px]">
           <Link href="/" className="order-1 flex items-center gap-2.5 text-ink hover:text-ink">
             <GemMark className="size-8 text-azurite sm:size-9" />
             <span className="font-display text-[26px] font-bold tracking-[-0.01em] sm:text-[30px]">The Quarry</span>
@@ -28,14 +32,14 @@ export function TopBar() {
           {/* Nav and search share a row of their own until lg, so the search
               never squeezes between the wordmark and Add. */}
           <div className="order-3 flex min-w-0 basis-full flex-wrap items-center gap-3 lg:order-2 lg:flex-1 lg:basis-auto lg:flex-nowrap lg:gap-7">
-            <nav aria-label="Main" className="flex flex-wrap gap-1.5">
-              <Link href="/" aria-current={pathname === "/" ? "page" : undefined} className="nav-pill px-4 sm:px-5">
+            <nav aria-label="Main" className="-mx-2.5 flex flex-wrap gap-0.5 sm:mx-0 sm:gap-1.5">
+              <Link href="/" aria-current={pathname === "/" ? "page" : undefined} className="nav-pill px-2.5 text-meta sm:px-5 sm:text-body">
                 Collection
               </Link>
-              <Link href="/periodic-table" aria-current={pathname === "/periodic-table" ? "page" : undefined} className="nav-pill px-4 sm:px-5">
+              <Link href="/periodic-table" aria-current={pathname === "/periodic-table" ? "page" : undefined} className="nav-pill px-2.5 text-meta sm:px-5 sm:text-body">
                 Periodic table
               </Link>
-              <Link href="/show" aria-current={pathname === "/show" || pathname.startsWith("/show/") ? "page" : undefined} className="nav-pill px-4 sm:px-5">
+              <Link href="/show" aria-current={pathname === "/show" || pathname.startsWith("/show/") ? "page" : undefined} className="nav-pill px-2.5 text-meta sm:px-5 sm:text-body">
                 Show cases
               </Link>
             </nav>

@@ -33,7 +33,7 @@ export default async function PeriodicTablePage({ searchParams }: { searchParams
   const n = table.lit.length;
 
   return (
-    <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-8 px-4 pb-16 pt-6 sm:px-10 sm:pb-[72px] sm:pt-8">
+    <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-6 px-4 pb-16 pt-5 sm:gap-8 sm:px-10 sm:pb-[72px] sm:pt-8">
       <header className="flex flex-col gap-2">
         <h1 className="text-[36px] leading-tight sm:text-h2">
           Your periodic table
