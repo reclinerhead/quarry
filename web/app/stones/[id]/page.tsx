@@ -168,9 +168,12 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
 /**
  * The models' pills as they were (DESIGN.md §4): the name chosen solid azurite
  * with a check, the other candidates outlined with their word, each naming its
- * whole reading (#29). The chosen pill reads as the stone is named now, with
- * any minerals the person added. A name typed by hand that no model
- * offered leads, solid. Then when, and how they knew.
+ * whole reading (#29), with "A kind of Quartz" under a hobby name (#124), as on
+ * the naming screen: two readings that share a variety (Petoskey stone and
+ * Fossil coral, both Hexagonaria) would otherwise read as one name twice. The
+ * chosen pill reads as the stone is named now, with any minerals the person
+ * added. A name typed by hand that no model offered leads, solid. Then when,
+ * and how they knew.
  */
 function HowNamed({ job, morePhotos }: { job: JobView; morePhotos: number }) {
   const conf = job.confirmation!;
@@ -186,7 +189,10 @@ function HowNamed({ job, morePhotos }: { job: JobView; morePhotos: number }) {
           ) : (
             <li key={`${p.pick.model}-${p.pick.rank}`} className="flex flex-col">
               <span className="flex min-h-12 items-center justify-between gap-3 rounded-[24px] border border-line-2 px-5 py-2">
-                <span className="min-w-0 break-words font-display text-body font-semibold leading-tight">{pieceName(p)}</span>
+                <span className="min-w-0">
+                  <span className="block break-words font-display text-body font-semibold leading-tight">{pieceName(p)}</span>
+                  <KindLine piece={p} className="text-ink-2" />
+                </span>
                 <span className="shrink-0 rounded-pill bg-sand px-3 py-1 text-tag font-bold text-tag-ink">{p.word}</span>
               </span>
               <WhyRow reasons={p.reasons} opinions={p.models.length} />
@@ -219,15 +225,24 @@ function ChosenPill({ piece, note, reasons = [], opinions = 0 }: { piece: Parame
     <li className="flex flex-col">
       {/* 24 px corners: a pill on one line, a rounded card when a long name wraps. */}
       <span className="flex min-h-12 items-center justify-between gap-3 rounded-[24px] bg-azurite px-5 py-2 text-white">
-        <span className="flex min-w-0 items-center gap-2 font-display text-body font-semibold leading-tight">
+        <span className="flex min-w-0 items-center gap-2">
           <CheckIcon className="size-4 flex-none" />
-          <span className="min-w-0 break-words">{pieceName(piece)}</span>
+          <span className="min-w-0">
+            <span className="block break-words font-display text-body font-semibold leading-tight">{pieceName(piece)}</span>
+            <KindLine piece={piece} className="text-white/80" />
+          </span>
         </span>
         <span className="shrink-0 rounded-pill bg-white/15 px-3 py-1 text-tag font-bold">{note}</span>
       </span>
       <WhyRow reasons={reasons} opinions={opinions} />
     </li>
   );
+}
+
+/** The species under a hobby name on a "How it was named" pill (#124): "A kind of Petoskey stone", or nothing. */
+function KindLine({ piece, className }: { piece: Parameters<typeof kindOf>[0]; className: string }) {
+  const kind = kindOf(piece);
+  return kind ? <span className={`block text-meta ${className}`}>{kind}</span> : null;
 }
 
 /** "Why?" under a pill in "How it was named" (#71), or nothing, and nothing reserved, when the row carried no reasons. */
