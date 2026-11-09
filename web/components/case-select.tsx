@@ -55,7 +55,7 @@ export function CaseSelect({ stoneId, atShow }: { stoneId: number; atShow: AtSho
           Show case
         </label>
         <span className="relative grid min-w-0 flex-1">
-          <select id={id} value={current?.id ?? ""} disabled={busy} onChange={(e) => void choose(e.target.value)} className="select col-start-1 row-start-1 w-full">
+          <select id={id} value={current?.id ?? ""} disabled={busy} onChange={(e) => void choose(e.target.value)} className="select col-start-1 row-start-1 w-full text-meta">
             <option value="">Not in a case</option>
             {atShow.cases.map((c) => (
               <option key={c.id} value={c.id}>

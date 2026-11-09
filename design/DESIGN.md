@@ -132,7 +132,9 @@ sideways.
 to its left ("Hardness", "Sort by"). Native `<select>`, so older phones get their
 own big picker. On a mouse, where the browser lets a `<select>` style its
 list, the open list is a white card of 48 px pill rows: sand under the
-pointer, the chosen one azurite and bold with the chip's check.
+pointer, the chosen one azurite and bold with the chip's check. In the side
+panel ("Show case") the chosen value is 16 px, the label's size, so "Not in a
+case" holds one line beside its label on a phone.
 
 **Tags (status)**: 15 px / 700, 4 × 12 px padding, pill. Default = sand +
 tag-ink ("Mohs 4", "Crystal", "Tumbled"). `uv` variant only for "Glows under
@@ -226,15 +228,19 @@ since the progress cursor reads as a hung browser.
 azurite with a check. Other candidates = outlined, 64 px tall, the piece's
 name in Zilla 24 with "A kind of …" under a hobby name. Corners are half the
 one-line height (32 px; 24 on the 48 px "How it was named" rows), so a long
-name wraps into a rounded card rather than an oval. The name has first claim
+name wraps into a rounded card rather than an oval. The "How it was named"
+rows sit in the side panel, so their name is Zilla 18: at 20 a name as short
+as Hexagonaria broke mid-word beside its tag on a phone. The name has first claim
 on the pill's width; on a phone, where the tags can't fit beside it, they drop
 under the name rather than squeezing it. Each carries a plain
 word, never a percentage. A mineral only one opinion saw sits under the lead
 pill as a chip, off by default ("Jasper also saw Sphalerite (one opinion).
 Add it?"); ticking it adds it to the pill's name, so the pill always says
 what a tap saves. "probably" goes on the lead pill when Jasper's two opinions agree,
-with an `azurite-soft` tag and a 2 px azurite border. "could be" goes on each
-pill when they differ, and "could also be" on the rest, both as sand tags.
+with an `azurite-soft` tag and a 2 px azurite border. "could be" goes on every
+other pill, as a sand tag: the same two words whether the opinions differ or
+these are the runners-up under a "probably", since "could also be" was a
+third of the pill's width.
 Phase 0 (#1) settled this: two models agreeing were right about 9 times in 10,
 and a model's own confidence meant much less. On the naming screen the pills
 sit in a **well**: the page's `ground` inside the white card, 14 px radius,
