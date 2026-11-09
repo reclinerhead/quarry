@@ -13,11 +13,15 @@ the queue is first idle after a start (`tidy_photos`).
 
 With a Mindat key (#18), an identified job's candidates are looked up in
 Mindat before the job is written, on a short leash (#40): a person may be
-waiting on the confirm screen. When the queue is idle (`mindat.idle`), the
-candidates a lookup missed are tried again, then each named mineral is linked
-to its record and that record is fetched whole (#21), then where those records
-are found is counted (#65), once a minute, or ten minutes after Mindat failed,
-and the pass stops as soon as a job arrives.
+waiting on the confirm screen. When the queue is idle (`catch_up`), two passes
+share one budget and stop as soon as a job arrives: Wikipedia's lead for each
+name first (#92, `wikipedia.fetch_pages`), then Mindat's four steps
+(`mindat.idle`: the candidates a lookup missed, each named mineral linked to
+its record and that record fetched whole (#21), then where those records are
+found (#65)). Each host has its own clock (`Host`): once a minute, and after a
+failure a minute, then two, four, eight, ten at most, until a pass completes
+(#119), so a slow Mindat never holds the About card, and a stone's page fills
+in within a minute of a hiccup rather than ten.
 Mindat never decides a job's outcome. The log line times each part, and the
 job's `finished_at` is when it finished, not when it was claimed.
 """
@@ -29,6 +33,7 @@ import sqlite3
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -40,9 +45,50 @@ AskFn = Callable[[str, dict], llm.Response]
 
 # A 402 means the gateway budget is spent; someone has to top it up.
 QUOTA_PAUSE = timedelta(minutes=10)
-# How often an idle Jasper does its Mindat work (`catch_up`).
+# How often an idle Jasper does its Mindat and Wikipedia work (`catch_up`).
 CATCH_UP_EVERY = timedelta(minutes=1)
-CATCH_UP_AFTER_FAILURE = timedelta(minutes=10)
+# A host that failed waits this long, doubled each failure in a row, up to the cap (#119).
+CATCH_UP_AFTER_FAILURE = timedelta(minutes=1)
+CATCH_UP_FAILURE_CAP = timedelta(minutes=10)
+
+
+def after_failure(failures: int) -> timedelta:
+    """How long a host waits after its `failures`th failure in a row: 1, 2, 4, 8, 10, 10 minutes."""
+    return min(CATCH_UP_AFTER_FAILURE * 2 ** (max(failures, 1) - 1), CATCH_UP_FAILURE_CAP)
+
+
+@dataclass
+class Host:
+    """One source's place in the idle pass: when to ask it next, and how many times in a
+    row it has failed. Running out of time or stopping for a job is not a failure."""
+
+    next_at: datetime
+    failures: int = 0
+
+    def failed(self, now: datetime) -> timedelta:
+        self.failures += 1
+        wait = after_failure(self.failures)
+        self.next_at = now + wait
+        return wait
+
+    def done(self, now: datetime) -> None:
+        self.failures = 0
+        self.next_at = now + CATCH_UP_EVERY
+
+
+@dataclass
+class Hosts:
+    wikipedia: Host
+    mindat: Host
+
+    @classmethod
+    def at(cls, now: datetime) -> Hosts:
+        return cls(Host(now), Host(now))
+
+
+def _minutes(wait: timedelta) -> str:
+    m = max(1, round(wait.total_seconds() / 60))
+    return f"{m} minute" if m == 1 else f"{m} minutes"
 
 
 def thumb_path(rel: str) -> str:
@@ -167,32 +213,49 @@ def _log_line(job_id: int, outcome: identify.Outcome, row: sqlite3.Row, seconds:
     return level, f"job {job_id} {verdict}: {' · '.join(parts)}"
 
 
-def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api | None, now: datetime, wiki_api: wikipedia.Api | None = None) -> datetime:
-    """The idle pass: the waiting candidates, then the named minerals, their records,
-    where those are found, then Wikipedia's lead for each name (#92). Returns when to
-    try next. Running out of time is not a failure: the rest waits a minute, not ten."""
-    try:
-        # A job arriving mid-pass ends it at the next request; the rest waits a minute.
-        filled, linked, fetched, placed, (asked, misses) = mindat.idle(
-            conn, mindat_api, should_stop=lambda: queue.has_runnable(conn, datetime.now(timezone.utc)), wiki=wiki_api
-        )
-    except mindat.Unreachable as e:
-        log.warning("catch-up stopped: %s; next try in %d minutes", e, CATCH_UP_AFTER_FAILURE.seconds // 60)
-        return now + CATCH_UP_AFTER_FAILURE
-    if filled:
-        log.info("mindat caught up on %d waiting candidate(s)", filled)
-    if linked or fetched:
-        log.info("mindat linked %d mineral(s), fetched %d record(s)", linked, fetched)
-    if placed:
-        log.info("mindat counted where %d record(s) are found", placed)
-    if asked:
-        log.info("wikipedia fetched %d page(s), %d with no article", asked, misses)
-    return now + CATCH_UP_EVERY
+def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api | None, now: datetime,
+             wiki_api: wikipedia.Api | None = None, hosts: Hosts | None = None) -> datetime:
+    """The idle pass: Wikipedia's lead for each name (#92), then Mindat's four steps
+    (the waiting candidates, the named minerals, their records, where those are found),
+    each host when it is due, in one budget, each failing on its own (#119). Returns
+    when to try next: the earlier of the hosts' times. Running out of time, or a job
+    arriving, is not a failure: the rest waits a minute, not longer."""
+    hosts = hosts or Hosts.at(now)
+    should_stop = lambda: queue.has_runnable(conn, datetime.now(timezone.utc))  # noqa: E731
+    start = time.monotonic()
+    deadline = start + mindat.IDLE_BUDGET_S
+    if wiki_api is not None and now >= hosts.wikipedia.next_at:
+        try:
+            asked, misses = wikipedia.fetch_pages(conn, wiki_api, deadline, mindat.stopping(time.monotonic, should_stop))
+        except mindat.Unreachable as e:
+            log.warning("catch-up stopped: %s; next try in %s", e, _minutes(hosts.wikipedia.failed(now)))
+        else:
+            hosts.wikipedia.done(now)
+            if asked:
+                log.info("wikipedia fetched %d page(s), %d with no article", asked, misses)
+    if mindat_api is not None and now >= hosts.mindat.next_at:
+        try:
+            filled, linked, fetched, placed = mindat.idle(
+                conn, mindat_api, budget_s=max(0.0, deadline - time.monotonic()), should_stop=should_stop
+            )
+        except mindat.Unreachable as e:
+            log.warning("catch-up stopped: %s; next try in %s", e, _minutes(hosts.mindat.failed(now)))
+        else:
+            hosts.mindat.done(now)
+            if filled:
+                log.info("mindat caught up on %d waiting candidate(s)", filled)
+            if linked or fetched:
+                log.info("mindat linked %d mineral(s), fetched %d record(s)", linked, fetched)
+            if placed:
+                log.info("mindat counted where %d record(s) are found", placed)
+    due = [h.next_at for h, api in ((hosts.wikipedia, wiki_api), (hosts.mindat, mindat_api)) if api is not None]
+    return min(due) if due else now + CATCH_UP_EVERY
 
 
 def run_forever(conn: sqlite3.Connection, data_dir: Path, cfg: identify.Settings, should_run: Callable[[], bool],
                 mindat_api: mindat.Api | None = None, wiki_api: wikipedia.Api | None = None) -> None:
     paused_until: datetime | None = None
+    hosts = Hosts.at(datetime.now(timezone.utc))
     next_catch_up = datetime.now(timezone.utc)
     photos_tidy = False  # the one-time pass over the photos on disk (#83), done at the first idle
     while should_run():
@@ -206,7 +269,7 @@ def run_forever(conn: sqlite3.Connection, data_dir: Path, cfg: identify.Settings
             if not photos_tidy:
                 photos_tidy = tidy_photos(conn, data_dir, should_stop=lambda: queue.has_runnable(conn, datetime.now(timezone.utc)))
             if (mindat_api is not None or wiki_api is not None) and now >= next_catch_up:
-                next_catch_up = catch_up(conn, mindat_api, now, wiki_api)
+                next_catch_up = catch_up(conn, mindat_api, now, wiki_api, hosts)
             time.sleep(2)
         elif outcome.status == "quota":
             paused_until = now + QUOTA_PAUSE
