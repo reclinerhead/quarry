@@ -53,6 +53,9 @@
   --color-warn-ink: #5A4210;    /* 8.6:1 on warn */
   --color-uv: #ECE6F7;          /* fluorescent: glows under UV */
   --color-uv-ink: #4B3584;      /* 8.0:1 on uv */
+  --color-done: #E4EFE5;        /* done and saved: a stone named and in the collection */
+  --color-done-line: #A9C7AE;
+  --color-done-ink: #1E4A2C;    /* 8.6:1 on done */
 
   /* Photo caption pill */
   --color-caption: rgb(30 26 22 / 0.82);
