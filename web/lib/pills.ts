@@ -82,7 +82,7 @@ export type Pill = {
   chain?: MindatRecord[];
   pick: { model: string; rank: number }; // the candidate a tap names
   models: string[]; // every model that named it
-  word: "probably" | "could be" | "could also be";
+  word: "probably" | "could be";
   // The lead pill only: both first choices name this stone, but Mindat puts
   // them on different varieties of it, so neither variety is taken.
   doubt?: { level: string; guesses: string[] };
@@ -114,7 +114,7 @@ export function byModel(candidates: Candidate[], identifier: string): Candidate[
 
 /**
  * - **probably**: the two first choices name the same piece. One lead pill,
- *   then up to two "could also be" from the rest of both lists. They name the
+ *   then up to two "could be" from the rest of both lists. They name the
  *   same piece when their main minerals are the same stone, or when each model
  *   saw the other's main mineral on it (Pyrite on Quartz, and Quartz with
  *   Pyrite). The lead pill is the identifier's reading: its main mineral, its
@@ -204,7 +204,7 @@ export function planPills(candidates: Candidate[], identifier: string, answers: 
     lead.madeOf = made.madeOf;
     if (made.doubt) lead.madeOfDoubt = made.doubt;
     lead.form = a[0].form ?? b[0].form ?? null;
-    for (const c of rest) add(c, "could also be", true);
+    for (const c of rest) add(c, "could be", true);
     return { verdict: "probably", opinions: 2, pills };
   }
   add(a[0], "could be");

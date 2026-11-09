@@ -44,7 +44,7 @@ describe("planPills", () => {
     expect(plan.verdict).toBe("probably");
     expect(plan.opinions).toBe(2);
     expect(names(plan)).toEqual(["Galena", "Sphalerite", "Hematite"]);
-    expect(plan.pills.map((p) => p.word)).toEqual(["probably", "could also be", "could also be"]);
+    expect(plan.pills.map((p) => p.word)).toEqual(["probably", "could be", "could be"]);
     expect(plan.pills[0].models).toEqual([HAIKU, FLASH]);
     expect(plan.pills[1].models).toEqual([HAIKU, FLASH]); // both named sphalerite further down
   });
