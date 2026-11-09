@@ -36,8 +36,9 @@ SaaS dashboard and not a gem-shop sparkle page.
   painted on a real stone. The specimen card styled as a museum label. The Mohs
   scale as a ten-slot set to complete. Nothing else is ornamental.
 - One action color (azurite blue). Amber only means "needs you" (waiting for a
-  name, details missing). Violet only means "glows under UV". Never use these
-  for decoration.
+  name, details missing). Violet only means "glows under UV". Green only means
+  "done and saved" (a stone named and in the collection), and is a status, never
+  an action: nothing clickable is green. Never use these for decoration.
 - No gradients, no emoji, no glitter, no left-border cards. Icons are
   1.8–2 px stroke line icons, inline SVG. Nothing moves except Jasper at work
   (§4), and nothing at all under reduced motion.
@@ -67,12 +68,14 @@ SaaS dashboard and not a gem-shop sparkle page.
 | `catalog` | `#9E2F22` | catalog numbers, and nothing else |
 | `warn` / `warn-line` / `warn-ink` | `#FBF4E4` / `#E4C98A` / `#5A4210` | waiting for a name, details missing |
 | `uv` / `uv-ink` | `#ECE6F7` / `#4B3584` | "Glows under UV" |
+| `done` / `done-line` / `done-ink` | `#E4EFE5` / `#A9C7AE` / `#1E4A2C` | done and saved: the named stone's note |
 | `strata-1…4` | `#D8C7A8` `#B9A586` `#E6DAC4` `#8C7B66` | the strata band only |
 
 Measured contrast (WCAG): ink on ground 13.3:1 · ink-2 on ground 7.0:1 ·
 ink-2 on surface 7.8:1 · ink-3 on surface 5.8:1 · ink-3 on ground 5.1:1 ·
 white on azurite 7.1:1 · azurite on surface 7.1:1 · tag-ink on sand 9.5:1 ·
-catalog on label 7.2:1 · warn-ink on warn 8.6:1 · uv-ink on uv 8.0:1. Most
+catalog on label 7.2:1 · warn-ink on warn 8.6:1 · uv-ink on uv 8.0:1 ·
+done-ink on done 8.6:1. Most
 pairs clear AAA (7:1), and every pair clears AA. Keep it that way: if you add a
 color, measure it, and aim for 7:1 on reading text.
 
@@ -244,6 +247,16 @@ shape as the fields under them. The well is the card's one thing to do, so
 the no-guess screen. What goes with the name (variety, made of, form) is one
 "Details to save with the name (optional)" group under the name field, behind
 a hairline.
+
+**Done note**: once the stone is named, the card leads with a `done` note
+(`done-line` border, 14 px radius): a check icon, "Black Tourmaline is in your
+collection." in bold, and one plain line, "You're done with this stone. Come
+back any time to change its name or add details." The page title turns to
+"Named". The specimen label follows the note, then "How do you know?" marked
+optional, then the primary button ("Next stone" or "Back to your collection")
+with "Change the name" as a text link. It is the one place the app says
+"finished", and the only green on a screen; the copy, not the color, carries
+the meaning for anyone who can't see it.
 
 **Element tile**: atomic number, symbol (Zilla 36/700), name. Already lit =
 `azurite-soft`. New with this specimen = solid azurite, "· new".

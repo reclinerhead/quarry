@@ -247,7 +247,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
     <>
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="flex flex-col gap-1">
-          <h1 className="text-h2 leading-tight">Name this stone</h1>
+          <h1 className="text-h2 leading-tight">{named ? "Named" : "Name this stone"}</h1>
           <p className="text-ink-2 tabular-nums">{countLine(named !== null, waiting, position)}</p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -706,6 +706,17 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
   function namedView(n: Named) {
     return (
       <>
+        {/* The done note (DESIGN.md §4): the card's one green, so the screen reads as finished before anything else is read. */}
+        <div className="flex items-start gap-3 rounded-tile border border-done-line bg-done px-4 py-3.5 text-done-ink sm:px-5">
+          <CheckIcon className="mt-0.5 size-6 flex-none" />
+          <div className="flex flex-col gap-1">
+            <p className="text-lead font-bold leading-snug">
+              <PieceTitle piece={n} /> is in your collection.
+            </p>
+            <p>You&rsquo;re done with this stone. Come back any time to change its name or add details.</p>
+          </div>
+        </div>
+
         {/* The specimen label (DESIGN.md §4): paper, a double rule, an ink rule under the name. */}
         <div className="rounded-[6px] border border-line-2 bg-label p-2.5">
           <div className="flex flex-col gap-2 border border-line px-5 py-4">
@@ -728,11 +739,9 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
             ) : null}
           </div>
         </div>
-        <p className="text-lead text-ink-2">It&rsquo;s in your collection now.</p>
-
         <fieldset className="flex flex-col gap-3">
           <legend className="float-left w-full font-display text-h3 font-semibold leading-tight">How do you know?</legend>
-          <p className="text-ink-2">So Jasper can be checked against what you know, later on.</p>
+          <p className="text-ink-2">Optional. So Jasper can be checked against what you know, later on.</p>
           <div className="flex flex-wrap gap-2">
             {HOW_CHOICES.map((c) => (
               <button key={c.how} type="button" disabled={busy} aria-pressed={n.how === c.how} onClick={() => setHow(c.how)} className="chip">
@@ -757,7 +766,7 @@ export function Namer({ initialJob, waiting, position, nextJobId: initialNext }:
             </Link>
           )}
           <button type="button" disabled={busy} onClick={change} className="min-h-12 px-2 font-bold text-azurite underline underline-offset-4 hover:text-azurite-deep">
-            Change
+            Change the name
           </button>
         </div>
       </>
