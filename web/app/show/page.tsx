@@ -15,7 +15,7 @@ export const metadata = { title: "Show cases · The Quarry" };
 export default async function ShowPage() {
   const cases = withReadDb((db) => readCases(db), [] as ShowCase[]);
   return (
-    <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-8 px-4 pb-16 pt-6 sm:px-10 sm:pb-[72px] sm:pt-8">
+    <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-6 px-4 pb-16 pt-5 sm:gap-8 sm:px-10 sm:pb-[72px] sm:pt-8">
       <header className="flex flex-col gap-2">
         <h1 className="text-[36px] leading-tight sm:text-h2">Show cases</h1>
         <p className="max-w-[70ch] text-lead text-ink-2">

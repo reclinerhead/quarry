@@ -56,7 +56,7 @@ export default function Home() {
   );
 
   return (
-    <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-8 px-4 pb-16 pt-8 sm:px-10 sm:pb-[72px] sm:pt-10">
+    <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-6 px-4 pb-16 pt-5 sm:gap-8 sm:px-10 sm:pb-[72px] sm:pt-10">
       <section aria-labelledby="hello" className="flex flex-col gap-1.5">
         <p className="font-bold text-ink-2">{dateLine(now)}</p>
         <h1 id="hello" className="text-[36px] leading-tight sm:text-h1 sm:leading-[1.1]">
@@ -68,16 +68,19 @@ export default function Home() {
       {/* The pending strip (DESIGN.md §4): amber means "needs you". Drawn on
           the server, so it never pops in. While Jasper still has rocks and
           none waits for a name, its place is held by the working strip (#31),
-          and StripWatch refreshes the page once one is done. */}
+          and StripWatch refreshes the page once one is done. Below md the
+          strip is two rows, the thumbs with the button at the right and the
+          words under them (#116): the button's room is the thumbs' row, so
+          the working strip's invisible one costs no height on a phone. */}
       {strip.count > 0 ? (
-        <section aria-labelledby="waiting-h" className="flex flex-wrap items-center gap-x-7 gap-y-5 rounded-card border border-warn-line bg-warn px-5 py-5 sm:px-7 sm:py-[22px]">
+        <section aria-labelledby="waiting-h" className="flex flex-wrap items-center gap-x-5 gap-y-3.5 rounded-card border border-warn-line bg-warn px-4 py-4 sm:gap-x-7 sm:gap-y-5 sm:px-7 sm:py-[22px]">
           <div className="flex">
             {strip.thumbs.map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element -- Jasper's 320 px thumbnail
               <img key={src} src={src} alt="" className={`size-[72px] rounded-tile border-[3px] border-surface bg-tile-stone object-cover ${i > 0 ? "-ml-[18px]" : ""}`} />
             ))}
           </div>
-          <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-1">
+          <div className="order-3 flex min-w-0 basis-full flex-col gap-1 md:order-2 md:flex-1">
             <h2 id="waiting-h" className="text-[26px] leading-tight">
               {strip.count} {strip.count === 1 ? "rock" : "rocks"} waiting for a name
             </h2>
@@ -85,13 +88,13 @@ export default function Home() {
               <p className="text-warn-ink">{stripLine(strip.first.plan, strip.first.status === "failed", strip.first.suggestedTests[0]?.kind)}</p>
             ) : null}
           </div>
-          <Link href="/name" className="btn btn-primary btn-lg">
+          <Link href="/name" className="btn btn-primary btn-lg order-2 ml-auto md:order-3 md:ml-0">
             {strip.count === 1 ? "Name it" : "Name them"}
           </Link>
         </section>
       ) : working.ids.length > 0 ? (
         // The amber strip's shape in plain card colours: nothing needs the person yet.
-        <section aria-labelledby="working-h" className="card flex flex-wrap items-center gap-x-7 gap-y-5 px-5 py-5 sm:px-7 sm:py-[22px]">
+        <section aria-labelledby="working-h" className="card flex flex-wrap items-center gap-x-5 gap-y-3.5 px-4 py-4 sm:gap-x-7 sm:gap-y-5 sm:px-7 sm:py-[22px]">
           <div className="flex">
             {working.thumbs.map((src, i) => {
               const overlap = i > 0 ? "-ml-[18px]" : "";
@@ -105,7 +108,7 @@ export default function Home() {
               );
             })}
           </div>
-          <div className="flex min-w-0 flex-[1_1_380px] flex-col gap-1">
+          <div className="order-3 flex min-w-0 basis-full flex-col gap-1 md:order-2 md:flex-1">
             <h2 id="working-h" className="text-[26px] leading-tight">
               {working.ids.length} {working.ids.length === 1 ? "rock" : "rocks"} waiting for Jasper
             </h2>
@@ -113,7 +116,7 @@ export default function Home() {
           </div>
           {/* The amber strip's button, invisible (so out of the tab order and
               unread), keeping its room so turning amber moves nothing. */}
-          <span aria-hidden className="btn btn-primary btn-lg invisible">
+          <span aria-hidden className="btn btn-primary btn-lg invisible order-2 ml-auto md:order-3 md:ml-0">
             {working.ids.length === 1 ? "Name it" : "Name them"}
           </span>
         </section>

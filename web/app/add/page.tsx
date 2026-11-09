@@ -8,7 +8,7 @@ export const metadata = { title: "Add a rock · The Quarry" };
 // afterwards, on the confirm screen (#8).
 export default function AddPage() {
   return (
-    <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-8 px-4 pb-16 pt-8 sm:px-10 sm:pb-[72px] sm:pt-10">
+    <main className="mx-auto flex w-full max-w-page flex-1 flex-col gap-6 px-4 pb-16 pt-5 sm:gap-8 sm:px-10 sm:pb-[72px] sm:pt-10">
       <section aria-labelledby="add-h" className="flex flex-col gap-1.5">
         <h1 id="add-h" className="text-[36px] leading-tight sm:text-h1 sm:leading-[1.1]">
           Add a rock
