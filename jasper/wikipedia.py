@@ -14,12 +14,20 @@ Feldspar" misses, "Potassium feldspar" is a page). A disambiguation page
 ("Dolomite" is a mineral, a rock and a mountain range) is asked again as
 "<name> (mineral)", then "(rock)". A page marked `missing` is no article, not
 an error: the term is stored with no page and never asked again. So is a
-redirect that lands on a section of some other article ("Fossil coral" goes to
-Coral#Evolution, the animal; "Crazy lace agate" goes to a section of Agate,
-and the stone reads Agate through its next term instead), and a set-index page
-whose lead says "may refer to", which Wikipedia doesn't mark as a
-disambiguation. A redirect to a whole article is kept ("Granite gneiss" is
-Gneiss), and the card heads with the article's title.
+set-index page whose lead says "may refer to", which Wikipedia doesn't mark as
+a disambiguation. A redirect to a whole article is kept ("Granite gneiss" is
+Gneiss), and the card heads with the article's title. A redirect that lands on
+a section of some other article (`tofragment`) depends on what the household
+says the term is (#119): for a mineral or a rock the article is kept, with the
+link landing on the section ("Schorl" is Tourmaline#Schorl, and the card heads
+"About Tourmaline"; "Crazy lace agate" is a section of Agate), since the
+section is Wikipedia filing the mineral under its group; for anything else it
+is no article ("Fossil coral" goes to Coral#Evolution, the animal). The kind is
+the person's, from the naming screen, corrected by Mindat's entry type.
+
+The pass runs first on the worker's idle tick, before Mindat's four steps and
+on its own failure clock (`worker.catch_up`, #119), so a slow Mindat never
+holds the About card.
 
 The Action API, not the REST `page/summary` endpoint: Fern (the Conservatory)
 records that the REST one is in gradual deprecation, and it answered a dozen
@@ -51,6 +59,10 @@ USER_AGENT = "TheQuarry/0.1 (https://github.com/reclinerhead/quarry)"
 MAXLAG_S = 5
 # Where a disambiguation page sends a mineral or a rock: "Dolomite (mineral)", "Dolomite (rock)".
 DISAMBIGUATED = ("mineral", "rock")
+# The kinds (`minerals.kind`) whose section of another article is kept (#119): a mineral
+# filed under its group (Schorl under Tourmaline), a rock under its family. An `other`
+# that lands on a section is about something else (Fossil coral under Coral, the animal).
+SECTION_KINDS = frozenset(DISAMBIGUATED)
 
 Miss = Literal["missing", "disambiguation"]
 
@@ -58,8 +70,9 @@ Miss = Literal["missing", "disambiguation"]
 @dataclass(frozen=True)
 class Page:
     title: str
-    url: str
+    url: str  # the article's, with the section's fragment when a redirect landed on one
     summary: str  # the lead paragraphs, plain text, a blank line between
+    section: str | None = None  # the section a redirect landed on (`tofragment`), else None
 
 
 def params(title: str) -> dict[str, str | int]:
@@ -154,9 +167,10 @@ def _page(body: dict) -> dict | None:
 def parse_page(body: dict) -> Page | Miss:
     """What the query found: the article, or why there is none. A page marked `missing`
     is "missing"; a page Wikipedia marks as a disambiguation, or whose lead says "may
-    refer to" (a set index, which it doesn't mark), is "disambiguation"; a redirect
-    that lands on a section of another article is "missing", and so is an article
-    with no lead or no URL."""
+    refer to" (a set index, which it doesn't mark), is "disambiguation"; an article
+    with no lead or no URL is "missing". A redirect that lands on a section of another
+    article is that article with `section` set and the fragment on its URL; whether
+    that counts as the term's article is `look_up`'s call, by the term's kind (#119)."""
     page = _page(body)
     if page is None or page.get("missing"):
         return "missing"
@@ -164,54 +178,69 @@ def parse_page(body: dict) -> Page | Miss:
     if "disambiguation" in (page.get("pageprops") or {}) or _REFERS.search(summary.split("\n\n")[0]):
         return "disambiguation"
     redirects = body["query"].get("redirects")
-    if isinstance(redirects, list) and any(isinstance(r, dict) and r.get("tofragment") for r in redirects):
-        return "missing"
+    section = next((str(r["tofragment"]).strip() for r in redirects if isinstance(r, dict) and r.get("tofragment")), None) \
+        if isinstance(redirects, list) else None
     title = str(page.get("title") or "").strip()
     url = str(page.get("canonicalurl") or page.get("fullurl") or "").strip()
     if not title or not url or not summary:
         return "missing"
-    return Page(title=title, url=url, summary=summary)
+    if section:
+        url = f"{url}#{section.replace(' ', '_')}"  # Wikipedia's anchors spell a space as an underscore
+    return Page(title=title, url=url, summary=summary, section=section or None)
 
 
 # ----------------------------------------------------------------------------
 # The pass
 # ----------------------------------------------------------------------------
 
-# Every term a stone could show, in the order the pass asks: each mineral's name,
-# oldest first, then each variety by the stone that first used it.
+# Every term a stone could show, with its kind, in the order the pass asks: each
+# mineral's name, oldest first, then each variety by the stone that first used it,
+# with that stone's mineral's kind (SQLite reads the bare column from the MIN row).
 WANTED = (
-    "SELECT name FROM minerals ORDER BY id",
-    "SELECT variety FROM specimens WHERE trim(coalesce(variety, '')) <> '' GROUP BY variety ORDER BY MIN(id)",
+    "SELECT name, kind FROM minerals ORDER BY id",
+    "SELECT s.variety, m.kind, MIN(s.id) FROM specimens s JOIN minerals m ON m.id = s.mineral_id"
+    " WHERE trim(coalesce(s.variety, '')) <> '' GROUP BY s.variety ORDER BY MIN(s.id)",
 )
 
 
-def wanted(conn: sqlite3.Connection) -> list[str]:
-    """The terms not yet asked: each mineral's name, each stone's variety as written and
-    before its first comma, each once (folded), minus those `wikipedia_pages` has."""
+def wanted(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+    """The terms not yet asked, each with its kind (`minerals.kind`; a variety takes its
+    mineral's): each mineral's name, each stone's variety as written and before its
+    first comma, each once (folded), minus those `wikipedia_pages` has."""
     asked = {r[0] for r in conn.execute("SELECT term FROM wikipedia_pages")}
-    out: list[str] = []
+    out: list[tuple[str, str]] = []
     for row in [r for sql in WANTED for r in conn.execute(sql).fetchall()]:
-        v = row[0]
+        v, kind = row[0], row[1]
         for t in (v, v.split(",")[0]):
             t = " ".join(t.split())
             if t and fold(t) not in asked:
                 asked.add(fold(t))
-                out.append(t)
+                out.append((t, kind))
     return out
 
 
-def look_up(api: Api, term: str, deadline: float, clock: Clock) -> Page | None:
+def article(body: dict, kind: str) -> Page | Miss:
+    """`parse_page`, with the section rule (#119): a redirect to a section of another
+    article is the term's article only for a mineral or a rock (`SECTION_KINDS`)."""
+    found = parse_page(body)
+    if isinstance(found, Page) and found.section and kind not in SECTION_KINDS:
+        return "missing"
+    return found
+
+
+def look_up(api: Api, term: str, deadline: float, clock: Clock, kind: str = "other") -> Page | None:
     """Ask for one term's titles in order, then "(mineral)" and "(rock)" after a
-    disambiguation. The first article wins; None when none is one. Raises Unreachable."""
+    disambiguation. The first article wins; None when none is one. `kind` is the
+    term's (`minerals.kind`), which decides a section redirect. Raises Unreachable."""
     for title in titles(term):
         _in_time(deadline, clock)
-        found = parse_page(api.query(title))
+        found = article(api.query(title), kind)
         if isinstance(found, Page):
             return found
         if found == "disambiguation":
-            for kind in DISAMBIGUATED:
+            for sense in DISAMBIGUATED:
                 _in_time(deadline, clock)
-                found = parse_page(api.query(f"{title} ({kind})"))
+                found = article(api.query(f"{title} ({sense})"), kind)
                 if isinstance(found, Page):
                     return found
             return None  # the name is known; its other spelling would land on the same page
@@ -224,8 +253,8 @@ def fetch_pages(conn: sqlite3.Connection, api: Api, deadline: float, clock: Cloc
     article); stops quietly where the time runs out. Raises Unreachable."""
     asked = misses = 0
     try:
-        for term in wanted(conn):
-            page = look_up(api, term, deadline, clock)
+        for term, kind in wanted(conn):
+            page = look_up(api, term, deadline, clock, kind)
             with conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO wikipedia_pages (term, title, url, summary) VALUES (?, ?, ?, ?)",

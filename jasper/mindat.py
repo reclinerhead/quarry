@@ -61,7 +61,6 @@ from typing import TYPE_CHECKING
 from .identify import MATRIX
 
 if TYPE_CHECKING:
-    from . import wikipedia
     from .identify import Outcome
 
 API_HOST = "api.mindat.org"
@@ -654,32 +653,33 @@ def fetch_places(conn: sqlite3.Connection, api: Api, deadline: float, clock: Clo
     return placed
 
 
-def idle(conn: sqlite3.Connection, api: Api | None, budget_s: float = IDLE_BUDGET_S,
-         clock: Clock = time.monotonic, should_stop: Callable[[], bool] | None = None,
-         wiki: wikipedia.Api | None = None) -> tuple[int, int, int, int, tuple[int, int]]:
-    """Jasper's work while the queue is empty, in one budget: the waiting
-    candidates, then the minerals, then their records, then where those are found,
-    then Wikipedia's lead for each name (#92, `wikipedia.fetch_pages`), which needs
-    no key and so runs with `api` None, when the four Mindat steps are skipped.
-    Returns (candidates filled, minerals linked, records fetched, records counted,
-    (names asked of Wikipedia, of which no article)).
+def stopping(clock: Clock, should_stop: Callable[[], bool] | None) -> Clock:
+    """The idle pass's clock: `clock`, until `should_stop` says a job has arrived (#40),
+    when it reads as infinitely late, so the next `_in_time` ends the step the way running
+    out of time does. With no `should_stop`, `clock` itself."""
+    if should_stop is None:
+        return clock
+
+    def late() -> float:
+        return float("inf") if should_stop() else clock()
+
+    return late
+
+
+def idle(conn: sqlite3.Connection, api: Api, budget_s: float = IDLE_BUDGET_S,
+         clock: Clock = time.monotonic, should_stop: Callable[[], bool] | None = None) -> tuple[int, int, int, int]:
+    """Mindat's work while the queue is empty, in one budget: the waiting
+    candidates, then the minerals, then their records, then where those are found.
+    Wikipedia's lead for each name (#92) is the worker's other pass, run before this
+    one (`worker.catch_up`), so a slow Mindat never holds it (#119).
+    Returns (candidates filled, minerals linked, records fetched, records counted).
     Raises Unreachable; what was done before stays. `should_stop` (a job has
     arrived, #40) ends the pass at its next request the way running out of time
     does: the steps keep what they did, and the rest waits a minute."""
     deadline = clock() + budget_s
-    if should_stop is not None:
-        wall = clock
-
-        def clock() -> float:  # a job waiting is "out of time" for the pass
-            return float("inf") if should_stop() else wall()
-
-    filled = linked = fetched = placed = 0
-    if api is not None:
-        filled = catch_up(conn, api, deadline, clock)
-        linked = link_minerals(conn, api, deadline, clock)
-        fetched = fetch_details(conn, api, deadline, clock)
-        placed = fetch_places(conn, api, deadline, clock)
-    from . import wikipedia  # here, not at the top: wikipedia.py imports this module's leash and errors
-
-    pages = wikipedia.fetch_pages(conn, wiki, deadline, clock) if wiki is not None else (0, 0)
-    return filled, linked, fetched, placed, pages
+    clock = stopping(clock, should_stop)
+    filled = catch_up(conn, api, deadline, clock)
+    linked = link_minerals(conn, api, deadline, clock)
+    fetched = fetch_details(conn, api, deadline, clock)
+    placed = fetch_places(conn, api, deadline, clock)
+    return filled, linked, fetched, placed

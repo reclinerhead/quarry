@@ -1,7 +1,8 @@
 """Wikipedia's lead for each name (#92): what a query's answer means, which titles
 are asked, the lead tidied, which terms a household asks for, a term asked once,
-and the pass's part in the idle tick. A fake API stands in for Wikipedia; the
-HTTP itself stays untested."""
+a section redirect kept by the term's kind (#119), and the pass's part in the
+idle tick: first, on its own failure clock, with the backoff. A fake API stands
+in for Wikipedia; the HTTP itself stays untested."""
 
 import logging
 from datetime import datetime, timezone
@@ -38,6 +39,8 @@ PAGES = {
     "Granite gneiss": article("Gneiss", GNEISS, redirect_from="Granite gneiss"),
     "Crazy lace agate": article("Agate", "Agate is a banded variety of chalcedony.", redirect_from="Crazy lace agate", fragment="Crazy lace agate"),
     "Fossil coral": article("Coral", "Corals are colonial marine invertebrates.", redirect_from="Fossil coral", fragment="Evolution"),
+    "Schorl": article("Tourmaline", "Tourmaline is a crystalline silicate mineral group in which boron is compounded with elements such as aluminium, iron, magnesium, sodium, lithium, or potassium.",
+                      redirect_from="Schorl", fragment="Schorl"),
     "Dolomite": article("Dolomite", "Dolomite may refer to:\n\nDolomite (mineral), a carbonate mineral\nDolomite (rock), also known as dolostone",
                         props={"disambiguation": ""}),
     "Dolomite (mineral)": article("Dolomite (mineral)", "Dolomite is an anhydrous carbonate mineral."),
@@ -120,9 +123,23 @@ def test_a_redirect_to_a_whole_article_is_kept_under_the_articles_title():
     assert wikipedia.parse_page(PAGES["Granite gneiss"]).title == "Gneiss"
 
 
-def test_a_redirect_to_a_section_of_another_article_is_no_article():
-    assert wikipedia.parse_page(PAGES["Fossil coral"]) == "missing"
-    assert wikipedia.parse_page(PAGES["Crazy lace agate"]) == "missing"  # the stone reads Agate through its next term
+def test_a_redirect_to_a_section_is_the_article_with_its_section_and_the_fragment_on_the_url():
+    page = wikipedia.parse_page(PAGES["Schorl"])
+    assert (page.title, page.section, page.url) == ("Tourmaline", "Schorl", "https://en.wikipedia.org/wiki/Tourmaline#Schorl")
+    page = wikipedia.parse_page(PAGES["Crazy lace agate"])
+    assert (page.title, page.section, page.url) == ("Agate", "Crazy lace agate", "https://en.wikipedia.org/wiki/Agate#Crazy_lace_agate")
+    assert wikipedia.parse_page(PAGES["Granite gneiss"]).section is None  # a whole article
+
+
+def test_a_section_of_another_article_is_kept_for_a_mineral_or_a_rock_and_no_article_otherwise():
+    # Schorl is filed under Tourmaline, its group: a mineral keeps the article (#119).
+    assert wikipedia.article(PAGES["Schorl"], "mineral").title == "Tourmaline"
+    assert wikipedia.article(PAGES["Crazy lace agate"], "rock").title == "Agate"
+    # Fossil coral lands on Coral#Evolution, the animal: an `other` reads nothing.
+    assert wikipedia.article(PAGES["Fossil coral"], "other") == "missing"
+    assert wikipedia.article(PAGES["Schorl"], "other") == "missing"
+    assert wikipedia.article(PAGES["Granite gneiss"], "other").title == "Gneiss"  # a whole article is kept for any kind
+    assert wikipedia.article(PAGES["Dolomite"], "mineral") == "disambiguation"
 
 
 def test_a_disambiguation_page_is_one_marked_or_one_whose_lead_says_may_refer_to():
@@ -185,19 +202,25 @@ def test_a_name_that_misses_on_its_casing_is_asked_sentence_cased_and_a_set_inde
 # --- which terms, asked once -----------------------------------------------------------
 
 
-def test_every_name_and_variety_is_wanted_once_folded_minus_those_asked(tmp_path):
+def test_every_name_and_variety_is_wanted_once_folded_with_its_kind_minus_those_asked(tmp_path):
     conn = _db(tmp_path)
     q = _mineral(conn, "Quartz")
-    _mineral(conn, "Gneiss", "rock")
+    g = _mineral(conn, "Gneiss", "rock")
+    _mineral(conn, "Fossil coral", "other")
     _stone(conn, q, "Agate, banded")
     _stone(conn, q, "amethyst")
     _stone(conn, q, "Agate, banded")
     _stone(conn, q, "Quartz")  # the mineral's own name as a variety adds nothing
-    assert wikipedia.wanted(conn) == ["Quartz", "Gneiss", "Agate, banded", "Agate", "amethyst"]
+    _stone(conn, g, "Granite Gneiss")  # a variety takes its mineral's kind
+    assert wikipedia.wanted(conn) == [
+        ("Quartz", "mineral"), ("Gneiss", "rock"), ("Fossil coral", "other"),
+        ("Agate, banded", "mineral"), ("Agate", "mineral"), ("amethyst", "mineral"), ("Granite Gneiss", "rock"),
+    ]
     conn.execute("INSERT INTO wikipedia_pages (term, title, url, summary) VALUES ('agate', 'Agate', 'u', 's')")
     conn.execute("INSERT INTO wikipedia_pages (term) VALUES ('gneiss')")
+    conn.execute("INSERT INTO wikipedia_pages (term) VALUES ('fossil coral')")
     conn.commit()
-    assert wikipedia.wanted(conn) == ["Quartz", "Agate, banded", "amethyst"]
+    assert wikipedia.wanted(conn) == [("Quartz", "mineral"), ("Agate, banded", "mineral"), ("amethyst", "mineral"), ("Granite Gneiss", "rock")]
 
 
 def test_a_page_is_fetched_once_and_a_name_with_no_article_is_asked_once(tmp_path):
@@ -215,6 +238,24 @@ def test_a_page_is_fetched_once_and_a_name_with_no_article_is_asked_once(tmp_pat
     assert conn.execute("SELECT summary FROM wikipedia_pages WHERE term = 'granite gneiss'").fetchone()[0].startswith("Gneiss is a common")
     assert conn.execute("SELECT fetched_at FROM wikipedia_pages WHERE term = 'fossil coral'").fetchone()[0]
     assert _fetch(conn, api) == (0, 0) and api.requests == 4  # nothing left to ask
+
+
+def test_a_mineral_filed_under_its_group_reads_the_groups_article_and_an_other_does_not(tmp_path):
+    conn, api = _db(tmp_path), FakeApi()
+    s = _mineral(conn, "Schorl")
+    _mineral(conn, "Fossil coral", "other")
+    _stone(conn, s, "Black Tourmaline")
+    assert _fetch(conn, api) == (3, 2)
+    assert _rows(conn) == {
+        "schorl": ("Tourmaline", "https://en.wikipedia.org/wiki/Tourmaline#Schorl"),
+        "fossil coral": (None, None),
+        "black tourmaline": (None, None),
+    }
+    assert conn.execute("SELECT summary FROM wikipedia_pages WHERE term = 'schorl'").fetchone()[0].startswith("Tourmaline is a crystalline")
+    # The kind decides, not the term: the same redirect under an `other` is no article.
+    conn, api = _db(tmp_path / "other"), FakeApi()
+    _mineral(conn, "Schorl", "other")
+    assert _fetch(conn, api) == (1, 1) and _rows(conn) == {"schorl": (None, None)}
 
 
 def test_a_failure_stores_nothing_and_stops_the_pass(tmp_path):
@@ -243,15 +284,94 @@ def test_running_out_of_time_stops_quietly_and_the_next_pass_goes_on(tmp_path):
 # --- the idle pass -------------------------------------------------------------------
 
 
-def test_the_idle_pass_asks_wikipedia_last_and_stops_for_a_job(tmp_path):
+def test_the_pass_stops_for_a_job_and_keeps_what_it_did(tmp_path):
     conn, clock = _db(tmp_path), Clock()
     wiki = FakeApi(clock=clock)
     _mineral(conn, "Gneiss", "rock")
     _mineral(conn, "Pyrite")
-    assert mindat.idle(conn, None, clock=clock, wiki=wiki, should_stop=lambda: wiki.requests >= 1) == (0, 0, 0, 0, (1, 0))
+    stop = mindat.stopping(clock, lambda: wiki.requests >= 1)
+    assert wikipedia.fetch_pages(conn, wiki, clock() + mindat.IDLE_BUDGET_S, stop) == (1, 0)
     assert set(_rows(conn)) == {"gneiss"}
-    assert mindat.idle(conn, None, clock=clock, wiki=wiki) == (0, 0, 0, 0, (1, 0))
+    assert wikipedia.fetch_pages(conn, wiki, clock() + mindat.IDLE_BUDGET_S, clock) == (1, 0)
     assert set(_rows(conn)) == {"gneiss", "pyrite"}
+
+
+class DownMindat:
+    """A Mindat that times out on every request, as orchid saw it on 2026-11-09."""
+
+    def __init__(self):
+        self.requests = 0
+
+    def search(self, term):
+        self.requests += 1
+        raise mindat.Unreachable("api.mindat.org unreachable (TimeoutError: The read operation timed out)")
+
+
+def test_the_worker_asks_wikipedia_first_and_a_mindat_failure_holds_only_mindat(tmp_path, caplog):
+    conn = _db(tmp_path)
+    _mineral(conn, "Gneiss", "rock")
+    _mineral(conn, "Pyrite")
+    down, hosts = DownMindat(), worker.Hosts.at(NOW)
+    with caplog.at_level(logging.INFO, logger="jasper"):
+        assert worker.catch_up(conn, down, NOW, FakeApi(), hosts) == NOW + worker.CATCH_UP_EVERY
+    assert [r.getMessage() for r in caplog.records] == [
+        "wikipedia fetched 2 page(s), 0 with no article",
+        "catch-up stopped: api.mindat.org unreachable (TimeoutError: The read operation timed out); next try in 1 minute",
+    ]
+    assert set(_rows(conn)) == {"gneiss", "pyrite"} and down.requests == 1
+    assert hosts.wikipedia.next_at == NOW + worker.CATCH_UP_EVERY and hosts.mindat.next_at == NOW + worker.CATCH_UP_AFTER_FAILURE
+    # A minute on: Wikipedia is due and Mindat is too; Mindat fails again and waits two.
+    later = NOW + worker.CATCH_UP_EVERY
+    _mineral(conn, "Agate")
+    assert worker.catch_up(conn, down, later, FakeApi(), hosts) == later + worker.CATCH_UP_EVERY
+    assert set(_rows(conn)) == {"gneiss", "pyrite", "agate"} and down.requests == 2
+    assert hosts.mindat.next_at == later + 2 * worker.CATCH_UP_AFTER_FAILURE and hosts.mindat.failures == 2
+    # Another minute on: only Wikipedia is due, and Mindat is not asked.
+    assert worker.catch_up(conn, down, later + worker.CATCH_UP_EVERY, FakeApi(), hosts) == later + 2 * worker.CATCH_UP_AFTER_FAILURE
+    assert down.requests == 2
+
+
+def test_a_wikipedia_failure_holds_only_wikipedia(tmp_path, caplog):
+    conn = _db(tmp_path)
+    _mineral(conn, "Gneiss", "rock")
+    hosts = worker.Hosts.at(NOW)
+    calls = []
+
+    class Mindat:  # a Mindat with nothing to do, that records being asked
+        def __init__(self):
+            self.limits = mindat.IDLE
+
+        def search(self, term):
+            calls.append(term)
+            return []
+
+    with caplog.at_level(logging.WARNING, logger="jasper"):
+        assert worker.catch_up(conn, Mindat(), NOW, FakeApi(fail=True), hosts) == NOW + worker.CATCH_UP_EVERY
+    assert caplog.records[-1].getMessage() == "catch-up stopped: en.wikipedia.org answered 503; next try in 1 minute"
+    assert calls == ["Gneiss"]  # Mindat's pass ran after Wikipedia's failed
+    assert hosts.wikipedia.next_at == NOW + worker.CATCH_UP_AFTER_FAILURE and hosts.mindat.next_at == NOW + worker.CATCH_UP_EVERY
+
+
+def test_a_host_backs_off_a_minute_then_two_four_eight_ten_and_a_completed_pass_resets_it():
+    assert [worker.after_failure(n).total_seconds() / 60 for n in range(1, 8)] == [1, 2, 4, 8, 10, 10, 10]
+    host = worker.Host(NOW)
+    waits = [host.failed(NOW).total_seconds() / 60 for _ in range(6)]
+    assert waits == [1, 2, 4, 8, 10, 10] and host.next_at == NOW + worker.CATCH_UP_FAILURE_CAP
+    host.done(NOW)
+    assert host.failures == 0 and host.next_at == NOW + worker.CATCH_UP_EVERY
+    assert host.failed(NOW).total_seconds() / 60 == 1
+
+
+def test_stopping_for_a_job_is_not_a_failure_and_resets_the_backoff(tmp_path):
+    conn = _db(tmp_path)
+    _mineral(conn, "Gneiss", "rock")
+    hosts = worker.Hosts.at(NOW)
+    hosts.wikipedia.failures = 3
+    conn.execute("INSERT INTO jobs (status) VALUES ('queued')")  # a job waits: the pass ends at its first request
+    conn.commit()
+    api = FakeApi()
+    assert worker.catch_up(conn, None, NOW, api, hosts) == NOW + worker.CATCH_UP_EVERY
+    assert api.requests == 0 and _rows(conn) == {} and hosts.wikipedia.failures == 0
 
 
 def test_the_worker_logs_the_pages_and_runs_without_a_mindat_key(tmp_path, caplog):
@@ -268,7 +388,7 @@ def test_the_worker_logs_the_pages_and_runs_without_a_mindat_key(tmp_path, caplo
     _mineral(conn, "Pyrite")
     with caplog.at_level(logging.WARNING, logger="jasper"):
         assert worker.catch_up(conn, None, NOW, FakeApi(fail=True)) == NOW + worker.CATCH_UP_AFTER_FAILURE
-    assert caplog.records[-1].getMessage().startswith("catch-up stopped: en.wikipedia.org answered 503")
+    assert caplog.records[-1].getMessage() == "catch-up stopped: en.wikipedia.org answered 503; next try in 1 minute"
 
 
 def test_the_query_asks_for_the_lead_the_url_and_the_disambiguation_mark():
