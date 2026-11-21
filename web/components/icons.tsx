@@ -13,6 +13,17 @@ export function GemMark({ className = "" }: IconProps) {
   );
 }
 
+/** The way back to the station's launcher, in the top bar's Home pill (#128). */
+export function HomeIcon({ className = "" }: IconProps) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5.5 10v9.5h13V10" />
+      <path d="M10 19.5v-5h4v5" />
+    </svg>
+  );
+}
+
 /** A crystal point, drawn on tiles for stones with no photo yet. */
 export function CrystalIcon({ className = "" }: IconProps) {
   return (
