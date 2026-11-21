@@ -1,52 +1,73 @@
 import { describe, expect, it } from "vitest";
-import { pickCover, weekKey } from "./cover";
+import { pickCover, weekIndex } from "./cover";
 
 // Dates are built from local parts, so the suite passes in any time zone.
 
-describe("weekKey", () => {
-  it("names the ISO week of a local date", () => {
-    expect(weekKey(new Date(2026, 10, 21))).toBe("2026-W47");
-  });
-
+describe("weekIndex", () => {
   it("turns over between a Sunday and the Monday after it", () => {
-    expect(weekKey(new Date(2026, 10, 22))).toBe("2026-W47");
-    expect(weekKey(new Date(2026, 10, 23))).toBe("2026-W48");
+    expect(weekIndex(new Date(2026, 10, 23))).toBe(weekIndex(new Date(2026, 10, 22)) + 1);
   });
 
   it("holds from the first minute of Monday to the last of Sunday", () => {
-    expect(weekKey(new Date(2026, 10, 16, 0, 0, 0))).toBe("2026-W47");
-    expect(weekKey(new Date(2026, 10, 22, 23, 59, 59))).toBe("2026-W47");
+    const week = weekIndex(new Date(2026, 10, 16, 0, 0, 0));
+    for (let d = 0; d < 7; d++) expect(weekIndex(new Date(2026, 10, 16 + d, 12))).toBe(week);
+    expect(weekIndex(new Date(2026, 10, 22, 23, 59, 59))).toBe(week);
   });
 
-  it("gives the days around New Year their ISO week-year", () => {
-    expect(weekKey(new Date(2026, 11, 28))).toBe("2026-W53");
-    expect(weekKey(new Date(2027, 0, 1))).toBe("2026-W53");
-    expect(weekKey(new Date(2027, 0, 3))).toBe("2026-W53");
-    expect(weekKey(new Date(2027, 0, 4))).toBe("2027-W01");
-    expect(weekKey(new Date(2024, 11, 30))).toBe("2025-W01");
+  it("keeps counting across New Year and a daylight-saving change", () => {
+    expect(weekIndex(new Date(2027, 0, 4))).toBe(weekIndex(new Date(2026, 11, 28)) + 1);
+    expect(weekIndex(new Date(2027, 0, 1))).toBe(weekIndex(new Date(2026, 11, 28)));
+    expect(weekIndex(new Date(2026, 2, 9))).toBe(weekIndex(new Date(2026, 2, 2)) + 1);
   });
 });
 
 describe("pickCover", () => {
-  const stones = [3, 7, 12, 19, 24, 31].map((id) => ({ id }));
+  const all = [3, 7, 12, 19, 24, 31, 40].map((id) => ({ id }));
   const monday = new Date(2026, 10, 16);
+  const mondayOf = (week: number) => new Date(2026, 0, 5 + 7 * week);
 
   it("has nothing to pick from an empty list", () => {
     expect(pickCover([], monday)).toBeNull();
   });
 
   it("picks the only candidate", () => {
-    expect(pickCover([stones[0]], monday)).toBe(stones[0]);
+    expect(pickCover([all[0]], monday)).toBe(all[0]);
   });
 
   it("does not depend on the order the candidates arrive in", () => {
-    const pick = pickCover(stones, monday);
-    expect(pickCover([...stones].reverse(), monday)).toBe(pick);
-    expect(pickCover([...stones.slice(3), ...stones.slice(0, 3)], monday)).toBe(pick);
+    for (const size of [2, 3, 6]) {
+      const some = all.slice(0, size);
+      for (let w = 0; w < 12; w++) {
+        const pick = pickCover(some, mondayOf(w));
+        expect(pickCover([...some].reverse(), mondayOf(w))).toBe(pick);
+        expect(pickCover([...some.slice(1), some[0]], mondayOf(w))).toBe(pick);
+      }
+    }
   });
 
   it("holds one pick from Monday to Sunday", () => {
-    const pick = pickCover(stones, monday);
-    for (let d = 0; d < 7; d++) expect(pickCover(stones, new Date(2026, 10, 16 + d, 13, 30))).toBe(pick);
+    const pick = pickCover(all, monday);
+    for (let d = 0; d < 7; d++) expect(pickCover(all, new Date(2026, 10, 16 + d, 13, 30))).toBe(pick);
+  });
+
+  it("never shows the same one two weeks running, whatever the size", () => {
+    for (let size = 2; size <= all.length; size++) {
+      const some = all.slice(0, size);
+      for (let w = 0; w < 160; w++) expect(pickCover(some, mondayOf(w + 1))).not.toBe(pickCover(some, mondayOf(w)));
+    }
+  });
+
+  it("gives every candidate a turn in each round", () => {
+    for (const size of [2, 3, 5, all.length]) {
+      const some = all.slice(0, size);
+      // Rounds start where the week number divides evenly by the size.
+      let start = 0;
+      while (weekIndex(mondayOf(start)) % size !== 0) start++;
+      for (let round = 0; round < 6; round++) {
+        const shown = new Set<unknown>();
+        for (let t = 0; t < size; t++) shown.add(pickCover(some, mondayOf(start + round * size + t)));
+        expect(shown.size).toBe(size);
+      }
+    }
   });
 });
