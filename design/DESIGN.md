@@ -331,6 +331,16 @@ the wordmark with Add, then the nav with the search under it. On a phone the
 three nav pills are 16 px with 10 px sides, bleeding into the gutter so their
 text sits on the page's edge, and stay on one line down to 360 px.
 
+On a station, where the Quarry shares its origin with a launcher at `/`, the
+bar starts with **Home**: a soft pill, 48 px, a house line icon and the word
+"Home", at the left of the wordmark row. It is the way back to the launcher.
+Two things give it room. The one-row bar starts at `2xl` there instead of
+`lg`, so from `lg` to `2xl` a station keeps the two-row bar. And on a phone
+the pill is the icon alone (the word stays for screen readers) and the gem
+mark is not drawn, so Home, the wordmark and Add share the first row at
+360 px and the bar is no taller than without it. Anywhere else there is no
+Home pill and nothing changes.
+
 **Dashboard**, top to bottom:
 1. Date, then a greeting that says what changed ("Good evening. Two new stones
    today."), and one line on what the new stones added (a Mohs slot, new

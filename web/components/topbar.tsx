@@ -4,7 +4,7 @@ import { BASE_PATH } from "@/lib/base-path";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { CameraIcon, GemMark } from "@/components/icons";
+import { CameraIcon, GemMark, HomeIcon } from "@/components/icons";
 
 // The top bar from design/DESIGN.md §5: gem mark and wordmark, nav pills, the
 // search, the primary "Add a rock", then the strata band. Only pages that
@@ -18,20 +18,48 @@ import { CameraIcon, GemMark } from "@/components/icons";
 // their text lines up with the page's edge and all three stay on one line
 // down to a 360 px phone; the rows sit closer too. The bar is 213 px there,
 // not 277 (#116).
+//
+// On a station (BASE_PATH set) the bar starts with Home (#128), the way back
+// to the launcher at the origin's root. Home needs room the one-row bar does
+// not have until 2xl, so there the two-row layout holds up to 2xl instead of
+// lg; and on a phone the gem mark steps aside for it, so the wordmark and Add
+// still share the first row at 360 px. Without a base path nothing changes.
+const ONE_ROW = BASE_PATH
+  ? {
+      group: "2xl:order-2 2xl:flex-1 2xl:basis-auto 2xl:flex-nowrap 2xl:gap-7",
+      add: "2xl:order-3 2xl:ml-0",
+      search: "2xl:ml-auto 2xl:w-[340px] 2xl:flex-none 2xl:basis-auto",
+    }
+  : {
+      group: "lg:order-2 lg:flex-1 lg:basis-auto lg:flex-nowrap lg:gap-7",
+      add: "lg:order-3 lg:ml-0",
+      search: "lg:ml-auto lg:w-[300px] lg:flex-none lg:basis-auto xl:w-[340px]",
+    };
+
 export function TopBar() {
   const pathname = usePathname();
   return (
     <header>
       <div className="border-b border-line bg-surface">
         <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-3 gap-y-2.5 px-4 py-3 sm:gap-x-7 sm:gap-y-3 sm:px-10 sm:py-[18px]">
+          {/* Home (#128), on a station only: back to the launcher at the
+              origin's root, which is not this app's. A plain <a>, since <Link>
+              would prefix the base path and land on the collection. */}
+          {BASE_PATH && (
+            // eslint-disable-next-line @next/next/no-html-link-for-pages
+            <a href="/" className="btn btn-soft order-1 px-3.5 sm:px-5">
+              <HomeIcon className="size-[22px]" />
+              <span className="max-sm:sr-only">Home</span>
+            </a>
+          )}
           <Link href="/" className="order-1 flex items-center gap-2.5 text-ink hover:text-ink">
-            <GemMark className="size-8 text-azurite sm:size-9" />
+            <GemMark className={`size-8 text-azurite sm:size-9 ${BASE_PATH ? "max-sm:hidden" : ""}`} />
             <span className="font-display text-[26px] font-bold tracking-[-0.01em] sm:text-[30px]">The Quarry</span>
           </Link>
 
           {/* Nav and search share a row of their own until lg, so the search
               never squeezes between the wordmark and Add. */}
-          <div className="order-3 flex min-w-0 basis-full flex-wrap items-center gap-3 lg:order-2 lg:flex-1 lg:basis-auto lg:flex-nowrap lg:gap-7">
+          <div className={`order-3 flex min-w-0 basis-full flex-wrap items-center gap-3 ${ONE_ROW.group}`}>
             <nav aria-label="Main" className="-mx-2.5 flex flex-wrap gap-0.5 sm:mx-0 sm:gap-1.5">
               <Link href="/" aria-current={pathname === "/" ? "page" : undefined} className="nav-pill px-2.5 text-meta sm:px-5 sm:text-body">
                 Collection
@@ -51,7 +79,7 @@ export function TopBar() {
             </Suspense>
           </div>
 
-          <Link href="/add" className="btn btn-primary btn-lg order-2 ml-auto px-5 sm:px-6 lg:order-3 lg:ml-0">
+          <Link href="/add" className={`btn btn-primary btn-lg order-2 ml-auto px-5 sm:px-6 ${ONE_ROW.add}`}>
             <CameraIcon className="size-[22px]" />
             <span>
               Add<span className="max-sm:sr-only"> a rock</span>
@@ -115,7 +143,7 @@ function SearchForm({ value, onChange, onSubmit }: { value: string; onChange?: (
         e.preventDefault();
         onSubmit?.();
       }}
-      className="flex min-w-0 flex-1 basis-[220px] sm:max-w-[400px] lg:ml-auto lg:w-[300px] lg:flex-none lg:basis-auto xl:w-[340px]"
+      className={`flex min-w-0 flex-1 basis-[220px] sm:max-w-[400px] ${ONE_ROW.search}`}
     >
       <label className="field flex w-full items-center gap-2.5 px-4 sm:px-[18px]">
         <svg aria-hidden width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-none text-ink-2">

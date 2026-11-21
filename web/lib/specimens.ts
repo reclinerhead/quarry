@@ -192,6 +192,21 @@ export function collectionTiles(db: DatabaseSync): Tile[] {
   }));
 }
 
+/**
+ * Each stone's full-size photo, by stone id: the photo it is known by
+ * (MAIN_PHOTO_FIRST), where collectionTiles carries only its thumbnail. For
+ * the launcher's cover (#128). A stone with no photo has no entry.
+ */
+export function mainPhotoUrls(db: DatabaseSync): Map<number, string> {
+  const rows = db
+    .prepare(
+      `SELECT sp.id, (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${MAIN_PHOTO_FIRST} LIMIT 1) AS path
+         FROM specimens sp`,
+    )
+    .all() as Array<{ id: number; path: string | null }>;
+  return new Map(rows.flatMap((r) => (r.path ? [[r.id, `${BASE_PATH}/media/${r.path}`] as const] : [])));
+}
+
 export type StoneView = {
   id: number;
   name: string;
