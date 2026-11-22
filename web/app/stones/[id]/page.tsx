@@ -4,6 +4,7 @@ import { AreaList } from "@/components/area-list";
 import { Formula } from "@/components/formula";
 import { CaseSelect } from "@/components/case-select";
 import { Gallery } from "@/components/gallery";
+import { LoreBand } from "@/components/lore-band";
 import { CheckIcon } from "@/components/icons";
 import { RemoveStone, StoneEditor } from "@/components/stone-editor";
 import { Term } from "@/components/term";
@@ -23,7 +24,7 @@ import { HOME_STATE } from "@/lib/places";
 import { readStone, type StoneView } from "@/lib/specimens";
 
 // /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 2
-// has data: the breadcrumb, the title block (with Mindat's tags, #23), the photo gallery, then two columns. Main: "This specimen" (the
+// has data: the breadcrumb, the title block (with Mindat's tags, #23), the photo gallery, the "Once believed" band when the mineral has old lore (#133), then two columns. Main: "This specimen" (the
 // editable specimen label), "Kitchen-table tests", "About [mineral]" (#92), "Did you know?" (#126), "Mineral properties" and
 // "Where it's found" (#65).
 // Side: "How it was named", "At the show" (#81), "What it's made of", "On your
@@ -118,6 +119,9 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
       </header>
 
       <Gallery id={stone.id} photos={stone.photos} name={name} />
+
+      {/* "Once believed" (#133): the old lore about the mineral, only when the books have any; without it the page is as it was. */}
+      {stone.lore ? <LoreBand band={stone.lore} name={stone.loreName} /> : null}
 
       <div className="flex flex-wrap items-start gap-8">
         <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-7">

@@ -166,3 +166,61 @@ export function factCredit(source: FactSource): string {
 export function moreAbout(name: string): string {
   return `More about ${name.toLowerCase()}`;
 }
+
+// --- "Once believed" (#133): the band of old lore on a stone's page ------------------
+
+/** The band as the page draws it: the lead, up to three more beside it, and every belief for the expanded list. */
+export type LoreBand = { lead: Fact; more: Fact[]; all: Fact[]; credits: string[]; ancient: boolean };
+
+/**
+ * The band for one article's lore, in the pool's order (the oldest book
+ * first), or null when it has none. The lead is today's scheduled lore fact
+ * for this stone when there is one (`todaysId`), so the band changes with the
+ * dashboard's strip, else the first; `more` is the next three in order;
+ * `credits` names each source once, for the meta line; `ancient` says whether
+ * any is from antiquity, which sets the intro line's span.
+ */
+export function loreBand(lore: readonly Fact[], todaysId?: string | null): LoreBand | null {
+  const all = lore.filter((f, i) => f.kind === "lore" && lore.findIndex((o) => o.id === f.id) === i);
+  if (all.length === 0) return null;
+  const lead = all.find((f) => f.id === todaysId) ?? all[0];
+  return {
+    lead,
+    more: all.filter((f) => f !== lead).slice(0, 3),
+    all,
+    credits: [...new Set(all.map((f) => factCredit(f.source)))],
+    ancient: all.some((f) => /\b(AD|BC|BCE|CE)\b/.test(f.source.year ?? "")),
+  };
+}
+
+/** "Pliny the Elder and G. F. Kunz"; three or more take commas. */
+export function listOf(names: readonly string[]): string {
+  return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+/** The meta line beside the band's title: "Old lore about agate · from Pliny the Elder and G. F. Kunz". */
+export function loreMeta(name: string, credits: readonly string[]): string {
+  return `Old lore about ${name.toLowerCase()} · from ${listOf(credits)}`;
+}
+
+/** The band's one line of framing: lore is never shown as fact, and this is where the page says so. */
+export function loreIntro(name: string, ancient: boolean): string {
+  const stone = name.toLowerCase();
+  return `For ${ancient ? "two thousand years" : "hundreds of years"} people wrote down what ${/^[aeiou]/.test(stone) ? "an" : "a"} ${stone} could do for the one who carried it. None of it holds up. All of it is worth telling.`;
+}
+
+/** A fact's source under a side headline: "Pliny the Elder, about AD 77". */
+export function shortSource(source: FactSource): string {
+  return [factCredit(source), source.year].filter(Boolean).join(", ");
+}
+
+/** A source's work as its title and what follows it, so the page can set the title in italics: ["Natural History", ", Book 37"]. */
+export function workParts(work: string): [title: string, rest: string] {
+  const at = work.indexOf(", ");
+  return at < 0 ? [work, ""] : [work.slice(0, at), work.slice(at)];
+}
+
+/** The band's button, collapsed: "All 7 old beliefs, with their sources". */
+export function allBeliefs(n: number): string {
+  return `All ${n} old beliefs, with their sources`;
+}

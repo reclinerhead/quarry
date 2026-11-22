@@ -10,12 +10,12 @@ import { shortDay, type Acquired, type Tile } from "./collection";
 import { elementsCard, elementsOf, type ElementsCard, type PieceMineral, type StoneMinerals } from "./elements";
 import { cleanAnswers, type Answers } from "./household-tests";
 import { aboutCard, aboutTerms, type AboutCard, type AboutRow } from "./about";
-import { aboutNames, factCredit, factOfTheDay, factTitles, localDayNumber, parseFacts, type Fact, type FactKind, type FactsOf } from "./facts";
+import { aboutNames, aboutPick, factCredit, factOfTheDay, factTitles, localDayNumber, loreBand, parseFacts, type Fact, type FactKind, type FactsOf, type LoreBand } from "./facts";
 import { fold, formulaSegments, mineralClassOf, propertyCard, type ChainRecord, type PropertyCard } from "./mindat";
 import { mohsCard, type MohsCard } from "./mohs";
 import { chainOf, MAX_DEPTH } from "./names";
 import { thumbPathFor } from "./photos";
-import { isForm, isMatrix, MATRIX, type Form, type PartRole, type StoneKind } from "./pills";
+import { isForm, isMatrix, MATRIX, stoneName, type Form, type PartRole, type StoneKind } from "./pills";
 import { foundCard, parsePlaces, type FoundCard } from "./places";
 
 /**
@@ -233,6 +233,10 @@ export type StoneView = {
   about: AboutCard; // "About [mineral]" (#92): Wikipedia's lead for the variety's name, else the mineral's
   /** "Did you know?" (#126): the facts Jasper wrote from the article the About card shows; none until he has, or when it holds none. */
   facts: Fact[];
+  /** "Once believed" (#133): the old lore about that article's mineral, from the books; null when it has none. */
+  lore: LoreBand | null;
+  /** The household's name for the mineral the facts and the lore are about: "Schorl" over Tourmaline's. */
+  loreName: string;
   properties: PropertyCard; // the Mineral properties card, from the mineral's Mindat record (#23)
   whereFound: FoundCard; // "Where it's found", from Mindat's counts on the variety's record or the mineral's (#65)
   elements: ElementsCard; // "What it's made of" (#42)
@@ -310,12 +314,8 @@ function readWhereFound(db: DatabaseSync, name: string, mindatId: number | null,
  * (`wikipedia.wanted`), looked up in `wikipedia_pages` for `aboutCard`. A term
  * not there yet is one Jasper hasn't asked; a row with no title is a name
  * Wikipedia has no article for. Before Jasper has run step 10 the table doesn't
- * exist, and every term reads as not asked.
+ * exist, and every term reads as not asked. `aboutRows` reads them.
  */
-function readAbout(db: DatabaseSync, name: string, variety: string | null): AboutCard {
-  return aboutCard(aboutRows(db, aboutTerms(name, variety)));
-}
-
 function hasTable(db: DatabaseSync, name: string): boolean {
   return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) !== undefined;
 }
@@ -341,7 +341,11 @@ function aboutRows(db: DatabaseSync, terms: string[]): AboutRow[] {
 function readFacts(db: DatabaseSync, titles: string[]): FactsOf[] {
   if (titles.length === 0 || !hasTable(db, "fun_facts")) return [];
   const rows = db
-    .prepare("SELECT title, kind, facts FROM fun_facts WHERE title IN (SELECT value FROM json_each(?)) ORDER BY title, source")
+    // Wikipedia's first, then the books oldest first, which is the order the band and its credits read in.
+    .prepare(
+      `SELECT title, kind, facts FROM fun_facts WHERE title IN (SELECT value FROM json_each(?))
+        ORDER BY title, CASE source WHEN 'wikipedia' THEN 0 WHEN 'pliny' THEN 1 WHEN 'kunz' THEN 2 ELSE 3 END, source`,
+    )
     .all(JSON.stringify(titles)) as Array<{ title: string; kind: FactKind; facts: string }>;
   return titles.map((title) => ({ title, facts: rows.filter((r) => r.title === title).flatMap((r) => parseFacts(r.facts, r.kind)) }));
 }
@@ -388,7 +392,7 @@ function parseDetail(json: string | null): Record<string, unknown> | null {
   }
 }
 
-export function readStone(db: DatabaseSync, id: number): StoneView | null {
+export function readStone(db: DatabaseSync, id: number, now: Date = new Date()): StoneView | null {
   const s = db
     .prepare(
       `SELECT sp.id, sp.mineral_id, m.name, m.kind, m.mindat_id, sp.variety, mo.name AS made_of, sp.form, sp.found_at, sp.acquired, sp.acquired_on,
@@ -427,7 +431,14 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     .prepare("SELECT location FROM specimens WHERE location IS NOT NULL GROUP BY lower(location) ORDER BY COUNT(*) DESC, location")
     .all() as Array<{ location: string }>;
   const properties = readProperties(db, s.name, s.mindat_id);
-  const about = readAbout(db, s.name, s.variety);
+  const aboutRowsOf = aboutRows(db, aboutTerms(s.name, s.variety));
+  const about = aboutCard(aboutRowsOf);
+  // What Jasper wrote about the article the About card shows: Wikipedia's facts for the card, the books' lore for the band.
+  const written = about.state === "page" ? (readFacts(db, [about.title])[0]?.facts ?? []) : [];
+  const lore = written.filter((f) => f.kind === "lore");
+  // The band leads with the belief the dashboard's schedule has for this stone today, if any (the household's salt, `lib/facts.ts`).
+  const salt = lore.length ? (db.prepare("SELECT MIN(created_at) AS at FROM specimens").get() as { at: string }).at : "";
+  const todays = about.state === "page" && lore.length ? factOfTheDay([{ title: about.title, facts: lore }], new Set([about.title]), salt, localDayNumber(now)) : null;
   // Every stone with every mineral on it, for what this one was the first to bring (#42, #48)
   // and, by the main mineral alone, which Mohs slot each fills.
   const pieces = collectionElements(db);
@@ -461,7 +472,9 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     morePhotosNamed: Math.max(0, confirmations.length - 1),
     places: places.map((p) => p.location),
     about,
-    facts: about.state === "page" ? (readFacts(db, [about.title])[0]?.facts ?? []).filter((f) => f.kind === "fact") : [],
+    facts: written.filter((f) => f.kind === "fact"),
+    lore: loreBand(lore, todays?.fact.id),
+    loreName: aboutPick({ names: aboutNames(s.name, s.variety), rows: aboutRowsOf })?.name ?? stoneName(s.name),
     properties,
     whereFound: readWhereFound(db, s.name, s.mindat_id, s.variety),
     elements: elementsCard(s.id, pieces),

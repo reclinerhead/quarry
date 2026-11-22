@@ -24,12 +24,22 @@ the same table. An article that yields nothing is stored as `[]`, so it is
 asked once; Wikipedia or the gateway failing stores nothing, and the title is
 tried again. Deleting a row asks again on the next idle pass.
 
+THE OLD LORE (#131) comes from two public-domain books that live in the repo
+(jasper/sources/, from Project Gutenberg, which Jasper never calls): Pliny the
+Elder's Natural History, Book 37, and G. F. Kunz's The Curious Lore of
+Precious Stones. `passages_for` finds the paragraphs that name a mineral,
+Kunz's by its modern names and Pliny's through a hand-kept table of his
+(prompts/pliny_names.json), and the same writer and validator turn them into
+rows of kind "lore", each fact written as a belief. A mineral a book never
+names costs no model call.
+
 Everything that decides something is pure and tested (test_jasper_fun_facts.py);
 the two calls, Wikipedia's and the gateway's, are parameters.
 """
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -47,8 +57,12 @@ from .mindat import Clock, OutOfTime, Unreachable, _in_time
 log = logging.getLogger("jasper")
 
 PROMPT_PATH = Path(__file__).with_name("prompts") / "fun_facts.md"
+LORE_PROMPT_PATH = Path(__file__).with_name("prompts") / "lore.md"
+PLINY_NAMES_PATH = Path(__file__).with_name("prompts") / "pliny_names.json"
+SOURCES_DIR = Path(__file__).with_name("sources")
 SOURCE = "wikipedia"
 KIND = "fact"
+LORE = "lore"
 # The strip's headline on a phone: a fact past this wraps to a paragraph.
 MAX_FACT_CHARS = 140
 MAX_FACTS = 5
@@ -106,13 +120,17 @@ class Writer:
     prompt_version: int
     system: str = field(repr=False)
     ask: AskFn = field(default=llm.ask, repr=False)
+    lore_version: int = 0
+    lore_system: str = field(default="", repr=False)  # the lore prompt; without one no lore is written
 
 
-def writer(cfg: identify.Settings, prompt_path: Path = PROMPT_PATH) -> Writer:
-    """The writer from Jasper's settings: the identifier (`QUARRY_IDENTIFIER`) and the gateway key."""
+def writer(cfg: identify.Settings, prompt_path: Path = PROMPT_PATH, lore_path: Path = LORE_PROMPT_PATH) -> Writer:
+    """The writer from Jasper's settings: the identifier (`QUARRY_IDENTIFIER`), the gateway key and the two prompts."""
     version, system = identify.load_prompt(prompt_path)
+    lore_version, lore_system = identify.load_prompt(lore_path)
     ident = cfg.roles[0]
-    return Writer(key=cfg.key, model=ident.model, effort=ident.effort, prompt_version=version, system=system)
+    return Writer(key=cfg.key, model=ident.model, effort=ident.effort, prompt_version=version, system=system,
+                  lore_version=lore_version, lore_system=lore_system)
 
 
 # ----------------------------------------------------------------------------
@@ -298,14 +316,34 @@ def source_display(url: str) -> dict:
 # ----------------------------------------------------------------------------
 
 
-def wanted(conn: sqlite3.Connection) -> list[str]:
-    """The article titles with no Wikipedia row in `fun_facts` yet, in the order their pages were fetched."""
+def wanted(conn: sqlite3.Connection, source: str = SOURCE) -> list[str]:
+    """The article titles with no row from this source in `fun_facts` yet, in the order their pages were fetched."""
     return [r[0] for r in conn.execute(
         "SELECT title FROM wikipedia_pages WHERE title IS NOT NULL"
         "   AND title NOT IN (SELECT title FROM fun_facts WHERE source = ?)"
         " GROUP BY title ORDER BY MIN(fetched_at), title",
-        (SOURCE,),
+        (source,),
     )]
+
+
+def _written(who: Writer, system: str, prompt: str, text: str, name: str, source: dict, label: str) -> list[dict]:
+    """Ask for one text's facts and check them against it: [] when the answer holds none
+    or isn't what was asked for. Raises Unreachable when the gateway gave no answer."""
+    resp = who.ask(who.key, llm.payload(who.model, who.effort, system, SCHEMA, [], prompt))
+    if resp.status != 200:
+        raise Unreachable(llm.status_line(resp.status, resp.body))
+    try:
+        pairs = parse_reply(llm.reply_text(resp.body))
+    except llm.LlmError as e:
+        log.warning("%s: %s; recorded with none", label, e)
+        return []
+    if pairs is None:
+        log.warning("%s: the answer wasn't the JSON asked for; recorded with none", label)
+        return []
+    kept, rejected = select_facts(pairs, text, name, source)
+    for fact, reasons in rejected:
+        log.info("%s: dropped %r (%s)", label, fact, "; ".join(reasons))
+    return kept
 
 
 def facts_for(title: str, api: wikipedia.Api, who: Writer) -> list[dict]:
@@ -317,21 +355,7 @@ def facts_for(title: str, api: wikipedia.Api, who: Writer) -> list[dict]:
         return []
     name, url, text = found
     article = trim_article(text)
-    resp = who.ask(who.key, llm.payload(who.model, who.effort, who.system, SCHEMA, [], build_prompt(name, article)))
-    if resp.status != 200:
-        raise Unreachable(llm.status_line(resp.status, resp.body))
-    try:
-        pairs = parse_reply(llm.reply_text(resp.body))
-    except llm.LlmError as e:
-        log.warning("fun facts: %s: %s; recorded with none", title, e)
-        return []
-    if pairs is None:
-        log.warning("fun facts: %s: the answer wasn't the JSON asked for; recorded with none", title)
-        return []
-    kept, rejected = select_facts(pairs, article, name, source_display(url))
-    for fact, reasons in rejected:
-        log.info("fun facts: %s: dropped %r (%s)", title, fact, "; ".join(reasons))
-    return kept
+    return _written(who, who.system, build_prompt(name, article), article, name, source_display(url), f"fun facts: {title}")
 
 
 def write_facts(conn: sqlite3.Connection, api: wikipedia.Api, who: Writer, deadline: float,
@@ -354,3 +378,218 @@ def write_facts(conn: sqlite3.Connection, api: wikipedia.Api, who: Writer, deadl
     except OutOfTime:
         pass
     return written, empty
+
+
+# ----------------------------------------------------------------------------
+# The old lore (#131): two books in the repo, and the passages that name a mineral
+# ----------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Book:
+    """One public-domain text under jasper/sources/, and how its facts are credited."""
+
+    source: str  # the fun_facts.source its rows carry
+    path: Path
+    author: str
+    work: str
+    year: str
+    url: str  # the book on Project Gutenberg, for "Read it"; never fetched
+    start: str  # a regex: the body starts at its last match (the contents may print it first)
+    end: str  # a regex: the body ends at its first match after the start, before the index and notes
+    by_alias: bool = False  # Pliny: the names are his, from the alias table, and an entry runs on past the paragraph that names it
+
+    @property
+    def display(self) -> dict:
+        return {"author": self.author, "work": self.work, "year": self.year, "url": self.url}
+
+
+PLINY = Book(
+    source="pliny", path=SOURCES_DIR / "pliny-37.txt", author="Pliny the Elder", work="Natural History, Book 37", year="about AD 77",
+    url="https://www.gutenberg.org/ebooks/62704", start=r"^BOOK XXXVII\.$", end=r"^SUMMARY\.—", by_alias=True,
+)
+KUNZ = Book(
+    source="kunz", path=SOURCES_DIR / "kunz-curious-lore.txt", author="G. F. Kunz", work="The Curious Lore of Precious Stones", year="1913",
+    url="https://www.gutenberg.org/ebooks/57978", start=r"^I\n\nSuperstitions and Their Sources", end=r"^\s*INDEX\s*$",
+)
+BOOKS = (PLINY, KUNZ)
+
+# Kunz writes in modern names, but not always the article's: his rock-crystal is Quartz.
+KUNZ_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "Quartz": ("rock-crystal",),
+    "Heliotrope (bloodstone)": ("bloodstone",),
+    "Magnetite": ("loadstone", "lodestone"),
+}
+# A heading or a caption, not prose a fact can rest on.
+MIN_PARAGRAPH_CHARS = 60
+# How far one of Pliny's entries may run past the paragraph that names the stone.
+ENTRY_MORE = 4
+
+# An entry in Pliny opens with the stone's name: "Achates was a stone formerly in high esteem".
+OPENING_CHARS = 40
+_HEADING = re.compile(r"^CHAP\. \d+\.?(?:\s*\(\d+\.\))?[\s—-]*")  # "CHAP. 15. (4.)—" and "CHAP. 9—", before a chapter's subject
+_NOTE = re.compile(r"\[\d+\]")  # a footnote's number, "Achates[3204] was a stone"
+_CHAPTER = re.compile(r"^CHAP\. \d+")
+# Where Pliny's next stone begins: "Acopos[3217] is a stone like nitre", the name with its footnote first.
+_OPENS = re.compile(r"^(?:\(\d+\.\)\s*)?[A-ZÆŒ][^\s\[]*(?:\s+[^\s\[]+){0,2}\[\d+\]")
+_BLANK = re.compile(r"\n\s*\n")
+_PARENTHETICAL = re.compile(r"\s*\([^)]*\)")
+
+
+def book_body(text: str, start: str, end: str) -> str:
+    """The book between its markers: Gutenberg's header and licence, the front matter,
+    the index and the footnotes dropped. "" when the start isn't there."""
+    starts = list(re.finditer(start, text, re.M))
+    if not starts:
+        return ""
+    at = starts[-1].end()
+    stop = re.compile(end, re.M | re.I).search(text, at)
+    return text[at : stop.start() if stop else len(text)]
+
+
+def paragraphs(body: str) -> list[str]:
+    """The body as paragraphs, each on one line with its footnote numbers still in it
+    (they mark where one of Pliny's entries begins). An illustration's caption, which
+    may run over several blocks inside its brackets, is dropped."""
+    out: list[str] = []
+    caption = False
+    for block in _BLANK.split(body):
+        p = " ".join(block.split())
+        if not p:
+            continue
+        if caption or p.startswith("[Illustration"):
+            caption = not p.endswith("]")
+            continue
+        out.append(p)
+    return out
+
+
+def naming(names: list[str]) -> re.Pattern[str] | None:
+    """A pattern for any of the names as a whole word, case and a plural -s aside, a
+    hyphen and a space the same ("rock crystal" finds "rock-crystal"), a title's
+    parenthetical dropped ("Heliotrope (bloodstone)" is "heliotrope"). None for no names."""
+    alts = []
+    for n in names:
+        words = [re.escape(w) for w in re.split(r"[-\s]+", _PARENTHETICAL.sub("", n).strip()) if w]
+        if words and r"[-\s]+".join(words) not in alts:
+            alts.append(r"[-\s]+".join(words))
+    return re.compile(rf"(?<!\w)(?:{'|'.join(alts)})(?:e?s)?(?!\w)", re.I) if alts else None
+
+
+def _own_chapter(heading: str, pattern: re.Pattern[str]) -> bool:
+    """Whether one of Pliny's chapters is the stone's: its heading leads with the name
+    ("AMETHYSTOS; FOUR VARIETIES OF IT. SOCONDION."), or every sentence of it names
+    the stone ("LUXURY DISPLAYED IN THE USE OF CRYSTAL. REMEDIES DERIVED FROM
+    CRYSTAL."). A chapter that names it among others ("SANDASTROS. SANDARESOS.", the
+    alphabetical chapters' dozens) is not."""
+    subject = _HEADING.sub("", heading)
+    found = pattern.search(subject)
+    return bool(found) and (found.start() == 0 or all(pattern.search(s) for s in subject.split(". ") if s.strip()))
+
+
+def _entries(paras: list[str], pattern: re.Pattern[str]) -> list[int]:
+    """Pliny's paragraphs about one stone. A paragraph that only mentions it in passing
+    (amber "dyed like amethystos") is another stone's, and its remedies would be told of
+    the wrong one. So: every paragraph of a chapter that is the stone's, up to where the
+    next stone's entry opens; and elsewhere a paragraph that opens with the name, with
+    the paragraphs that continue it ("The magicians make other distinctions in
+    reference to these stones") up to the next stone's or the next chapter."""
+    keep: list[int] = []
+    own = False  # inside the stone's own chapter, before another stone's entry opens
+    more = 0  # paragraphs an entry may still run on
+    for i, p in enumerate(paras):
+        if _CHAPTER.match(p):
+            own, more = _own_chapter(p, pattern), 0
+            continue
+        opens_with_it = bool(pattern.search(p[:OPENING_CHARS]))
+        if _OPENS.match(p) and not opens_with_it:
+            own, more = False, 0
+            continue
+        if opens_with_it and not own:
+            more = ENTRY_MORE + 1
+        if (own or more > 0) and len(p) >= MIN_PARAGRAPH_CHARS:
+            keep.append(i)
+        more -= 1
+    return keep
+
+
+def passages_for(paras: list[str], names: list[str], entries: bool = False, limit: int = MAX_ARTICLE_CHARS) -> str:
+    """The paragraphs that name the mineral, in the book's order with a blank line
+    between, footnote numbers removed, capped at a paragraph boundary; "" when none
+    does. Headings and captions are never passages. With `entries` (Pliny), the
+    paragraphs of the stone's own chapter or entry instead (`_entries`)."""
+    pattern = naming(names)
+    if pattern is None:
+        return ""
+    if entries:
+        keep = _entries(paras, pattern)
+    else:
+        keep = [i for i, p in enumerate(paras) if len(p) >= MIN_PARAGRAPH_CHARS and not _CHAPTER.match(p) and pattern.search(p)]
+    return trim_article("\n\n".join(" ".join(_NOTE.sub("", paras[i]).split()) for i in keep), limit)
+
+
+@functools.cache
+def pliny_names(path: Path = PLINY_NAMES_PATH) -> dict[str, str]:
+    """Pliny's name for a stone, as the translation prints it, to the article title it is lore for."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {k.casefold(): v for k, v in raw.items() if k != "_"}
+
+
+@functools.cache
+def book_paragraphs(book: Book) -> tuple[str, ...]:
+    """A book's paragraphs, read once a run."""
+    return tuple(paragraphs(book_body(book.path.read_text(encoding="utf-8"), book.start, book.end)))
+
+
+def names_for(conn: sqlite3.Connection, title: str, book: Book) -> list[str]:
+    """What a book may call the mineral of one article. Pliny: his own names for it, from
+    the alias table. Kunz: the article's title, the household's names that resolve to it
+    (a Schorl's terms find Tourmaline's lore) and his fixed synonyms."""
+    if book.by_alias:
+        return [alias for alias, t in pliny_names().items() if t == title]
+    terms = [r[0] for r in conn.execute("SELECT term FROM wikipedia_pages WHERE title = ? ORDER BY term", (title,))]
+    return [title, *terms, *KUNZ_SYNONYMS.get(title, ())]
+
+
+def build_lore_prompt(title: str, book: Book, passages: str) -> str:
+    return f"Stone: {_PARENTHETICAL.sub('', title)}\n\nPassages from {book.work} by {book.author} ({book.year}):\n<<<\n{passages}\n>>>"
+
+
+def lore_for(title: str, names: list[str], book: Book, who: Writer, paras: tuple[str, ...] | list[str] | None = None) -> list[dict]:
+    """One article's lore from one book, checked against its passages exactly as a
+    Wikipedia fact is against its article: [] when the book never names the mineral
+    (no model call) or its passages hold none. Raises Unreachable."""
+    passages = passages_for(list(book_paragraphs(book) if paras is None else paras), names, entries=book.by_alias)
+    if not passages:
+        return []
+    name = " ".join([title, *names])  # the stone's own names are never absolutes
+    return _written(who, who.lore_system, build_lore_prompt(title, book, passages), passages, name, book.display, f"lore: {title} in {book.source}")
+
+
+def write_lore(conn: sqlite3.Connection, who: Writer, deadline: float, clock: Clock = time.monotonic,
+               books: tuple[Book, ...] = BOOKS) -> list[tuple[str, int, int]]:
+    """Write each book's lore for each title it has no row for, one transaction per
+    row, kind "lore". Returns (source, articles written, of which none) per book;
+    stops quietly where the time runs out or a job arrives. Nothing is written by a
+    writer with no lore prompt. Raises Unreachable."""
+    out: list[tuple[str, int, int]] = []
+    if not who.lore_system:
+        return out
+    for book in books:
+        written = empty = 0
+        try:
+            for title in wanted(conn, book.source):
+                _in_time(deadline, clock)
+                facts = lore_for(title, names_for(conn, title, book), book, who)
+                with conn:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO fun_facts (title, source, kind, facts) VALUES (?, ?, ?, ?)",
+                        (title, book.source, LORE, json.dumps(facts, ensure_ascii=False)),
+                    )
+                written += 1
+                empty += not facts
+        except OutOfTime:
+            out.append((book.source, written, empty))
+            break
+        out.append((book.source, written, empty))
+    return out

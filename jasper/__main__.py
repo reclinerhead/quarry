@@ -62,7 +62,8 @@ def main(argv: list[str] | None = None) -> int:
         log.info("MINDAT_API_KEY is not set; candidates are matched by name only")
 
     facts = fun_facts.writer(cfg)
-    log.info("fun facts on: %s writes them from each mineral's Wikipedia article, prompt v%d", facts.model, facts.prompt_version)
+    log.info("fun facts on: %s writes them from each mineral's Wikipedia article (prompt v%d) and its old lore from Pliny and Kunz (prompt v%d)",
+             facts.model, facts.prompt_version, facts.lore_version)
 
     running = True
 
