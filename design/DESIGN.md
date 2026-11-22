@@ -69,13 +69,15 @@ SaaS dashboard and not a gem-shop sparkle page.
 | `warn` / `warn-line` / `warn-ink` | `#FBF4E4` / `#E4C98A` / `#5A4210` | waiting for a name, details missing |
 | `uv` / `uv-ink` | `#ECE6F7` / `#4B3584` | "Glows under UV" |
 | `done` / `done-line` / `done-ink` | `#E4EFE5` / `#A9C7AE` / `#1E4A2C` | done and saved: the named stone's note |
+| `lore` / `lore-line` | `#F1E5CC` / `#D6C29A` | aged paper: the Once believed card, its border and the rules inside it, and nothing else |
 | `strata-1…4` | `#D8C7A8` `#B9A586` `#E6DAC4` `#8C7B66` | the strata band only |
 
 Measured contrast (WCAG): ink on ground 13.3:1 · ink-2 on ground 7.0:1 ·
 ink-2 on surface 7.8:1 · ink-3 on surface 5.8:1 · ink-3 on ground 5.1:1 ·
 white on azurite 7.1:1 · azurite on surface 7.1:1 · tag-ink on sand 9.5:1 ·
 catalog on label 7.2:1 · warn-ink on warn 8.6:1 · uv-ink on uv 8.0:1 ·
-done-ink on done 8.6:1. Most
+done-ink on done 8.6:1 · on lore: ink 12.0:1, ink-2 6.3:1, ink-3 4.6:1,
+azurite 5.7:1. Most
 pairs clear AAA (7:1), and every pair clears AA. Keep it that way: if you add a
 color, measure it, and aim for 7:1 on reading text.
 
@@ -211,19 +213,24 @@ with two states of its own in the plain card: rocks still sending ("Keep this
 page open until they're sent."), and rocks that couldn't be sent, the reason in
 words with "Send it again" and "Remove" in the button's room.
 
-**Once believed band**: the old lore about a stone's mineral, a full-width
-white card between the gallery and the two columns of the specimen page, only
-when the mineral has any. Head: "Once believed" (Zilla 30) with a meta line
-beside it, "Old lore about agate · from Pliny the Elder and G. F. Kunz", then
-one line in `ink-2` at the lead size saying none of it holds up. Two columns
-that wrap (`flex: 1.3 1 480px` and `1 1 360px`, 48 px between): left, the lead
-belief (Zilla 34, at most 24 characters a line; 28 on a phone), its passage in
-quotation marks (19, `ink-2`, never italic) and its source in meta with "Read
-it"; right, up to three more as Zilla 24 headlines with a one-line source and
-hairlines between, and a soft button, "All 7 old beliefs, with their sources".
-The button opens the whole list in place, each belief with its passage and
-source, and becomes "Fewer old beliefs". Never a modal. No info mark inside a
-belief. Lore is never drawn as a fact: the title and the line under it say so.
+**Once believed card**: the old lore about a stone's mineral, a card in the
+specimen page's main column between Kitchen-table tests and Did you know?,
+only when the mineral has any. It is the one card that is not fact, so it is
+the one card not on white: the fill is `lore` with a `lore-line` border, an
+aged paper that is neither a white card, the page, nor the amber of `warn`
+(a state, which this is not). No other card is tinted. Head: "Once believed"
+(Zilla 30) with a meta line beside it, "Old lore about agate · from Pliny the
+Elder and G. F. Kunz", then one line in `ink-2` at the lead size saying none of
+it holds up. One column at every width: the lead belief (Zilla 30, at most 28
+characters a line; 28 on a phone), its passage in quotation marks (19,
+`ink-2`, never italic) and its source in meta with "Read it"; then up to three
+more as a stack of Zilla 24 headlines, each with a one-line source and a
+`lore-line` rule above it (a hairline is nearly the fill); then a soft button,
+"All 7 old beliefs, with their sources", drawn on `label` paper with a
+`line-strong` border here, since `sand` vanishes into the tint. The button
+opens the whole list in place, each belief with its passage and source, and
+becomes "Fewer old beliefs". Never a modal. No info mark inside a belief. Lore
+is never drawn as a fact: the title and the line under it say so.
 
 **Fact strip**: the pending strip's slot, on a day a fact is due and nothing
 waits for a name or for Jasper: a plain white card in the strip's layout. One
@@ -399,15 +406,15 @@ Home pill and nothing changes.
    it shows once, in Mineral properties under the mineral's name · right:
    Print label (soft), Edit details (soft), Add photos (primary).
 3. Photo gallery.
-4. The Once believed band (§4), only when the mineral has old lore.
-5. Two columns, same split as the dashboard.
-   - Main: **This specimen** (the label card) · **Kitchen-table tests** (with
-     the card check) · **About [mineral]** (the heading names the article the
+4. Two columns, same split as the dashboard, directly under the gallery.
+   - Main, the reading first: **About [mineral]** (the heading names the article the
      lead came from, "About Gneiss" on a Granite Gneiss, with the mineral info
      mark; Wikipedia's lead paragraphs, whole; "From Wikipedia · fetched <date>"
      right of the heading, then "Read the article on Wikipedia"; before Jasper
      has asked, or for a name Wikipedia has no article for, one line holds the
-     card's place) · **Did you know?** (only when the article has facts: the
+     card's place) · **This specimen** (the label card) · **Kitchen-table
+     tests** (with the card check) · **Once believed** (§4, the tinted card,
+     only when the mineral has old lore) · **Did you know?** (only when the article has facts: the
      heading with the mineral info mark and "From Wikipedia · CC BY-SA" right
      of it; each fact in Zilla 24 over the article sentence it rests on, in
      `ink-2` in quotation marks, hairlines between) · **Mineral properties** (the meta line names the

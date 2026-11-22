@@ -24,9 +24,11 @@ import { HOME_STATE } from "@/lib/places";
 import { readStone, type StoneView } from "@/lib/specimens";
 
 // /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 2
-// has data: the breadcrumb, the title block (with Mindat's tags, #23), the photo gallery, the "Once believed" band when the mineral has old lore (#133), then two columns. Main: "This specimen" (the
-// editable specimen label), "Kitchen-table tests", "About [mineral]" (#92), "Did you know?" (#126), "Mineral properties" and
-// "Where it's found" (#65).
+// has data: the breadcrumb, the title block (with Mindat's tags, #23), the photo
+// gallery, then two columns. Main, the reading first (#138): "About [mineral]"
+// (#92), "This specimen" (the editable specimen label), "Kitchen-table tests",
+// "Once believed" when the mineral has old lore (#133), "Did you know?" (#126),
+// "Mineral properties" and "Where it's found" (#65).
 // Side: "How it was named", "At the show" (#81), "What it's made of", "On your
 // Mohs scale" (#42) and Remove. Handling notes, relatives, the story log and the box
 // label arrive later in Phases 2 and 3.
@@ -120,11 +122,9 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
 
       <Gallery id={stone.id} photos={stone.photos} name={name} />
 
-      {/* "Once believed" (#133): the old lore about the mineral, only when the books have any; without it the page is as it was. */}
-      {stone.lore ? <LoreBand band={stone.lore} name={stone.loreName} /> : null}
-
       <div className="flex flex-wrap items-start gap-8">
         <div className="flex min-w-0 flex-[999_1_600px] flex-col gap-7">
+          <AboutStone stone={stone} name={mineral} />
           <section aria-labelledby="specimen-h" className="card flex flex-col gap-5 px-5 py-6 sm:px-8 sm:py-7">
             <h2 id="specimen-h" className="text-section leading-tight">
               This specimen
@@ -137,7 +137,8 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
             </h2>
             <TestsEditor id={stone.id} initial={stone.tests} />
           </section>
-          <AboutStone stone={stone} name={mineral} />
+          {/* "Once believed" (#133): the old lore about the mineral, only when the books have any; without it nothing is drawn or reserved. */}
+          {stone.lore ? <LoreBand band={stone.lore} name={stone.loreName} /> : null}
           <DidYouKnow stone={stone} />
           <MineralProperties stone={stone} name={mineral} />
           <WhereFound stone={stone} name={mineral} />
@@ -272,7 +273,7 @@ const TERM: Record<PropertyKey, GlossaryKey> = {
 };
 
 /**
- * "About [mineral]" (#92), between the tests and the properties: Wikipedia's
+ * "About [mineral]" (#92), first in the main column, under the photos: Wikipedia's
  * lead paragraphs for the most specific name the stone has an article under
  * (`lib/about.ts`), headed with the article's title, so a Granite Gneiss reads
  * "About Gneiss". The source line credits Wikipedia with the fetch date, as the
@@ -320,7 +321,7 @@ function AboutStone({ stone, name }: { stone: StoneView; name: string }) {
 }
 
 /**
- * "Did you know?" (#126), under About: the facts Jasper wrote from the article
+ * "Did you know?" (#126), above the properties: the facts Jasper wrote from the article
  * the About card shows, each over the sentence of the article it rests on, so
  * the reader sees Wikipedia's own words beside the fact. The dashboard's fact
  * strip lands here. Drawn only for a stone whose article has facts: there is
