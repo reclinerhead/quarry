@@ -57,6 +57,10 @@
   --color-done-line: #A9C7AE;
   --color-done-ink: #1E4A2C;    /* 8.6:1 on done */
 
+  /* Old lore: the aged paper under "Once believed", the one card that is not fact */
+  --color-lore: #F1E5CC;        /* ink 12.0:1, ink-2 6.3:1, ink-3 4.6:1, azurite 5.7:1 */
+  --color-lore-line: #D6C29A;   /* its border, and the dividers inside it */
+
   /* Photo caption pill */
   --color-caption: rgb(30 26 22 / 0.82);
   --color-photo-well: #3A342E;  /* behind a contained hero photo */

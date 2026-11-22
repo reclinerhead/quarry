@@ -4,11 +4,12 @@ import { useRef, useState, useSyncExternalStore } from "react";
 import { allBeliefs, FACT_ANCHOR, loreIntro, loreMeta, shortSource, workParts, type Fact, type LoreBand as Band } from "@/lib/facts";
 
 // "Once believed" (#133, epic #127): the old lore about a stone's mineral, a
-// full-width band between the photos and the two columns. The lead belief with
-// the passage it rests on at the left, up to three more at the right, and a
-// button that opens the whole list in place, every belief with its passage and
-// its source. Lore is never shown as fact: the title and the line under it say
-// so. Drawn on the server from `readStone`'s `lore`; the one client piece is
+// card in the stone page's main column, between the tests and "Did you know?"
+// (#138), on its own aged-paper ground (`card-lore`) so it never reads as one
+// more white card of fact. One column: the lead belief with the passage it
+// rests on, up to three more as headlines under it, and a button that opens
+// the whole list in place, every belief with its passage and its source. Lore
+// is never shown as fact: the title and the line under it say so. Drawn on the server from `readStone`'s `lore`; the one client piece is
 // the expand. Arriving from the dashboard's strip (#once-believed) it opens
 // expanded: the hash is read after hydration, since the server never sees it.
 
@@ -52,7 +53,7 @@ export function LoreBand({ band, name }: { band: Band; name: string }) {
   ) : null;
 
   return (
-    <section id={ID} aria-labelledby="lore-h" className="card flex scroll-mt-6 flex-col gap-6 px-5 py-6 sm:px-8 sm:py-7">
+    <section id={ID} aria-labelledby="lore-h" className="card-lore flex scroll-mt-6 flex-col gap-6 px-5 py-6 sm:px-8 sm:py-7">
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
           <h2 id="lore-h" className="text-section leading-tight">
@@ -67,7 +68,7 @@ export function LoreBand({ band, name }: { band: Band; name: string }) {
         <>
           <ol id={`${ID}-beliefs`} className="flex flex-col">
             {band.all.map((f, i) => (
-              <li key={f.id} className={`flex flex-col gap-2 ${i > 0 ? "mt-5 border-t border-hairline pt-5" : ""}`}>
+              <li key={f.id} className={`flex flex-col gap-2 ${i > 0 ? "mt-5 border-t border-lore-line pt-5" : ""}`}>
                 <p className="max-w-[40ch] font-display text-h3 font-semibold leading-tight">{f.text}</p>
                 <Passage fact={f} />
               </li>
@@ -76,25 +77,25 @@ export function LoreBand({ band, name }: { band: Band; name: string }) {
           {button}
         </>
       ) : (
-        <div id={`${ID}-beliefs`} className="flex flex-wrap gap-x-12 gap-y-7">
-          <div className="flex min-w-0 flex-[1.3_1_480px] flex-col gap-3.5">
-            <p className="max-w-[24ch] font-display text-[28px] font-semibold leading-[1.2] sm:text-h2">{band.lead.text}</p>
-            <Passage fact={band.lead} />
-          </div>
-          {band.more.length > 0 || button ? (
-            <div className="flex min-w-0 flex-[1_1_360px] flex-col justify-between gap-4">
+        <>
+          <div id={`${ID}-beliefs`} className="flex flex-col gap-5">
+            <div className="flex flex-col gap-3.5">
+              <p className="max-w-[28ch] font-display text-[28px] font-semibold leading-[1.2] sm:text-section">{band.lead.text}</p>
+              <Passage fact={band.lead} />
+            </div>
+            {band.more.length > 0 ? (
               <ol className="flex flex-col">
-                {band.more.map((f, i) => (
-                  <li key={f.id} className={`flex flex-col gap-1 ${i > 0 ? "border-t border-hairline pt-4" : ""} ${i < band.more.length - 1 ? "pb-4" : ""}`}>
-                    <p className="font-display text-h3 font-semibold leading-tight">{f.text}</p>
+                {band.more.map((f) => (
+                  <li key={f.id} className="flex flex-col gap-1 border-t border-lore-line py-4 last:pb-0">
+                    <p className="max-w-[40ch] font-display text-h3 font-semibold leading-tight">{f.text}</p>
                     <p className="text-meta text-ink-3">{shortSource(f.source)}</p>
                   </li>
                 ))}
               </ol>
-              {button}
-            </div>
-          ) : null}
-        </div>
+            ) : null}
+          </div>
+          {button}
+        </>
       )}
     </section>
   );
