@@ -10,6 +10,7 @@ import { shortDay, type Acquired, type Tile } from "./collection";
 import { elementsCard, elementsOf, type ElementsCard, type PieceMineral, type StoneMinerals } from "./elements";
 import { cleanAnswers, type Answers } from "./household-tests";
 import { aboutCard, aboutTerms, type AboutCard, type AboutRow } from "./about";
+import { aboutNames, factCredit, factOfTheDay, factTitles, localDayNumber, parseFacts, type Fact, type FactKind, type FactsOf } from "./facts";
 import { fold, formulaSegments, mineralClassOf, propertyCard, type ChainRecord, type PropertyCard } from "./mindat";
 import { mohsCard, type MohsCard } from "./mohs";
 import { chainOf, MAX_DEPTH } from "./names";
@@ -230,6 +231,8 @@ export type StoneView = {
   morePhotosNamed: number; // later photos named "same stone as the last one"
   places: string[]; // every place a stone lives, most stones first, for the location field
   about: AboutCard; // "About [mineral]" (#92): Wikipedia's lead for the variety's name, else the mineral's
+  /** "Did you know?" (#126): the facts Jasper wrote from the article the About card shows; none until he has, or when it holds none. */
+  facts: Fact[];
   properties: PropertyCard; // the Mineral properties card, from the mineral's Mindat record (#23)
   whereFound: FoundCard; // "Where it's found", from Mindat's counts on the variety's record or the mineral's (#65)
   elements: ElementsCard; // "What it's made of" (#42)
@@ -310,17 +313,69 @@ function readWhereFound(db: DatabaseSync, name: string, mindatId: number | null,
  * exist, and every term reads as not asked.
  */
 function readAbout(db: DatabaseSync, name: string, variety: string | null): AboutCard {
-  const terms = aboutTerms(name, variety);
-  const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'wikipedia_pages'").get();
-  if (!table) return aboutCard(terms.map(() => undefined));
+  return aboutCard(aboutRows(db, aboutTerms(name, variety)));
+}
+
+function hasTable(db: DatabaseSync, name: string): boolean {
+  return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) !== undefined;
+}
+
+/** Each term's row in `wikipedia_pages`, in the terms' order, as `aboutCard` and the fact titles read them. */
+function aboutRows(db: DatabaseSync, terms: string[]): AboutRow[] {
+  if (!hasTable(db, "wikipedia_pages")) return terms.map(() => undefined);
   const page = db.prepare("SELECT title, url, summary, fetched_at FROM wikipedia_pages WHERE term = ?");
-  return aboutCard(
-    terms.map((t): AboutRow => {
-      const row = page.get(t) as { title: string | null; url: string | null; summary: string | null; fetched_at: string } | undefined;
-      if (row === undefined) return undefined;
-      return row.title && row.url && row.summary ? { title: row.title, url: row.url, summary: row.summary, fetchedAt: row.fetched_at } : null;
-    }),
-  );
+  return terms.map((t): AboutRow => {
+    const row = page.get(t) as { title: string | null; url: string | null; summary: string | null; fetched_at: string } | undefined;
+    if (row === undefined) return undefined;
+    return row.title && row.url && row.summary ? { title: row.title, url: row.url, summary: row.summary, fetchedAt: row.fetched_at } : null;
+  });
+}
+
+// --- Fun facts (#126) ------------------------------------------------------------
+
+/**
+ * What Jasper wrote about each of these article titles (`fun_facts`, one row a
+ * source, jasper.md), every source's facts together under their title. Before
+ * Jasper has run step 11 the table doesn't exist, and there are none.
+ */
+function readFacts(db: DatabaseSync, titles: string[]): FactsOf[] {
+  if (titles.length === 0 || !hasTable(db, "fun_facts")) return [];
+  const rows = db
+    .prepare("SELECT title, kind, facts FROM fun_facts WHERE title IN (SELECT value FROM json_each(?)) ORDER BY title, source")
+    .all(JSON.stringify(titles)) as Array<{ title: string; kind: FactKind; facts: string }>;
+  return titles.map((title) => ({ title, facts: rows.filter((r) => r.title === title).flatMap((r) => parseFacts(r.facts, r.kind)) }));
+}
+
+/** The dashboard's fact strip (#126): today's fact, the stone it is told about, and who it is from. */
+export type FactStrip = {
+  fact: Fact;
+  name: string; // the mineral as the household names it: "Schorl" over Tourmaline's fact
+  credit: string; // "Wikipedia", "Pliny the Elder"
+  stoneId: number; // the earliest stone whose About card shows this article
+  thumbUrl: string | null;
+};
+
+/**
+ * Today's fact for this household, or null: on a day none is due, when today's
+ * was dismissed (the cookie's id), or before there is a stone or a fact. The
+ * titles are the ones the stones' About cards resolve to, oldest stone first,
+ * and the salt is the oldest stone's `created_at` (`lib/facts.ts`).
+ */
+export function factStrip(db: DatabaseSync, now: Date, dismissedId: string | null): FactStrip | null {
+  const stones = db
+    .prepare(
+      `SELECT sp.id, m.name, sp.variety, sp.created_at,
+              (SELECT p.path FROM photos p WHERE p.specimen_id = sp.id ORDER BY ${MAIN_PHOTO_FIRST} LIMIT 1) AS path
+         FROM specimens sp JOIN minerals m ON m.id = sp.mineral_id ORDER BY sp.created_at, sp.id`,
+    )
+    .all() as Array<{ id: number; name: string; variety: string | null; created_at: string; path: string | null }>;
+  if (stones.length === 0) return null;
+  const titles = factTitles(stones.map((s) => ({ id: s.id, names: aboutNames(s.name, s.variety), rows: aboutRows(db, aboutTerms(s.name, s.variety)) })));
+  const pick = factOfTheDay(readFacts(db, [...titles.keys()]), new Set(titles.keys()), stones[0].created_at, localDayNumber(now), dismissedId);
+  if (!pick) return null;
+  const { stoneId, name } = titles.get(pick.title)!;
+  const path = stones.find((s) => s.id === stoneId)!.path;
+  return { fact: pick.fact, name, credit: factCredit(pick.fact.source), stoneId, thumbUrl: path ? `${BASE_PATH}/media/${thumbPathFor(path)}` : null };
 }
 
 function parseDetail(json: string | null): Record<string, unknown> | null {
@@ -372,6 +427,7 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     .prepare("SELECT location FROM specimens WHERE location IS NOT NULL GROUP BY lower(location) ORDER BY COUNT(*) DESC, location")
     .all() as Array<{ location: string }>;
   const properties = readProperties(db, s.name, s.mindat_id);
+  const about = readAbout(db, s.name, s.variety);
   // Every stone with every mineral on it, for what this one was the first to bring (#42, #48)
   // and, by the main mineral alone, which Mohs slot each fills.
   const pieces = collectionElements(db);
@@ -404,7 +460,8 @@ export function readStone(db: DatabaseSync, id: number): StoneView | null {
     namedBy: confirmations[0]?.job_id ?? null,
     morePhotosNamed: Math.max(0, confirmations.length - 1),
     places: places.map((p) => p.location),
-    about: readAbout(db, s.name, s.variety),
+    about,
+    facts: about.state === "page" ? (readFacts(db, [about.title])[0]?.facts ?? []).filter((f) => f.kind === "fact") : [],
     properties,
     whereFound: readWhereFound(db, s.name, s.mindat_id, s.variety),
     elements: elementsCard(s.id, pieces),

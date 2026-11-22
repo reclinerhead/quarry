@@ -24,7 +24,7 @@ import { readStone, type StoneView } from "@/lib/specimens";
 
 // /stones/[id]: one stone (#9), DESIGN.md §5's specimen page as far as Phase 2
 // has data: the breadcrumb, the title block (with Mindat's tags, #23), the photo gallery, then two columns. Main: "This specimen" (the
-// editable specimen label), "Kitchen-table tests", "About [mineral]" (#92), "Mineral properties" and
+// editable specimen label), "Kitchen-table tests", "About [mineral]" (#92), "Did you know?" (#126), "Mineral properties" and
 // "Where it's found" (#65).
 // Side: "How it was named", "At the show" (#81), "What it's made of", "On your
 // Mohs scale" (#42) and Remove. Handling notes, relatives, the story log and the box
@@ -134,6 +134,7 @@ export default async function StonePage({ params }: { params: Promise<{ id: stri
             <TestsEditor id={stone.id} initial={stone.tests} />
           </section>
           <AboutStone stone={stone} name={mineral} />
+          <DidYouKnow stone={stone} />
           <MineralProperties stone={stone} name={mineral} />
           <WhereFound stone={stone} name={mineral} />
         </div>
@@ -310,6 +311,45 @@ function AboutStone({ stone, name }: { stone: StoneView; name: string }) {
           {card.state === "none" ? `Wikipedia has no article called ${stone.variety?.trim() || name}.` : "Jasper will look it up on Wikipedia."}
         </p>
       )}
+    </section>
+  );
+}
+
+/**
+ * "Did you know?" (#126), under About: the facts Jasper wrote from the article
+ * the About card shows, each over the sentence of the article it rests on, so
+ * the reader sees Wikipedia's own words beside the fact. The dashboard's fact
+ * strip lands here. Drawn only for a stone whose article has facts: there is
+ * no "Jasper will look it up" line, since an article may hold none, and the
+ * card arrives on a later load without moving what was on the screen above it.
+ * The facts are plain words by the prompt's rule, so only the heading carries
+ * a mark.
+ */
+function DidYouKnow({ stone }: { stone: StoneView }) {
+  if (stone.facts.length === 0 || stone.about.state !== "page") return null;
+  return (
+    <section id="did-you-know" aria-labelledby="facts-h" className="card flex scroll-mt-6 flex-col gap-5 px-5 py-6 sm:px-8 sm:py-7">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+        <h2 id="facts-h" className="text-section leading-tight">
+          Did you know?
+          <Term k="mineral" bare />
+        </h2>
+        <p className="flex flex-wrap items-center text-meta text-ink-2">
+          From
+          <a href={stone.about.url} target="_blank" rel="noreferrer" className="text-link">
+            Wikipedia
+          </a>
+          <span>· CC BY-SA</span>
+        </p>
+      </div>
+      <ul className="flex flex-col">
+        {stone.facts.map((f, i) => (
+          <li key={f.id} className={`flex flex-col gap-1.5 ${i > 0 ? "mt-5 border-t border-hairline pt-5" : ""}`}>
+            <p className="font-display text-h3 font-semibold leading-snug">{f.text}</p>
+            {f.quote ? <p className="text-ink-2">{`“${f.quote}”`}</p> : null}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

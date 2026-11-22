@@ -18,7 +18,8 @@ share one budget and stop as soon as a job arrives: Wikipedia's lead for each
 name first (#92, `wikipedia.fetch_pages`), then Mindat's four steps
 (`mindat.idle`: the candidates a lookup missed, each named mineral linked to
 its record and that record fetched whole (#21), then where those records are
-found (#65)). Each host has its own clock (`Host`): once a minute, and after a
+found (#65)), then the fun facts for each article (#126,
+`fun_facts.write_facts`), last because a model's answer takes seconds. Each host has its own clock (`Host`): once a minute, and after a
 failure a minute, then two, four, eight, ten at most, until a pass completes
 (#119), so a slow Mindat never holds the About card, and a stone's page fills
 in within a minute of a hiccup rather than ten.
@@ -37,7 +38,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import identify, llm, mindat, queue, wikipedia
+from . import fun_facts, identify, llm, mindat, queue, wikipedia
 
 log = logging.getLogger("jasper")
 
@@ -80,10 +81,11 @@ class Host:
 class Hosts:
     wikipedia: Host
     mindat: Host
+    facts: Host  # the fun facts' step (#126): the whole article and the gateway
 
     @classmethod
     def at(cls, now: datetime) -> Hosts:
-        return cls(Host(now), Host(now))
+        return cls(Host(now), Host(now), Host(now))
 
 
 def _minutes(wait: timedelta) -> str:
@@ -214,12 +216,14 @@ def _log_line(job_id: int, outcome: identify.Outcome, row: sqlite3.Row, seconds:
 
 
 def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api | None, now: datetime,
-             wiki_api: wikipedia.Api | None = None, hosts: Hosts | None = None) -> datetime:
+             wiki_api: wikipedia.Api | None = None, hosts: Hosts | None = None,
+             facts: fun_facts.Writer | None = None) -> datetime:
     """The idle pass: Wikipedia's lead for each name (#92), then Mindat's four steps
     (the waiting candidates, the named minerals, their records, where those are found),
-    each host when it is due, in one budget, each failing on its own (#119). Returns
-    when to try next: the earlier of the hosts' times. Running out of time, or a job
-    arriving, is not a failure: the rest waits a minute, not longer."""
+    then the fun facts for each article (#126), each host when it is due, in one budget,
+    each failing on its own (#119). Returns when to try next: the earlier of the hosts'
+    times. Running out of time, or a job arriving, is not a failure: the rest waits a
+    minute, not longer."""
     hosts = hosts or Hosts.at(now)
     should_stop = lambda: queue.has_runnable(conn, datetime.now(timezone.utc))  # noqa: E731
     start = time.monotonic()
@@ -248,12 +252,25 @@ def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api | None, now: datet
                 log.info("mindat linked %d mineral(s), fetched %d record(s)", linked, fetched)
             if placed:
                 log.info("mindat counted where %d record(s) are found", placed)
-    due = [h.next_at for h, api in ((hosts.wikipedia, wiki_api), (hosts.mindat, mindat_api)) if api is not None]
+    # Last, so a model's seconds never hold the About card or the property card.
+    writes_facts = facts is not None and wiki_api is not None
+    if writes_facts and now >= hosts.facts.next_at:
+        try:
+            written, empty = fun_facts.write_facts(conn, wiki_api, facts, deadline, mindat.stopping(time.monotonic, should_stop))
+        except mindat.Unreachable as e:
+            log.warning("catch-up stopped: %s; next try in %s", e, _minutes(hosts.facts.failed(now)))
+        else:
+            hosts.facts.done(now)
+            if written:
+                log.info("fun facts written for %d article(s), %d with none", written, empty)
+    due = [h.next_at for h, on in ((hosts.wikipedia, wiki_api is not None), (hosts.mindat, mindat_api is not None),
+                                   (hosts.facts, writes_facts)) if on]
     return min(due) if due else now + CATCH_UP_EVERY
 
 
 def run_forever(conn: sqlite3.Connection, data_dir: Path, cfg: identify.Settings, should_run: Callable[[], bool],
-                mindat_api: mindat.Api | None = None, wiki_api: wikipedia.Api | None = None) -> None:
+                mindat_api: mindat.Api | None = None, wiki_api: wikipedia.Api | None = None,
+                facts: fun_facts.Writer | None = None) -> None:
     paused_until: datetime | None = None
     hosts = Hosts.at(datetime.now(timezone.utc))
     next_catch_up = datetime.now(timezone.utc)
@@ -269,7 +286,7 @@ def run_forever(conn: sqlite3.Connection, data_dir: Path, cfg: identify.Settings
             if not photos_tidy:
                 photos_tidy = tidy_photos(conn, data_dir, should_stop=lambda: queue.has_runnable(conn, datetime.now(timezone.utc)))
             if (mindat_api is not None or wiki_api is not None) and now >= next_catch_up:
-                next_catch_up = catch_up(conn, mindat_api, now, wiki_api, hosts)
+                next_catch_up = catch_up(conn, mindat_api, now, wiki_api, hosts, facts)
             time.sleep(2)
         elif outcome.status == "quota":
             paused_until = now + QUOTA_PAUSE

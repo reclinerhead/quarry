@@ -211,6 +211,16 @@ with two states of its own in the plain card: rocks still sending ("Keep this
 page open until they're sent."), and rocks that couldn't be sent, the reason in
 words with "Send it again" and "Remove" in the button's room.
 
+**Fact strip**: the pending strip's slot, on a day a fact is due and nothing
+waits for a name or for Jasper: a plain white card in the strip's layout. One
+72 px thumb, the stone the fact is told about; a stamp in bold meta, "Did you
+know?" over a fact and "Once believed" over old lore, which is never shown as
+a fact; the fact itself as the heading (Zilla 26); then a meta line, "Agate ·
+from Wikipedia" with the source a link, and "Not today" as a text link. The
+button is soft, not primary, since nothing needs the person: "More about
+agate". No info mark: a fact is written in plain words. On other days the slot
+is empty.
+
 **Jasper at work**: the one thing that moves. A rock hammer line icon in
 azurite, 1.5em, pivoting at the grip to tap a stone, with two ticks flashing at
 each strike. Beside it, a rock hound's line that changes every 2.5 s ("Digging
@@ -345,7 +355,8 @@ Home pill and nothing changes.
 1. Date, then a greeting that says what changed ("Good evening. Two new stones
    today."), and one line on what the new stones added (a Mohs slot, new
    elements).
-2. Pending strip (only while something waits for a name, or Jasper still has it).
+2. Pending strip (only while something waits for a name, or Jasper still has
+   it); otherwise, on a day one is due, the fact strip.
 3. Two columns, 32 px gap: **Your collection** (`flex: 999 1 600px`) and a
    **side column** (`flex: 1 1 320px; max-width: 400px`) that drops below on
    phones.
@@ -381,7 +392,10 @@ Home pill and nothing changes.
      mark; Wikipedia's lead paragraphs, whole; "From Wikipedia · fetched <date>"
      right of the heading, then "Read the article on Wikipedia"; before Jasper
      has asked, or for a name Wikipedia has no article for, one line holds the
-     card's place) · **Mineral properties** (the meta line names the
+     card's place) · **Did you know?** (only when the article has facts: the
+     heading with the mineral info mark and "From Wikipedia · CC BY-SA" right
+     of it; each fact in Zilla 24 over the article sentence it rests on, in
+     `ink-2` in quotation marks, hairlines between) · **Mineral properties** (the meta line names the
      main mineral the cells are about, "Pyrite ⓘ, from Mindat"; Mindat cells: Formula,
      Mohs hardness, Crystal system, Luster, Streak, Cleavage, Specific gravity,
      Fluorescence, each with an info mark, then the note block) · **Where it's

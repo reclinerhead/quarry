@@ -283,3 +283,26 @@ def test_a_version_9_database_takes_step_10_and_gets_the_wikipedia_pages(tmp_pat
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("INSERT INTO wikipedia_pages (term) VALUES ('gneiss')")
     assert tuple(conn.execute("SELECT variety FROM specimens").fetchone()) == ("Granite Gneiss",)
+
+
+def test_a_version_10_database_takes_step_11_and_gets_the_fun_facts(tmp_path, monkeypatch):
+    """#126, #127: one row per (article title, source), a fact or lore, with none recorded as an empty list."""
+    path = tmp_path / "q.db"
+    monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS[:9])
+    old = db.connect(path)
+    assert db.current_version(old) == 10
+    old.execute("INSERT INTO wikipedia_pages (term, title, url, summary) VALUES ('amethyst', 'Amethyst', 'https://en.wikipedia.org/wiki/Amethyst', 'Amethyst is violet.')")
+    old.commit()
+    old.close()
+    monkeypatch.undo()
+    conn = db.connect(path)
+    assert db.current_version(conn) == db.LATEST_VERSION
+    conn.execute("INSERT INTO fun_facts (title, source, kind, facts) VALUES ('Amethyst', 'wikipedia', 'fact', '[{\"id\": \"a\"}]')")
+    conn.execute("INSERT INTO fun_facts (title, source, kind) VALUES ('Amethyst', 'pliny', 'lore')")
+    rows = {r["source"]: (r["kind"], r["facts"], r["written_at"] is not None) for r in conn.execute("SELECT * FROM fun_facts")}
+    assert rows == {"wikipedia": ("fact", '[{"id": "a"}]', True), "pliny": ("lore", "[]", True)}
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO fun_facts (title, source, kind) VALUES ('Amethyst', 'wikipedia', 'fact')")  # one row a source
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO fun_facts (title, source, kind) VALUES ('Agate', 'kunz', 'legend')")
+    assert tuple(conn.execute("SELECT title FROM wikipedia_pages").fetchone()) == ("Amethyst",)
