@@ -15,7 +15,7 @@
 
 import { openReadWrite } from "@/lib/db";
 import { cleanAnswers } from "@/lib/household-tests";
-import { thumbPathFor } from "@/lib/photos";
+import { coverPathFor, thumbPathFor } from "@/lib/photos";
 import { isForm, type PartRole } from "@/lib/pills";
 import { pruneMinerals, writeMadeOf, writeParts } from "@/lib/specimens";
 import { discardUpload } from "@/lib/storage";
@@ -147,6 +147,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     for (const p of photos) {
       await discardUpload(p.path);
       await discardUpload(thumbPathFor(p.path));
+      await discardUpload(coverPathFor(p.path));
     }
     return Response.json({ ok: true, photosRemoved: photos.length, mineralsRemoved });
   } catch (err) {

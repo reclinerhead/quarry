@@ -8,8 +8,9 @@ slower of them. Each photo is first brought within the stored-size rule (#83:
 a JPEG of at most `identify.STORE_SIDE` px, which the browser's shrink already
 gives for almost every upload), then its thumbnail is written, for every
 processed job, rejected ones included, because the confirm screen shows the
-photo either way. The photos that were on disk before get the same once, when
-the queue is first idle after a start (`tidy_photos`).
+photo either way, and the launcher's copy with it (#136, `cover_path`). The
+photos that were on disk before get the same once, when the queue is first
+idle after a start (`tidy_photos`).
 
 With a Mindat key (#18), an identified job's candidates are looked up in
 Mindat before the job is written, on a short leash (#40): a person may be
@@ -99,6 +100,12 @@ def thumb_path(rel: str) -> str:
     return str(p.with_name(p.stem + ".thumb.jpg")).replace("\\", "/")
 
 
+def cover_path(rel: str) -> str:
+    """photos/2026/10/abc.jpg -> photos/2026/10/abc.cover.jpg: the launcher's copy (#136)."""
+    p = Path(rel)
+    return str(p.with_name(p.stem + ".cover.jpg")).replace("\\", "/")
+
+
 def store_photo(conn: sqlite3.Connection, data_dir: Path, photo: sqlite3.Row, who: str) -> tuple[Path, str, int | None]:
     """Bring one photo on disk within the stored-size rule (#83): a JPEG of at most
     `identify.STORE_SIDE` px. Returns the file to read, its path relative to the data
@@ -125,18 +132,25 @@ def tidy_photos(conn: sqlite3.Connection, data_dir: Path, should_stop: Callable[
     is idle after a start: each is brought within the stored-size rule, and one line
     says what that freed. Returns True once the whole table has been walked; a job
     arriving mid-pass stops it, and the next idle tick starts over (a photo already
-    right costs one header read). A photo that cannot be read is one warning."""
-    rewritten, freed = 0, 0
+    right costs one header read). A photo that cannot be read is one warning.
+    The same walk writes the launcher's copy of each photo that has none (#136)."""
+    rewritten, freed, covers = 0, 0, 0
     for photo in conn.execute("SELECT id, path FROM photos ORDER BY id").fetchall():
         if should_stop():
             return False
         try:
-            _, _, bytes_freed = store_photo(conn, data_dir, photo, "photos")
+            src, rel, bytes_freed = store_photo(conn, data_dir, photo, "photos")
             if bytes_freed is not None:
                 rewritten += 1
                 freed += bytes_freed
+            cover = data_dir / cover_path(rel)
+            if not cover.exists():
+                identify.write_cover(src, cover)
+                covers += 1
         except Exception as exc:  # noqa: BLE001  (one line per unreadable photo, whatever it was)
             log.warning("photos: %s unreadable: %s", photo["path"], exc)
+    if covers:
+        log.info("photos: %d launcher cover(s) written", covers)
     if rewritten:
         log.info("photos: %d re-encoded, %.1f MB freed", rewritten, freed / 1e6)
     return True
@@ -162,6 +176,7 @@ def run_once(
         try:
             src, rel, _ = store_photo(conn, data_dir, ph, f"job {job['id']}")
             identify.write_thumbnail(src, data_dir / thumb_path(rel))
+            identify.write_cover(src, data_dir / cover_path(rel))
             if len(images) < identify.MAX_IMAGES:
                 images.append(identify.prepare_image(src))
         except Exception as exc:  # noqa: BLE001  (one line per unreadable photo, whatever it was)

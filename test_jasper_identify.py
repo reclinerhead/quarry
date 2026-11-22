@@ -491,3 +491,12 @@ def test_orientation_is_applied_and_the_exif_dropped(tmp_path):
     src = _image(tmp_path / "a.png", (4000, 3000), "PNG", orientation=6)  # rotated 90°: a portrait shot stored sideways
     dst = identify.normalize_photo(src)
     assert _open(dst) == ("JPEG", (1536, 2048), False)
+
+
+def test_the_launcher_copy_caps_the_short_side_and_never_enlarges():
+    # #136: a portrait photo comes out 960 wide, which is what the launcher's tile can use.
+    assert identify.cover_size(1536, 2048) == (960, 1280)
+    assert identify.cover_size(2048, 1536) == (1280, 960)
+    assert identify.cover_size(960, 1280) == (960, 1280)
+    assert identify.cover_size(800, 600) == (800, 600)
+    assert identify.cover_size(2048, 2048) == (960, 960)

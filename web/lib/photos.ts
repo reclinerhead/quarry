@@ -32,6 +32,11 @@ export function thumbPathFor(rel: string): string {
   return `${dot > slash ? rel.slice(0, dot) : rel}.thumb.jpg`;
 }
 
+/** photos/2026/10/abc.jpg -> photos/2026/10/abc.cover.jpg: the copy Jasper writes for the station launcher's tile (#136), 960 px on its short side. */
+export function coverPathFor(rel: string): string {
+  return `${thumbPathFor(rel).slice(0, -".thumb.jpg".length)}.cover.jpg`;
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
