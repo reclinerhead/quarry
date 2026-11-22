@@ -179,6 +179,26 @@ CREATE TABLE IF NOT EXISTS wikipedia_pages (
 );
 """,
     ),
+    # 11 (#126, #127): the fun facts and old lore about each mineral (jasper/fun_facts.py).
+    (
+        11,
+        """
+-- What one source yields for one Wikipedia article title (wikipedia_pages.title,
+-- the key a stone's About card resolves to). source is 'wikipedia' (kind 'fact')
+-- or a book of old lore, 'pliny' or 'kunz' (kind 'lore'). facts is JSON, a list
+-- of {id, text, quote, source: {author, work, year, url}}, and [] when the
+-- source yields nothing, so it is asked once. Deleting a row asks again on the
+-- next idle pass. Written by Jasper alone.
+CREATE TABLE IF NOT EXISTS fun_facts (
+  title      TEXT NOT NULL,
+  source     TEXT NOT NULL,
+  kind       TEXT NOT NULL CHECK (kind IN ('fact', 'lore')),
+  facts      TEXT NOT NULL DEFAULT '[]',
+  written_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (title, source)
+);
+""",
+    ),
 ]
 
 LATEST_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else BASELINE_VERSION

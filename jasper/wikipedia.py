@@ -92,6 +92,12 @@ def params(title: str) -> dict[str, str | int]:
     }
 
 
+def article_params(title: str) -> dict[str, str | int]:
+    """The lead's query without `exintro`: the whole article as plain text, its
+    headings as "== History ==" lines, for the fun facts (#126)."""
+    return {k: v for k, v in params(title).items() if k != "exintro"}
+
+
 class Api:
     """The Action API. `limits` is the idle pass's leash; `requests` counts every try for the log line."""
 
@@ -100,8 +106,15 @@ class Api:
         self.requests = 0
 
     def query(self, title: str) -> dict:
-        """The query's body for one title. Raises Unreachable."""
-        url = API_URL + "?" + urllib.parse.urlencode(params(title))
+        """The lead query's body for one title. Raises Unreachable."""
+        return self._get(params(title))
+
+    def article(self, title: str) -> dict:
+        """The whole-article query's body for one title (#126). Raises Unreachable."""
+        return self._get(article_params(title))
+
+    def _get(self, query: dict[str, str | int]) -> dict:
+        url = API_URL + "?" + urllib.parse.urlencode(query)
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
         last = ""
         for _ in range(self.limits.tries):
