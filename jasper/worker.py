@@ -255,14 +255,19 @@ def catch_up(conn: sqlite3.Connection, mindat_api: mindat.Api | None, now: datet
     # Last, so a model's seconds never hold the About card or the property card.
     writes_facts = facts is not None and wiki_api is not None
     if writes_facts and now >= hosts.facts.next_at:
+        clock = mindat.stopping(time.monotonic, should_stop)
         try:
-            written, empty = fun_facts.write_facts(conn, wiki_api, facts, deadline, mindat.stopping(time.monotonic, should_stop))
+            written, empty = fun_facts.write_facts(conn, wiki_api, facts, deadline, clock)
+            if written:
+                log.info("fun facts written for %d article(s), %d with none", written, empty)
+            # Then the old lore from the books in the repo (#131), on the same clock: it needs the gateway alone.
+            for source, n, none in fun_facts.write_lore(conn, facts, deadline, clock):
+                if n:
+                    log.info("lore written for %d article(s) from %s, %d with none", n, source, none)
         except mindat.Unreachable as e:
             log.warning("catch-up stopped: %s; next try in %s", e, _minutes(hosts.facts.failed(now)))
         else:
             hosts.facts.done(now)
-            if written:
-                log.info("fun facts written for %d article(s), %d with none", written, empty)
     due = [h.next_at for h, on in ((hosts.wikipedia, wiki_api is not None), (hosts.mindat, mindat_api is not None),
                                    (hosts.facts, writes_facts)) if on]
     return min(due) if due else now + CATCH_UP_EVERY

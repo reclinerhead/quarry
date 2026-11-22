@@ -126,7 +126,7 @@ Settled: the worker is Jasper, and Phase 1 copies from the Conservatory rather t
 
 ## Credits
 
-Mineral data, and where each mineral is found, from [Mindat.org](https://www.mindat.org/) through the OpenMindat API, used under CC BY-NC-SA for a private, non-commercial family site. Summaries and fun facts from Wikipedia, under CC BY-SA. Identification by Claude (Anthropic) and Gemini (Google), through the Vercel AI Gateway.
+Mineral data, and where each mineral is found, from [Mindat.org](https://www.mindat.org/) through the OpenMindat API, used under CC BY-NC-SA for a private, non-commercial family site. Summaries and fun facts from Wikipedia, under CC BY-SA. Old lore from Pliny the Elder's *Natural History*, Book 37, in Bostock and Riley's translation (1855), and G. F. Kunz's *The Curious Lore of Precious Stones* (1913), both in the public domain, from Project Gutenberg. Identification by Claude (Anthropic) and Gemini (Google), through the Vercel AI Gateway.
 
 ## License
 
