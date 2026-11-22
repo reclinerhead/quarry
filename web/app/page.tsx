@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { Collection } from "@/components/collection";
 import { CameraIcon, CrystalIcon } from "@/components/icons";
@@ -5,15 +6,18 @@ import { JasperAtWork } from "@/components/jasper-at-work";
 import { StripWatch } from "@/components/strip-watch";
 import { Term } from "@/components/term";
 import { addedToday, glance, places, sameDay, sortTiles, type Tile } from "@/lib/collection";
+import { BASE_PATH } from "@/lib/base-path";
 import { periodicTable } from "@/lib/elements";
+import { FACT_ANCHOR, FACT_DISMISS_COOKIE, FACT_ID, FACT_STAMP, moreAbout } from "@/lib/facts";
 import { dateLine, greeting, whatTheyAdded } from "@/lib/greeting";
 import { waitingStrip, withReadDb, workingStrip } from "@/lib/jobs";
 import { mohsSet, type MohsSet } from "@/lib/mohs";
 import { kindOf, pieceName, stripLine } from "@/lib/pills";
-import { collectionElements, collectionTiles, type PieceElements } from "@/lib/specimens";
+import { collectionElements, collectionTiles, factStrip, type FactStrip, type PieceElements } from "@/lib/specimens";
 
 // The dashboard from design/DESIGN.md §5 (#9): the greeting that says what
-// changed and what today's stones added (#52), the pending strip (#8), then
+// changed and what today's stones added (#52), the pending strip (#8) or, when
+// nothing waits, now and then a fact about a mineral they own (#126), then
 // two columns: Your collection (components/collection.tsx) and the side
 // column with Newest additions, At a glance, Your Mohs scale and Where they
 // live. While there are no stones, the collection is one empty card in the
@@ -29,15 +33,24 @@ const PLACEHOLDERS = [
   { tint: "bg-tile-rust", shown: "xl:flex" },
 ];
 
-export default function Home() {
+export default async function Home() {
   const now = new Date();
-  const { tiles, pieces, strip, working } = withReadDb(
-    (db) => ({ tiles: collectionTiles(db), pieces: collectionElements(db), strip: waitingStrip(db), working: workingStrip(db) }),
+  // The fact dismissed with "Not today", if any: the server makes the pick, so it reads the cookie.
+  const dismissed = (await cookies()).get(FACT_DISMISS_COOKIE)?.value ?? "";
+  const { tiles, pieces, strip, working, fact } = withReadDb(
+    (db) => {
+      const strip = waitingStrip(db);
+      const working = workingStrip(db);
+      // The fact ranks below everything that needs the person or is about to: it is read only when neither strip is drawn.
+      const fact = strip.count === 0 && working.ids.length === 0 ? factStrip(db, now, FACT_ID.test(dismissed) ? dismissed : null) : null;
+      return { tiles: collectionTiles(db), pieces: collectionElements(db), strip, working, fact };
+    },
     {
       tiles: [] as Tile[],
       pieces: [] as PieceElements[],
       strip: { count: 0, thumbs: [], first: null },
       working: { ids: [], thumbs: [] },
+      fact: null as FactStrip | null,
     },
   );
   const today = addedToday(
@@ -120,6 +133,8 @@ export default function Home() {
             {working.ids.length === 1 ? "Name it" : "Name them"}
           </span>
         </section>
+      ) : fact ? (
+        <FactOfTheDay strip={fact} />
       ) : null}
       {working.ids.length > 0 ? <StripWatch ids={working.ids} /> : null}
 
@@ -132,6 +147,55 @@ export default function Home() {
         </div>
       )}
     </main>
+  );
+}
+
+/**
+ * The fact strip (#126), in the pending strip's slot and layout: the stone's
+ * main photo, the fact as the heading under its stamp ("Did you know?", or
+ * "Once believed" over old lore, which is never shown as a fact), the mineral
+ * as the household names it with who the fact is from, and the way to the
+ * stone's page, where every fact sits beside the sentence it rests on. Drawn
+ * on the server, so it never pops in. "Not today" is a plain form: the route
+ * sets the cookie and sends the browser back here, the one shift, on the
+ * person's own press.
+ */
+function FactOfTheDay({ strip }: { strip: FactStrip }) {
+  const { fact } = strip;
+  return (
+    <section aria-labelledby="fact-h" className="card flex flex-wrap items-center gap-x-5 gap-y-3.5 px-4 py-4 sm:gap-x-7 sm:gap-y-5 sm:px-7 sm:py-[22px]">
+      {strip.thumbUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- Jasper's 320 px thumbnail
+        <img src={strip.thumbUrl} alt="" className="size-[72px] rounded-tile border-[3px] border-surface bg-tile-stone object-cover" />
+      ) : (
+        <span aria-hidden className="flex size-[72px] items-center justify-center rounded-tile border-[3px] border-surface bg-tile-stone">
+          <CrystalIcon className="size-8 text-icon-muted" />
+        </span>
+      )}
+      <div className="order-3 flex min-w-0 basis-full flex-col gap-1 md:order-2 md:flex-1">
+        <p className="text-meta font-bold text-ink-2">{FACT_STAMP[fact.kind]}</p>
+        <h2 id="fact-h" className="text-[26px] leading-tight">
+          {fact.text}
+        </h2>
+        <div className="flex flex-wrap items-center gap-x-3 text-meta text-ink-2">
+          <p className="flex flex-wrap items-center">
+            {`${strip.name} · from`}
+            <a href={fact.source.url} target="_blank" rel="noreferrer" className="text-link">
+              {strip.credit}
+            </a>
+          </p>
+          <form method="post" action={`${BASE_PATH}/api/facts/dismiss`}>
+            <input type="hidden" name="id" value={fact.id} />
+            <button type="submit" className="text-link">
+              Not today
+            </button>
+          </form>
+        </div>
+      </div>
+      <Link href={`/stones/${strip.stoneId}#${FACT_ANCHOR[fact.kind]}`} className="btn btn-soft btn-lg order-2 ml-auto md:order-3 md:ml-0">
+        {moreAbout(strip.name)}
+      </Link>
+    </section>
   );
 }
 
