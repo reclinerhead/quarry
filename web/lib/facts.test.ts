@@ -3,6 +3,13 @@ import type { AboutPage } from "./about";
 import {
   aboutNames,
   aboutPick,
+  allBeliefs,
+  listOf,
+  loreBand,
+  loreIntro,
+  loreMeta,
+  shortSource,
+  workParts,
   FACT_ANCHOR,
   FACT_CYCLE_DAYS,
   FACT_ID,
@@ -175,5 +182,58 @@ describe("the strip's words", () => {
   it("knows a fact id from anything else a cookie could hold", () => {
     expect(FACT_ID.test("0a1b2c3d4e")).toBe(true);
     expect(["", "0a1b2c3d4", "0a1b2c3d4e5", "0A1B2C3D4E", "../../etc"].some((v) => FACT_ID.test(v))).toBe(false);
+  });
+});
+
+describe("the Once believed band", () => {
+  const KUNZ = { author: "G. F. Kunz", work: "The Curious Lore of Precious Stones", year: "1913", url: "https://www.gutenberg.org/ebooks/57978" };
+  const lore = (i: number, source = PLINY): Fact => ({ id: id(i), text: `Belief ${i}.`, quote: `Passage ${i}.`, kind: "lore", source });
+  const pool = [lore(1), lore(2), lore(3), lore(4, KUNZ), lore(5, KUNZ), lore(6, KUNZ), lore(7, KUNZ)];
+
+  it("leads with the first belief, puts the next three beside it, and keeps every one for the list", () => {
+    const band = loreBand(pool)!;
+    expect(band.lead).toBe(pool[0]);
+    expect(band.more).toEqual([pool[1], pool[2], pool[3]]);
+    expect(band.all).toEqual(pool); // the expanded list, in pool order
+    expect(allBeliefs(band.all.length)).toBe("All 7 old beliefs, with their sources");
+    expect(band.credits).toEqual(["Pliny the Elder", "G. F. Kunz"]);
+    expect(band.ancient).toBe(true);
+  });
+
+  it("leads with today's scheduled belief when the stone has one, the rest keeping their order", () => {
+    const band = loreBand(pool, id(5))!;
+    expect(band.lead).toBe(pool[4]);
+    expect(band.more).toEqual([pool[0], pool[1], pool[2]]);
+    expect(band.all).toEqual(pool);
+    expect(loreBand(pool, id(99))!.lead).toBe(pool[0]); // today's fact is another stone's, or a Wikipedia fact
+    expect(loreBand(pool, null)!.lead).toBe(pool[0]);
+  });
+
+  it("is none for a title with no lore, and never counts a fact or a repeat", () => {
+    expect(loreBand([])).toBeNull();
+    expect(loreBand([fact(id(1))])).toBeNull();
+    const band = loreBand([fact(id(1)), lore(2), lore(2), lore(3, KUNZ)])!;
+    expect(band.all.map((f) => f.id)).toEqual([id(2), id(3)]);
+    expect(band.more).toEqual([band.all[1]]);
+    expect(loreBand([lore(4, KUNZ)])).toMatchObject({ more: [], credits: ["G. F. Kunz"], ancient: false });
+  });
+
+  it("gives each belief its source line, short beside a headline and whole under a passage", () => {
+    expect(shortSource(PLINY)).toBe("Pliny the Elder, about AD 77");
+    expect(shortSource(KUNZ)).toBe("G. F. Kunz, 1913");
+    expect(shortSource(WIKI)).toBe("Wikipedia");
+    expect(workParts("Natural History, Book 37")).toEqual(["Natural History", ", Book 37"]);
+    expect(workParts(KUNZ.work)).toEqual(["The Curious Lore of Precious Stones", ""]);
+  });
+
+  it("names the sources this mineral has, in the household's name for it", () => {
+    expect(loreMeta("Agate", ["Pliny the Elder", "G. F. Kunz"])).toBe("Old lore about agate · from Pliny the Elder and G. F. Kunz");
+    expect(loreMeta("Schorl", ["G. F. Kunz"])).toBe("Old lore about schorl · from G. F. Kunz");
+    expect(listOf(["A", "B", "C"])).toBe("A, B, and C");
+  });
+
+  it("says once, over the band, that none of it holds up, with the span of the oldest source", () => {
+    expect(loreIntro("Agate", true)).toBe("For two thousand years people wrote down what an agate could do for the one who carried it. None of it holds up. All of it is worth telling.");
+    expect(loreIntro("Tourmaline", false)).toBe("For hundreds of years people wrote down what a tourmaline could do for the one who carried it. None of it holds up. All of it is worth telling.");
   });
 });

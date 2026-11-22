@@ -211,6 +211,20 @@ with two states of its own in the plain card: rocks still sending ("Keep this
 page open until they're sent."), and rocks that couldn't be sent, the reason in
 words with "Send it again" and "Remove" in the button's room.
 
+**Once believed band**: the old lore about a stone's mineral, a full-width
+white card between the gallery and the two columns of the specimen page, only
+when the mineral has any. Head: "Once believed" (Zilla 30) with a meta line
+beside it, "Old lore about agate · from Pliny the Elder and G. F. Kunz", then
+one line in `ink-2` at the lead size saying none of it holds up. Two columns
+that wrap (`flex: 1.3 1 480px` and `1 1 360px`, 48 px between): left, the lead
+belief (Zilla 34, at most 24 characters a line; 28 on a phone), its passage in
+quotation marks (19, `ink-2`, never italic) and its source in meta with "Read
+it"; right, up to three more as Zilla 24 headlines with a one-line source and
+hairlines between, and a soft button, "All 7 old beliefs, with their sources".
+The button opens the whole list in place, each belief with its passage and
+source, and becomes "Fewer old beliefs". Never a modal. No info mark inside a
+belief. Lore is never drawn as a fact: the title and the line under it say so.
+
 **Fact strip**: the pending strip's slot, on a day a fact is due and nothing
 waits for a name or for Jasper: a plain white card in the strip's layout. One
 72 px thumb, the stone the fact is told about; a stamp in bold meta, "Did you
@@ -385,7 +399,8 @@ Home pill and nothing changes.
    it shows once, in Mineral properties under the mineral's name · right:
    Print label (soft), Edit details (soft), Add photos (primary).
 3. Photo gallery.
-4. Two columns, same split as the dashboard.
+4. The Once believed band (§4), only when the mineral has old lore.
+5. Two columns, same split as the dashboard.
    - Main: **This specimen** (the label card) · **Kitchen-table tests** (with
      the card check) · **About [mineral]** (the heading names the article the
      lead came from, "About Gneiss" on a Granite Gneiss, with the mineral info
