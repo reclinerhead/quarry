@@ -14,7 +14,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { openReadWrite } from "@/lib/db";
-import { thumbPathFor } from "@/lib/photos";
+import { coverPathFor, thumbPathFor } from "@/lib/photos";
 import { checkUpload, discardUpload, storeUpload, takenAtFrom } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +63,7 @@ async function sweepStrays(db: DatabaseSync): Promise<void> {
     for (const { path } of stray) {
       await discardUpload(path);
       await discardUpload(thumbPathFor(path));
+      await discardUpload(coverPathFor(path));
     }
   } catch {
     /* tidying up, never the upload's business */

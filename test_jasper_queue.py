@@ -303,6 +303,11 @@ def test_run_once_asks_both_models_and_records_both_answers(tmp_path, caplog, mo
     for rel in (first, second):
         with Image.open(data / worker.thumb_path(rel)) as im:
             assert max(im.size) == identify.THUMB_SIDE
+    # The launcher's copy (#136): the short side capped, never enlarged, progressive.
+    with Image.open(data / worker.cover_path(first)) as im:
+        assert im.size == (1280, 960) and im.info.get("progressive")
+    with Image.open(data / worker.cover_path(second)) as im:
+        assert im.size == (900, 1400)
     rank1 = conn.execute("SELECT model, name, cost_usd FROM candidates WHERE rank = 1 ORDER BY model").fetchall()
     assert [tuple(r) for r in rank1] == [(HAIKU.model, "Galena", 0.0009), (FLASH.model, "Galena", 0.0032)]
     assert _row(conn, jid)["status"] == "identified"
@@ -401,7 +406,15 @@ def test_the_idle_pass_rewrites_what_is_over_the_cap_once_and_says_so(tmp_path, 
     with Image.open(data / "photos/2026/10/big.jpg") as im:
         assert max(im.size) == identify.STORE_SIDE
     assert untouched() == fine_before
-    assert [r.getMessage() for r in caplog.records][-1].startswith("photos: 1 re-encoded, ")
+    messages = [r.getMessage() for r in caplog.records]
+    assert messages[-1].startswith("photos: 1 re-encoded, ")
+    # The same walk gives each photo its launcher copy (#136), from the stored file.
+    assert "photos: 2 launcher cover(s) written" in messages
+    with Image.open(data / worker.cover_path("photos/2026/10/big.jpg")) as im:
+        assert im.size == (1440, 960)
+    with Image.open(data / worker.cover_path("photos/2026/10/fine.jpg")) as im:
+        assert im.size == (1280, 960)
+    assert conn.execute("SELECT COUNT(*) FROM photos").fetchone()[0] == 2  # a cover is a file, never a row
     caplog.clear()
     with caplog.at_level(logging.INFO, logger="jasper"):
         assert worker.tidy_photos(conn, data, should_stop=lambda: False) is True

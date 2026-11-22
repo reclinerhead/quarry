@@ -5,7 +5,7 @@
 
 import { openReadWrite } from "@/lib/db";
 import { nextWaitingJob, waitingJobIds } from "@/lib/jobs";
-import { thumbPathFor } from "@/lib/photos";
+import { coverPathFor, thumbPathFor } from "@/lib/photos";
 import { discardUpload } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     for (const p of paths) {
       await discardUpload(p);
       await discardUpload(thumbPathFor(p));
+      await discardUpload(coverPathFor(p));
     }
     const nextJobId = nextWaitingJob(waitingJobIds(db), jobId);
     return Response.json({ ok: true, nextJobId });

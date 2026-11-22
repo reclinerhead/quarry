@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentTypeFor, extForUpload, mediaRelPath, relPathFor, takenLabel, thumbPathFor } from "./photos";
+import { contentTypeFor, coverPathFor, extForUpload, mediaRelPath, relPathFor, takenLabel, thumbPathFor } from "./photos";
 
 describe("takenLabel", () => {
   it("reads the date from the text, whatever the time zone", () => {
@@ -19,6 +19,14 @@ describe("thumbPathFor", () => {
     expect(thumbPathFor("photos/2026/10/abc.heic")).toBe("photos/2026/10/abc.thumb.jpg");
     expect(thumbPathFor("photos/2026/10/abc.jpg")).toBe("photos/2026/10/abc.thumb.jpg");
     expect(mediaRelPath(thumbPathFor("photos/2026/10/abc.jpg").split("/"))).toBe("photos/2026/10/abc.thumb.jpg");
+  });
+});
+
+describe("coverPathFor", () => {
+  it("names the launcher's copy the way Jasper writes it (worker.cover_path), and the media route serves it", () => {
+    expect(coverPathFor("photos/2026/10/abc.jpg")).toBe("photos/2026/10/abc.cover.jpg");
+    expect(coverPathFor("photos/2026/10/abc.heic")).toBe("photos/2026/10/abc.cover.jpg");
+    expect(mediaRelPath(coverPathFor("photos/2026/10/abc.jpg").split("/"))).toBe("photos/2026/10/abc.cover.jpg");
   });
 });
 
