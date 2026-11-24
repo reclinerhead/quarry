@@ -26,7 +26,7 @@ The middle is the same on every box: the same three units, the same ports, the s
 - On a station it also holds `QUARRY_DEPLOY_BRANCH=quarry-station-stable`, which tells the watcher which branch to follow. Orchid's file has no such line, and the watcher's default is `main`.
 - The keys are in that file and nowhere else. Jasper will not start without the gateway key; without the Mindat key it matches candidates by name only. The web unit never calls a model.
 
-**One value is not in that file**: `NEXT_PUBLIC_BASE_PATH`, the path the web app is served under (`/quarry` on a station, unset on orchid; `web.md`). It is read at build time, so it lives in `web/.env.local`, owned by todd, beside the build. The root-only env file would be the wrong place: the build runs as todd, who cannot read it.
+**One value is not in that file**: `NEXT_PUBLIC_BASE_PATH`, the path the web app is served under (`/quarry` on a station, unset on orchid; `web.md`). It is read at build time, so it lives in `web/.env.local`, owned by todd, beside the build. The root-only env file would be the wrong place: the build runs as todd, who cannot read it. Orchid's `web/.env.local` holds the other build-time value, `NEXT_PUBLIC_PORCH_URL=https://aviary.lan/` (#140), which gives the top bar its Home link to the house's launcher. That line is written by hand, once; no install script writes it, so a rebuilt orchid needs it again, and a change to it means a rebuild.
 
 ## The door
 
