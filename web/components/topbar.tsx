@@ -1,6 +1,6 @@
 "use client";
 
-import { BASE_PATH } from "@/lib/base-path";
+import { BASE_PATH, HOME_HREF } from "@/lib/base-path";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -19,12 +19,12 @@ import { CameraIcon, GemMark, HomeIcon } from "@/components/icons";
 // down to a 360 px phone; the rows sit closer too. The bar is 213 px there,
 // not 277 (#116).
 //
-// On a station (BASE_PATH set) the bar starts with Home (#128), the way back
-// to the launcher at the origin's root. Home needs room the one-row bar does
+// Where there is a launcher (HOME_HREF: a station, and the house since #140)
+// the bar starts with Home (#128), the way back to it. Home needs room the one-row bar does
 // not have until 2xl, so there the two-row layout holds up to 2xl instead of
 // lg; and on a phone the gem mark steps aside for it, so the wordmark and Add
-// still share the first row at 360 px. Without a base path nothing changes.
-const ONE_ROW = BASE_PATH
+// still share the first row at 360 px. Without a launcher nothing changes.
+const ONE_ROW = HOME_HREF
   ? {
       group: "2xl:order-2 2xl:flex-1 2xl:basis-auto 2xl:flex-nowrap 2xl:gap-7",
       add: "2xl:order-3 2xl:ml-0",
@@ -42,18 +42,18 @@ export function TopBar() {
     <header>
       <div className="border-b border-line bg-surface">
         <div className="mx-auto flex w-full max-w-page flex-wrap items-center gap-x-3 gap-y-2.5 px-4 py-3 sm:gap-x-7 sm:gap-y-3 sm:px-10 sm:py-[18px]">
-          {/* Home (#128), on a station only: back to the launcher at the
-              origin's root, which is not this app's. A plain <a>, since <Link>
-              would prefix the base path and land on the collection. */}
-          {BASE_PATH && (
-            // eslint-disable-next-line @next/next/no-html-link-for-pages
-            <a href="/" className="btn btn-soft order-1 px-3.5 sm:px-5">
+          {/* Home (#128): back to the launcher, at the origin's root on a
+              station and at its own address at the house (#140). Not this
+              app's page either way, so a plain <a>: <Link> would prefix the
+              base path and land on the collection. */}
+          {HOME_HREF && (
+            <a href={HOME_HREF} className="btn btn-soft order-1 px-3.5 sm:px-5">
               <HomeIcon className="size-[22px]" />
               <span className="max-sm:sr-only">Home</span>
             </a>
           )}
           <Link href="/" className="order-1 flex items-center gap-2.5 text-ink hover:text-ink">
-            <GemMark className={`size-8 text-azurite sm:size-9 ${BASE_PATH ? "max-sm:hidden" : ""}`} />
+            <GemMark className={`size-8 text-azurite sm:size-9 ${HOME_HREF ? "max-sm:hidden" : ""}`} />
             <span className="font-display text-[26px] font-bold tracking-[-0.01em] sm:text-[30px]">The Quarry</span>
           </Link>
 
